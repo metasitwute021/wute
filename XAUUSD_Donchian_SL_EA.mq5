@@ -22,7 +22,7 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "XAUUSD Donchian EA (Donchian-based SL)"
-#property version   "1.30"
+#property version   "1.40"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -478,7 +478,7 @@ void OpenTrade(const ENUM_ORDER_TYPE type, const double entry, const double sl)
    if(riskDist <= 0.0)
       return;
 
-   double lots = CalcLotSize(riskDist);
+   double lots = CalcLotSize(type, entry, sl);
    if(lots <= 0.0)
    {
       Print("Lot size computed as 0 - skipping entry");
@@ -508,52 +508,61 @@ void OpenTrade(const ENUM_ORDER_TYPE type, const double entry, const double sl)
 // standard and most cent accounts use 1.0. Some servers (e.g. certain XM
 // cent servers) report tick value differently and need an explicit factor.
 // Adjust the K_CENT_XM value below if the lot size looks off on that broker.
+// Optional extra multiplier per account profile. Sizing now uses
+// OrderCalcProfit() which is already correct on cent accounts, so these
+// are all 1.0 by default. Left here only as a manual tuning hook.
 double GetLotCoefficient()
 {
    switch(InpKParameter)
    {
-      case K_STA:     return 1.0;     // standard account
-      case K_CENT:    return 1.0;     // typical cent account (balance & tickValue both in cents -> cancel)
-      case K_CENT_XM: return 100.0;   // XM-style cent: tickValue is in USD while balance is in cents,
-                                      // so the raw lot is 100x too small -> scale back up by 100
+      case K_STA:     return 1.0;   // standard account
+      case K_CENT:    return 1.0;   // typical cent account
+      case K_CENT_XM: return 1.0;   // XM-style cent account (fine 0.01 step via EffectiveLotStep)
    }
    return 1.0;
 }
 
-double CalcLotSize(const double riskDist)
+double CalcLotSize(const ENUM_ORDER_TYPE type, const double entry, const double sl)
 {
    double balance   = AccountInfoDouble(ACCOUNT_BALANCE);
    double riskMoney = balance * (InpRiskPercent / 100.0);
-
-   double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
-   double tickSize  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-   if(tickSize <= 0.0 || tickValue <= 0.0 || riskDist <= 0.0)
+   double riskDist  = MathAbs(entry - sl);
+   if(riskDist <= 0.0 || riskMoney <= 0.0)
       return 0.0;
 
-   // Loss (account currency) for 1.0 lot if SL is hit.
-   // Works for Cent accounts automatically because tickValue is already
-   // expressed in the deposit (cent) currency.
-   double lossPerLot = (riskDist / tickSize) * tickValue;
+   // Loss (in ACCOUNT currency) for 1.0 lot if the SL is hit.
+   // OrderCalcProfit() accounts for contract size and cent-account currency
+   // automatically, so no broker-specific coefficient is needed and the
+   // result is the TRUE 1% risk on any account type.
+   double lossPerLot = 0.0;
+   if(!OrderCalcProfit(type, _Symbol, 1.0, entry, sl, lossPerLot))
+   {
+      Print("OrderCalcProfit failed - cannot size lot");
+      return 0.0;
+   }
+   lossPerLot = MathAbs(lossPerLot);
    if(lossPerLot <= 0.0)
       return 0.0;
 
-   double rawLots = riskMoney / lossPerLot;
+   double rawLots   = riskMoney / lossPerLot;
+   double k         = GetLotCoefficient();                 // 1.0 by default
+   double conf      = (InpEnableConfidence ? gConfidence : 1.0);
+   double lotsFinal = NormalizeVolume(rawLots * k * conf);
 
-   // broker / account-type lot coefficient (K_STA / K_CENT / K_CENT_XM)
-   double k        = GetLotCoefficient();
-   double lotsK    = rawLots * k;
+   // Actual money at risk at the final (broker-normalized) lot size.
+   double lossAtFinal = lossPerLot * lotsFinal;
+   double riskPctReal = (balance > 0.0 ? lossAtFinal / balance * 100.0 : 0.0);
 
-   // confidence scaling
-   double conf     = (InpEnableConfidence ? gConfidence : 1.0);
-   double lotsFinal= NormalizeVolume(lotsK * conf);
+   PrintFormat("SIZING bal=%.2f risk%%=%.2f riskMoney=%.2f | dist=%.2f lossPerLot=%.2f | raw=%.5f K(%s)=%.0f conf=%.2f -> final=%.2f | lossAtFinal=%.2f (=%.2f%% of bal)",
+               balance, InpRiskPercent, riskMoney, riskDist, lossPerLot,
+               rawLots, EnumToString(InpKParameter), k, conf, lotsFinal,
+               lossAtFinal, riskPctReal);
 
-   // Detailed sizing breakdown (Experts log) so the real 1% risk can be checked.
-   // "lossAtFinal" = money lost if SL is hit at the final lot size (should be ~RiskMoney).
-   double lossAtFinal = (riskDist / tickSize) * tickValue * lotsFinal;
-   PrintFormat("SIZING bal=%.2f risk%%=%.2f riskMoney=%.2f | dist=%.2f tickVal=%.5f tickSize=%.5f lossPerLot=%.2f | raw=%.5f K(%s)=%.0f conf=%.2f -> final=%.2f | lossAtFinal=%.2f",
-               balance, InpRiskPercent, riskMoney,
-               riskDist, tickValue, tickSize, lossPerLot,
-               rawLots, EnumToString(InpKParameter), k, conf, lotsFinal, lossAtFinal);
+   // Safety: if the broker MINIMUM lot already risks well above the target
+   // (small account / wide SL), warn loudly so it is not missed.
+   if(riskPctReal > InpRiskPercent * 1.5)
+      Notify(StringFormat("WARNING: min-lot %.2f risks %.2f%% (> target %.2f%%) - account too small for this SL",
+                          lotsFinal, riskPctReal, InpRiskPercent));
 
    return lotsFinal;
 }
