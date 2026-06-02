@@ -22,7 +22,7 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "XAUUSD Donchian EA (Donchian-based SL)"
-#property version   "1.20"
+#property version   "1.30"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -79,6 +79,7 @@ input double          InpRiskPercent = 1.0;             // Risk per trade (% bal
 input ENUM_ACCT_MODE  InpAccountType = ACCOUNT_CENT;    // Account type
 input ENUM_ASSET_MODE InpAssetType   = ASSET_2_DECIMAL; // Asset price decimals
 input ENUM_K_MODE     InpKParameter  = K_CENT;          // Lot coefficient profile (K)
+input double          InpLotStepOverride = 0.0;         // Force lot step (0 = auto/broker; e.g. 0.01)
 input int             InpMaxPositions= 1;               // Max simultaneous positions
 
 input group "=== Trade management ==="
@@ -208,6 +209,21 @@ int OnInit()
    gConfidence     = 1.0;
 
    EventSetTimer(5);  // protection / news checks every 5 sec
+
+   // Diagnostic: print the broker's real lot constraints so the effective
+   // granularity (esp. for K_CENT_XM) can be verified in the Experts log.
+   PrintFormat("LOT INFO %s | min=%.2f step=%.2f max=%.2f | effStep=%.2f | K=%s | tickVal=%.5f tickSize=%.5f contract=%.2f | %s %s",
+               _Symbol,
+               SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN),
+               SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP),
+               SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX),
+               EffectiveLotStep(),
+               EnumToString(InpKParameter),
+               SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE),
+               SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE),
+               SymbolInfoDouble(_Symbol, SYMBOL_TRADE_CONTRACT_SIZE),
+               AccountInfoString(ACCOUNT_CURRENCY),
+               (InpAccountType==ACCOUNT_CENT ? "CENT" : "STANDARD"));
 
    Notify("EA started on " + _Symbol + " (entry " + EnumToString(InpEntryTF) +
           ", trail " + EnumToString(InpTrailTF) + ", Donchian-SL)");
@@ -532,14 +548,35 @@ double CalcLotSize(const double riskDist)
    return NormalizeVolume(lots);
 }
 
+// Effective lot rounding step.
+//   - manual override (InpLotStepOverride > 0) always wins
+//   - K_CENT_XM forces a fine 0.01 step so lots can be 0.11 / 0.12 / 0.13...
+//     (XM cent servers have min lot 0.10 but accept 0.01 increments, so the
+//      coarse broker-advertised 0.10 step would otherwise lose precision)
+//   - otherwise use the broker's reported step
+double EffectiveLotStep()
+{
+   double brokerStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+   if(brokerStep <= 0.0) brokerStep = 0.01;
+
+   if(InpLotStepOverride > 0.0)
+      return InpLotStepOverride;
+
+   if(InpKParameter == K_CENT_XM && brokerStep > 0.01)
+      return 0.01;
+
+   return brokerStep;
+}
+
 double NormalizeVolume(double vol)
 {
    double minV = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
    double maxV = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
-   double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+   double step = EffectiveLotStep();
    if(step <= 0.0) step = 0.01;
 
-   vol = MathFloor(vol/step) * step;
+   // round DOWN to the step (epsilon guards against float floor errors)
+   vol = MathFloor(vol/step + 1e-9) * step;
    if(vol < minV) vol = minV;
    if(vol > maxV) vol = maxV;
 
