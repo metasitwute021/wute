@@ -512,9 +512,10 @@ double GetLotCoefficient()
 {
    switch(InpKParameter)
    {
-      case K_STA:     return 1.0;   // standard account
-      case K_CENT:    return 1.0;   // typical cent account
-      case K_CENT_XM: return 1.0;   // XM-style cent account (tune if needed)
+      case K_STA:     return 1.0;     // standard account
+      case K_CENT:    return 1.0;     // typical cent account (balance & tickValue both in cents -> cancel)
+      case K_CENT_XM: return 100.0;   // XM-style cent: tickValue is in USD while balance is in cents,
+                                      // so the raw lot is 100x too small -> scale back up by 100
    }
    return 1.0;
 }
@@ -536,16 +537,25 @@ double CalcLotSize(const double riskDist)
    if(lossPerLot <= 0.0)
       return 0.0;
 
-   double lots = riskMoney / lossPerLot;
+   double rawLots = riskMoney / lossPerLot;
 
    // broker / account-type lot coefficient (K_STA / K_CENT / K_CENT_XM)
-   lots *= GetLotCoefficient();
+   double k        = GetLotCoefficient();
+   double lotsK    = rawLots * k;
 
    // confidence scaling
-   if(InpEnableConfidence)
-      lots *= gConfidence;
+   double conf     = (InpEnableConfidence ? gConfidence : 1.0);
+   double lotsFinal= NormalizeVolume(lotsK * conf);
 
-   return NormalizeVolume(lots);
+   // Detailed sizing breakdown (Experts log) so the real 1% risk can be checked.
+   // "lossAtFinal" = money lost if SL is hit at the final lot size (should be ~RiskMoney).
+   double lossAtFinal = (riskDist / tickSize) * tickValue * lotsFinal;
+   PrintFormat("SIZING bal=%.2f risk%%=%.2f riskMoney=%.2f | dist=%.2f tickVal=%.5f tickSize=%.5f lossPerLot=%.2f | raw=%.5f K(%s)=%.0f conf=%.2f -> final=%.2f | lossAtFinal=%.2f",
+               balance, InpRiskPercent, riskMoney,
+               riskDist, tickValue, tickSize, lossPerLot,
+               rawLots, EnumToString(InpKParameter), k, conf, lotsFinal, lossAtFinal);
+
+   return lotsFinal;
 }
 
 // Effective lot rounding step.
