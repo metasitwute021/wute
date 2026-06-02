@@ -22,7 +22,7 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "XAUUSD Donchian EA (Donchian-based SL)"
-#property version   "1.10"
+#property version   "1.20"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -86,6 +86,7 @@ input double   InpBreakEvenR         = 0.25;       // Move SL to BE at this R
 input double   InpBE_BufferPts       = 20;         // BE buffer (points beyond entry)
 input double   InpPartialR           = 1.0;        // Partial close at this R
 input double   InpPartialPercent     = 40.0;       // Percent of position to close
+input bool     InpLockTrailUntilPartial = true;    // Lock trailing until partial done (let price reach 1R)
 
 input group "=== Trailing layers (M30) ==="
 input int      InpTr1_ATRPeriod      = 18;         // Layer 1 ATR period
@@ -666,19 +667,33 @@ void ManageOpenPositions()
             if(trade.PositionClosePartial(ticket, closeVol))
             {
                gPosPartialDone[i] = true;
-               Notify(StringFormat("Partial close %.2f lots #%I64u @ 1R", closeVol, ticket));
+               Notify(StringFormat("Partial close %.2f lots #%I64u @ %.2fR",
+                                   closeVol, ticket, profitDist/R));
             }
+            else
+               Notify(StringFormat("Partial FAILED #%I64u: %s",
+                                   ticket, trade.ResultRetcodeDescription()));
          }
          else
          {
+            // log ให้ชัดว่าทำไมข้าม (lot เล็กเกิน split)
+            Notify(StringFormat("Partial SKIP #%I64u: closeVol %.2f / remain %.2f < min %.2f",
+                               ticket, closeVol, vol-closeVol, minV));
             gPosPartialDone[i] = true; // cannot split further, skip
          }
       }
 
-      // ---- Multi-layer trailing (pick the safest stop) ----
-      double newSL = ComputeTrailingSL(isBuy, cur);
-      if(newSL > 0.0)
-         ModifySL(ticket, isBuy, newSL, sl);
+      // ---- Multi-layer trailing ----
+      // *** ล็อค trailing ไว้จนกว่าจะถึง 1R (หลัง partial) ***
+      // ก่อน 1R: มีแค่ break-even ป้องกันทุน ไม่ให้ trailing ดึง SL ออกก่อน
+      // ทำให้ราคามีโอกาสวิ่งไปถึง 1R เพื่อ trigger partial ได้จริง
+      bool trailAllowed = (!InpLockTrailUntilPartial) || gPosPartialDone[i];
+      if(trailAllowed)
+      {
+         double newSL = ComputeTrailingSL(isBuy, cur);
+         if(newSL > 0.0)
+            ModifySL(ticket, isBuy, newSL, sl);
+      }
    }
 }
 
