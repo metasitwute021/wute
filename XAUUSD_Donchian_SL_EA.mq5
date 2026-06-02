@@ -28,11 +28,35 @@
 #include <Trade\Trade.mqh>
 
 //==================================================================
+//  Enums for account / lot configuration (Risk Management group)
+//==================================================================
+// ชนิดบัญชี: มาตรฐาน หรือ Cent
+enum ENUM_ACCT_MODE
+{
+   ACCOUNT_STANDARD = 0,   // Standard account
+   ACCOUNT_CENT     = 1    // Cent account
+};
+
+// จำนวนทศนิยมของราคาสินทรัพย์ (ทองคำส่วนใหญ่ = 2 ตำแหน่ง)
+enum ENUM_ASSET_MODE
+{
+   ASSET_2_DECIMAL = 0,    // 2 decimals (e.g. XAUUSD 1234.56)
+   ASSET_3_DECIMAL = 1     // 3 decimals (e.g. 1234.567)
+};
+
+// โปรไฟล์สัมประสิทธิ์การคำนวณล็อต (K) ตามชนิด/โบรกเกอร์ของบัญชี
+enum ENUM_K_MODE
+{
+   K_STA     = 0,          // Standard account
+   K_CENT    = 1,          // Typical Cent account
+   K_CENT_XM = 2           // XM-style Cent account
+};
+
+//==================================================================
 //  Inputs
 //==================================================================
 input group "=== General ==="
 input long     InpMagic              = 20250117;   // Magic number
-input bool     InpCentAccount        = true;       // Account is a Cent account
 input bool     InpEnableNotifications= true;       // Send push notifications
 input string   InpNotifPrefix        = "[XAU-EA] ";// Notification prefix
 
@@ -50,9 +74,12 @@ input group "=== Stop Loss (Donchian based) ==="
 input int      InpSL_BufferATRPeriod = 16;         // ATR period for SL buffer (entry TF)
 input double   InpSL_BufferATRMult   = 0.75;       // SL buffer = ATR x mult
 
-input group "=== Risk / sizing ==="
-input double   InpRiskPercent        = 1.0;        // Risk per trade (% balance)
-input int      InpMaxPositions       = 1;          // Max simultaneous positions
+input group "=== Risk Management ==="
+input double          InpRiskPercent = 1.0;             // Risk per trade (% balance)
+input ENUM_ACCT_MODE  InpAccountType = ACCOUNT_CENT;    // Account type
+input ENUM_ASSET_MODE InpAssetType   = ASSET_2_DECIMAL; // Asset price decimals
+input ENUM_K_MODE     InpKParameter  = K_CENT;          // Lot coefficient profile (K)
+input int             InpMaxPositions= 1;               // Max simultaneous positions
 
 input group "=== Trade management ==="
 input double   InpBreakEvenR         = 0.25;       // Move SL to BE at this R
@@ -456,6 +483,25 @@ void OpenTrade(const ENUM_ORDER_TYPE type, const double entry, const double sl)
 //==================================================================
 //  Lot sizing (risk-based, Cent aware, confidence scaled)
 //==================================================================
+// Coefficient (K) applied to the risk-based lot size to correct for
+// broker-specific contract / tick-value reporting.
+//
+// With the risk formula used here (riskMoney / lossPerLot, both expressed
+// in the account's OWN currency) the math is already self-consistent, so
+// standard and most cent accounts use 1.0. Some servers (e.g. certain XM
+// cent servers) report tick value differently and need an explicit factor.
+// Adjust the K_CENT_XM value below if the lot size looks off on that broker.
+double GetLotCoefficient()
+{
+   switch(InpKParameter)
+   {
+      case K_STA:     return 1.0;   // standard account
+      case K_CENT:    return 1.0;   // typical cent account
+      case K_CENT_XM: return 1.0;   // XM-style cent account (tune if needed)
+   }
+   return 1.0;
+}
+
 double CalcLotSize(const double riskDist)
 {
    double balance   = AccountInfoDouble(ACCOUNT_BALANCE);
@@ -474,6 +520,9 @@ double CalcLotSize(const double riskDist)
       return 0.0;
 
    double lots = riskMoney / lossPerLot;
+
+   // broker / account-type lot coefficient (K_STA / K_CENT / K_CENT_XM)
+   lots *= GetLotCoefficient();
 
    // confidence scaling
    if(InpEnableConfidence)
