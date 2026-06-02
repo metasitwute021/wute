@@ -13,13 +13,14 @@
 //|  - Stop Loss   : ATR(M1) based  -> entry -/+ mult * ATR           |
 //|  - Take Profit : fixed R multiple of the SL distance (R:R)        |
 //|  - Sizing      : risk % of balance via OrderCalcProfit (Cent OK)  |
-//|  - Management  : break-even only; pending auto-cancel on neutral  |
-//|                  RSI or after an expiry time                      |
+//|  - Management  : break-even, ATR trailing (SL follows strength),  |
+//|                  close an order at X% profit of balance; pending  |
+//|                  auto-cancel on neutral RSI or after expiry       |
 //|  - Filters     : max spread, optional news                        |
 //|  - Alerts      : push notifications on every event                |
 //+------------------------------------------------------------------+
 #property copyright "XAUUSD M1 RSI + S/R LIMIT Scalper"
-#property version   "1.00"
+#property version   "1.10"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -61,6 +62,14 @@ input bool     InpUseBreakEven       = true;       // Move SL to break-even
 input double   InpBreakEvenR         = 0.6;        // Move to BE at this R
 input double   InpBE_BufferPts       = 20;         // BE buffer (points beyond entry)
 input int      InpPendingExpiryMin   = 60;         // Cancel unfilled pending after N min (0=off)
+
+input group "=== ATR trailing stop (SL follows strength/volatility) ==="
+input bool     InpUseTrailing        = true;       // Trail SL by ATR (strong move = wider SL)
+input double   InpTrailStartR        = 1.0;        // Start trailing after profit >= this R
+input double   InpTrailATRMult        = 2.0;       // Trail distance = mult x ATR(M1)
+
+input group "=== Profit target (close per order) ==="
+input double   InpProfitClosePct     = 7.0;        // Close an order when its profit >= % of balance (0=off)
 
 input group "=== Filters ==="
 input int      InpMaxSpreadPoints    = 50;         // Skip new orders if spread > this (points)
@@ -154,7 +163,7 @@ void OnTimer()
 void OnTick()
 {
    SyncPositionState();
-   ManageOpenPositions();   // break-even only
+   ManageOpenPositions();   // profit-% close, break-even, ATR trailing
 
    datetime curBar = (datetime)iTime(_Symbol, PERIOD_M1, 0);
    if(curBar == gLastBar)
@@ -537,19 +546,18 @@ void SyncPositionState()
 }
 
 //==================================================================
-//  Management: break-even only
+//  Management: profit-% close, break-even, ATR trailing
 //==================================================================
 void ManageOpenPositions()
 {
-   if(!InpUseBreakEven) return;
+   double atr = 0.0;
+   bool   haveATR = (BufVal(hATRsl, 0, 1, atr) && atr > 0.0);
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
 
    for(int i=ArraySize(gPosTicket)-1; i>=0; i--)
    {
       ulong ticket = gPosTicket[i];
       if(!PositionSelectByTicket(ticket)) continue;
-
-      double R = gPosInitRisk[i];
-      if(R <= 0.0 || gPosBEDone[i]) continue;
 
       long   type = PositionGetInteger(POSITION_TYPE);
       double open = PositionGetDouble(POSITION_PRICE_OPEN);
@@ -558,16 +566,48 @@ void ManageOpenPositions()
       double cur  = isBuy ? SymbolInfoDouble(_Symbol, SYMBOL_BID)
                           : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       double profitDist = isBuy ? (cur - open) : (open - cur);
+      double R = gPosInitRisk[i];
 
-      if(profitDist >= InpBreakEvenR * R)
+      // ---- Profit target: close this order at X% of balance ----
+      if(InpProfitClosePct > 0.0 && balance > 0.0)
+      {
+         double profitMoney = PositionGetDouble(POSITION_PROFIT) +
+                              PositionGetDouble(POSITION_SWAP);
+         double pct = profitMoney / balance * 100.0;
+         if(pct >= InpProfitClosePct)
+         {
+            if(trade.PositionClose(ticket))
+            {
+               Notify(StringFormat("PROFIT-CLOSE #%I64u +%.2f%% of balance (%.2f)",
+                                   ticket, pct, profitMoney));
+               continue;   // position gone; state cleaned next SyncPositionState
+            }
+         }
+      }
+
+      if(R <= 0.0) continue;
+
+      // ---- Break-even ----
+      if(InpUseBreakEven && !gPosBEDone[i] && profitDist >= InpBreakEvenR * R)
       {
          double buf  = InpBE_BufferPts * _Point;
          double beSL = isBuy ? open + buf : open - buf;
          if(ModifySL(ticket, isBuy, beSL, sl))
          {
             gPosBEDone[i] = true;
+            sl = beSL;
             Notify(StringFormat("Break-even set #%I64u @ %.2f", ticket, beSL));
          }
+      }
+
+      // ---- ATR trailing (SL follows volatility/strength) ----
+      // strong/volatile move -> larger ATR -> SL trails wider (more room);
+      // quiet move -> tighter trail. Only ever tightens (ModifySL guards).
+      if(InpUseTrailing && haveATR && profitDist >= InpTrailStartR * R)
+      {
+         double trailDist = InpTrailATRMult * atr;
+         double newSL = isBuy ? cur - trailDist : cur + trailDist;
+         ModifySL(ticket, isBuy, newSL, sl);
       }
    }
 }
