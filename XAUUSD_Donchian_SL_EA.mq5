@@ -7,10 +7,10 @@
 //|  - Market / TF : XAUUSD, signals on H4, trailing managed on M30  |
 //|  - Entry       : Donchian(20) breakout, filtered by SMA(50)      |
 //|                  trend direction and ADX(14) > 20                |
-//|  - Stop Loss   : from the Donchian band (NOT from ATR):          |
-//|                    Buy  SL = Donchian low  - 0.75 * ATR(16)       |
-//|                    Sell SL = Donchian high + 0.75 * ATR(16)       |
-//|  - Sizing      : risk 1% of balance vs. SL distance (Cent OK)    |
+//|  - Stop Loss   : selectable (InpSLMode):                         |
+//|                    SL_ATR      = entry -/+ mult * ATR(16)  (def.) |
+//|                    SL_DONCHIAN = Donchian band -/+ buffer * ATR   |
+//|  - Sizing      : risk 1% of balance via OrderCalcProfit (Cent OK)|
 //|  - Exit        : no fixed TP, SL only, let profit run via        |
 //|                  multi-layer trailing                            |
 //|  - Management  : break-even @0.25R, partial 40% @1R, multi       |
@@ -22,7 +22,7 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "XAUUSD Donchian EA (Donchian-based SL)"
-#property version   "1.40"
+#property version   "1.50"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -52,6 +52,13 @@ enum ENUM_K_MODE
    K_CENT_XM = 2           // XM-style Cent account
 };
 
+// วิธีตั้ง Stop Loss เริ่มต้น
+enum ENUM_SL_MODE
+{
+   SL_ATR      = 0,        // SL = entry +/- (mult x ATR)   <- varied, tight, like reference EA
+   SL_DONCHIAN = 1         // SL = Donchian band +/- (buffer x ATR)
+};
+
 //==================================================================
 //  Inputs
 //==================================================================
@@ -70,9 +77,11 @@ input int      InpMAPeriod           = 50;         // Trend SMA period
 input int      InpADXPeriod          = 14;         // ADX period
 input double   InpADXMin             = 20.0;       // Minimum ADX to trade
 
-input group "=== Stop Loss (Donchian based) ==="
-input int      InpSL_BufferATRPeriod = 16;         // ATR period for SL buffer (entry TF)
-input double   InpSL_BufferATRMult   = 0.75;       // SL buffer = ATR x mult
+input group "=== Stop Loss ==="
+input ENUM_SL_MODE InpSLMode             = SL_ATR; // SL method (ATR = varied tight stops)
+input int          InpSL_ATRPeriod       = 16;     // ATR period for SL (entry TF)
+input double       InpSL_ATRMult         = 1.5;    // ATR mode: SL = mult x ATR
+input double       InpSL_DonchBufferMult = 0.75;   // Donchian mode: buffer = mult x ATR
 
 input group "=== Risk Management ==="
 input double          InpRiskPercent = 1.0;             // Risk per trade (% balance)
@@ -191,7 +200,7 @@ int OnInit()
 
    hMA       = iMA (_Symbol, InpEntryTF, InpMAPeriod, 0, MODE_SMA, PRICE_CLOSE);
    hADX      = iADX(_Symbol, InpEntryTF, InpADXPeriod);
-   hATRslBuf = iATR(_Symbol, InpEntryTF, InpSL_BufferATRPeriod);
+   hATRslBuf = iATR(_Symbol, InpEntryTF, InpSL_ATRPeriod);
    hATR1     = iATR(_Symbol, InpTrailTF, InpTr1_ATRPeriod);
    hATR2     = iATR(_Symbol, InpTrailTF, InpTr2_ATRPeriod);
    hATR3     = iATR(_Symbol, InpTrailTF, InpTr3_ATRPeriod);
@@ -446,10 +455,9 @@ void TryEnter()
    if(!BufVal(hADX,0, 1, adx)) return;   // buffer 0 = main ADX line
    if(adx < InpADXMin)         return;
 
-   // --- SL buffer from ATR(16) on the entry TF ---
-   double atrBuf;
-   if(!BufVal(hATRslBuf, 0, 1, atrBuf) || atrBuf <= 0.0) return;
-   double buffer = atrBuf * InpSL_BufferATRMult;
+   // --- ATR(16) on the entry TF, used by both SL modes ---
+   double atrSL;
+   if(!BufVal(hATRslBuf, 0, 1, atrSL) || atrSL <= 0.0) return;
 
    bool buySignal  = (close1 > upper) && (close1 > ma);
    bool sellSignal = (close1 < lower) && (close1 < ma);
@@ -457,19 +465,31 @@ void TryEnter()
    if(buySignal)
    {
       double entry = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      // SL from Donchian LOW minus a buffer (NOT from ATR distance)
-      double sl    = lower - buffer;
+      double sl    = ComputeInitialSL(true, entry, lower, atrSL);
       if(sl >= entry) return;                    // sanity: SL must be below entry
       OpenTrade(ORDER_TYPE_BUY, entry, sl);
    }
    else if(sellSignal)
    {
       double entry = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      // SL from Donchian HIGH plus a buffer
-      double sl    = upper + buffer;
+      double sl    = ComputeInitialSL(false, entry, upper, atrSL);
       if(sl <= entry) return;                    // sanity: SL must be above entry
       OpenTrade(ORDER_TYPE_SELL, entry, sl);
    }
+}
+
+// Initial stop loss.
+//   SL_ATR      : entry -/+ (InpSL_ATRMult x ATR)   -> tight, varied (matches reference EA)
+//   SL_DONCHIAN : Donchian band -/+ (buffer x ATR)  -> wide channel stop
+double ComputeInitialSL(const bool isBuy, const double entry, const double donchBand, const double atr)
+{
+   if(InpSLMode == SL_ATR)
+   {
+      double dist = InpSL_ATRMult * atr;
+      return isBuy ? entry - dist : entry + dist;
+   }
+   double buf = InpSL_DonchBufferMult * atr;   // SL_DONCHIAN
+   return isBuy ? donchBand - buf : donchBand + buf;
 }
 
 void OpenTrade(const ENUM_ORDER_TYPE type, const double entry, const double sl)
