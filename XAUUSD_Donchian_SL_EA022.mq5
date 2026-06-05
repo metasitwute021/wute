@@ -11,25 +11,30 @@
 //|         whose lot output / scale-out you were happy with)         |
 //|         => CalcLotSize via OrderCalcProfit() (accurate on Cent)   |
 //|                                                                  |
-//|  So: the wide Donchian-channel stop lets winners run (profit of   |
-//|  file 2), while the OrderCalcProfit sizing + 40% partial give     |
-//|  the lot behaviour of file 1.  Flip InpSLMode back to SL_ATR if   |
-//|  you ever want the old tight-stop behaviour of file 1.           |
+//|  So: the OrderCalcProfit sizing + 40% partial give the lot        |
+//|  behaviour of file 1.  Flip InpSLMode to SL_DONCHIAN if you ever   |
+//|  want the old wide-channel stop behaviour of file 2.             |
+//|                                                                  |
+//|  *** TUNED 2026-06-05 (vs reference EA "KRV-DC V.17") ***         |
+//|    - InpSLMode    : SL_DONCHIAN -> SL_ATR (tight ~75pt like KRV)  |
+//|    - InpSL_ATRMult: 1.5 -> 2.5                                     |
+//|    - News window  : symmetric +/-90 -> asymmetric +90 / -30 min   |
+//|      (keep pre-news guard wide, re-enter fast to catch the trend) |
 //|                                                                  |
 //|  Strategy summary                                                |
 //|  - Market / TF : XAUUSD, signals on H4, trailing managed on M30  |
 //|  - Entry       : Donchian(20) breakout, filtered by SMA(50)      |
 //|                  trend direction and ADX(14) > 20                |
 //|  - Stop Loss   : selectable (InpSLMode):                         |
-//|                    SL_DONCHIAN = Donchian band -/+ buffer*ATR (def)|
-//|                    SL_ATR      = entry -/+ mult * ATR(16)         |
+//|                    SL_ATR      = entry -/+ mult * ATR(16)   (def) |
+//|                    SL_DONCHIAN = Donchian band -/+ buffer*ATR     |
 //|  - Sizing      : risk 1% of balance via OrderCalcProfit (Cent OK)|
 //|  - Exit        : no fixed TP, SL only, let profit run via        |
 //|                  multi-layer trailing                            |
 //|  - Management  : break-even @0.25R, partial 40% @1R, multi       |
 //|                  trailing layers (pick the safest stop)          |
 //|  - Protection  : max DD 20% pause/resume, daily DD 1.5% stop,    |
-//|                  high-impact news filter +/-90 min               |
+//|                  high-impact news filter +90 / -30 min (asymm.)  |
 //|  - Confidence  : 0.5x..2.0x lot scaling on last 10 trades        |
 //|                  (win rate + profit factor) with 0.25 smoothing  |
 //|  - Alerts      : push notifications on every event               |
@@ -91,9 +96,9 @@ input int      InpADXPeriod          = 14;         // ADX period
 input double   InpADXMin             = 20.0;       // Minimum ADX to trade
 
 input group "=== Stop Loss ==="
-input ENUM_SL_MODE InpSLMode             = SL_DONCHIAN; // SL method (DONCHIAN = profitable wide stop = file 2)
+input ENUM_SL_MODE InpSLMode             = SL_ATR;      // SL method (ATR = tight KRV-like stop; DONCHIAN = wide channel stop)
 input int          InpSL_ATRPeriod       = 16;     // ATR period for SL (entry TF)
-input double       InpSL_ATRMult         = 1.5;    // ATR mode: SL = mult x ATR
+input double       InpSL_ATRMult         = 2.5;    // ATR mode: SL = mult x ATR (~75pt KRV-like; tune 2.0-3.0)
 input double       InpSL_DonchBufferMult = 0.75;   // Donchian mode: buffer = mult x ATR
 
 input group "=== Risk Management ==="
@@ -128,8 +133,8 @@ input double   InpDailyDD_Percent    = 1.5;        // Daily drawdown -> stop for
 
 input group "=== News filter ==="
 input bool     InpEnableNewsFilter   = true;       // Avoid trading around news
-input int      InpNewsMinutesBefore  = 90;         // Block window before news (min)
-input int      InpNewsMinutesAfter   = 90;         // Block window after news (min)
+input int      InpNewsMinutesBefore  = 90;         // Block window BEFORE news (min) - wide, avoid pre-news uncertainty
+input int      InpNewsMinutesAfter   = 30;         // Block window AFTER news (min) - short, re-enter to catch post-news trend
 input string   InpNewsCurrencies     = "USD";      // Currencies to watch (comma sep.)
 
 input group "=== Confidence system ==="
