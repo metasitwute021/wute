@@ -106,6 +106,7 @@ input group "=== Drawdown protection ==="
 input double   InpMaxDD_Percent      = 20.0;       // Max drawdown -> pause EA (%)
 input double   InpMaxDD_ResumeBuffer = 2.0;        // Resume when DD below (Max - buffer)
 input double   InpDailyDD_Percent    = 1.5;        // Daily drawdown -> stop for day (%)
+input double   InpProfitTargetPercent = 0.0;       // Reach this % profit -> close all + STOP trading (0 = off; e.g. 6.0 for The5ers)
 
 input group "=== News filter ==="
 input bool     InpEnableNewsFilter   = true;       // Avoid trading around news
@@ -149,6 +150,8 @@ bool     gMaxDDPaused    = false;
 datetime gDayStart       = 0;
 double   gDayStartEquity = 0.0;
 bool     gDailyStopped   = false;
+double   gStartBalance   = 0.0;    // baseline captured at init, for the profit-target stop
+bool     gTargetReached  = false;  // true once InpProfitTargetPercent is hit -> stop trading
 
 // news state
 bool     gInNews         = false;
@@ -210,6 +213,8 @@ int OnInit()
    gDayStart       = 0;
    gDayStartEquity = AccountInfoDouble(ACCOUNT_EQUITY);
    gConfidence     = 1.0;
+   gStartBalance   = AccountInfoDouble(ACCOUNT_BALANCE);
+   gTargetReached  = false;
 
    EventSetTimer(5);  // protection / news checks every 5 sec
 
@@ -263,6 +268,7 @@ void OnTimer()
 //+------------------------------------------------------------------+
 void OnTick()
 {
+   CheckProfitTarget();     // close all + stop once the profit target is reached
    SyncPositionState();
    ManageOpenPositions();   // trailing / BE / partial run every tick
 
@@ -327,6 +333,38 @@ void CheckDrawdownProtection()
          Notify(StringFormat("DAILY DRAWDOWN %.2f%% >= %.2f%% -> trading stopped for today",
                             dailyLoss, InpDailyDD_Percent));
       }
+   }
+}
+
+//==================================================================
+//  Profit target: close everything and stop once equity hits target
+//==================================================================
+void CloseAllMyPositions()
+{
+   for(int i=PositionsTotal()-1; i>=0; i--)
+   {
+      ulong t = PositionGetTicket(i);
+      if(t==0) continue;
+      if(PositionGetInteger(POSITION_MAGIC)!=InpMagic) continue;
+      if(PositionGetString(POSITION_SYMBOL)!=_Symbol)  continue;
+      trade.PositionClose(t);
+   }
+}
+
+void CheckProfitTarget()
+{
+   if(InpProfitTargetPercent <= 0.0) return;   // feature off
+   if(gTargetReached)                 return;   // already triggered
+   if(gStartBalance <= 0.0)           return;
+
+   double equity  = AccountInfoDouble(ACCOUNT_EQUITY);
+   double gainPct = (equity - gStartBalance) / gStartBalance * 100.0;
+   if(gainPct >= InpProfitTargetPercent)
+   {
+      gTargetReached = true;
+      CloseAllMyPositions();
+      Notify(StringFormat("PROFIT TARGET %.2f%% reached (equity %.2f) -> closed all & trading STOPPED",
+                          gainPct, equity));
    }
 }
 
@@ -405,6 +443,7 @@ void UpdateNewsState()
 //==================================================================
 bool TradingAllowed()
 {
+   if(gTargetReached) return false;
    if(gMaxDDPaused)  return false;
    if(gDailyStopped) return false;
    if(gInNews)       return false;
