@@ -20,6 +20,8 @@
 //|    - News window : symmetric +/-90 -> asymmetric +90 / -30 min    |
 //|      (keep pre-news guard wide, re-enter fast to catch the trend) |
 //|    - SL reverted to SL_DONCHIAN (wide) after the ATR test lost.   |
+//|    - InpLockTrailUntilPartial: true -> false  (trail immediately  |
+//|      from entry, KRV-style, instead of waiting for the 1R partial)|
 //|                                                                  |
 //|  Strategy summary                                                |
 //|  - Market / TF : XAUUSD, signals on H4, trailing managed on M30  |
@@ -114,7 +116,7 @@ input double   InpBreakEvenR         = 0.25;       // Move SL to BE at this R
 input double   InpBE_BufferPts       = 20;         // BE buffer (points beyond entry)
 input double   InpPartialR           = 1.0;        // Partial close at this R
 input double   InpPartialPercent     = 40.0;       // Percent of position to close
-input bool     InpLockTrailUntilPartial = true;    // Lock trailing until partial done (let price reach 1R)
+input bool     InpLockTrailUntilPartial = false;   // Trail immediately like reference EA (false = KRV-style early trailing)
 
 input group "=== Trailing layers (M30) ==="
 input int      InpTr1_ATRPeriod      = 18;         // Layer 1 ATR period
