@@ -16,20 +16,21 @@
 //|  the lot behaviour of file 1.  Flip InpSLMode back to SL_ATR if   |
 //|  you ever want the old tight-stop behaviour of file 1.           |
 //|                                                                  |
-//|  *** TUNED 2026-06-05 (news only - SL kept as profitable file 2)*|
-//|    - News window : symmetric +/-90 -> asymmetric +90 / -30 min    |
+//|  *** TUNED 2026-06-05 -> full "KRV-DC V.17"-like config ***       |
+//|    - News window  : symmetric +/-90 -> asymmetric +90 / -30 min   |
 //|      (keep pre-news guard wide, re-enter fast to catch the trend) |
-//|    - SL reverted to SL_DONCHIAN (wide) after the ATR test lost.   |
-//|    - InpLockTrailUntilPartial: true -> false  (trail immediately  |
-//|      from entry, KRV-style, instead of waiting for the 1R partial)|
+//|    - LockTrailUntilPartial: true -> false (trail immediately)     |
+//|    - InpSLMode    : SL_DONCHIAN -> SL_ATR (tight ~75pt like KRV)  |
+//|    - InpSL_ATRMult: 1.5 -> 2.5                                     |
+//|      (set InpSLMode back to SL_DONCHIAN for the old wide stop)    |
 //|                                                                  |
 //|  Strategy summary                                                |
 //|  - Market / TF : XAUUSD, signals on H4, trailing managed on M30  |
 //|  - Entry       : Donchian(20) breakout, filtered by SMA(50)      |
 //|                  trend direction and ADX(14) > 20                |
 //|  - Stop Loss   : selectable (InpSLMode):                         |
-//|                    SL_DONCHIAN = Donchian band -/+ buffer*ATR (def)|
-//|                    SL_ATR      = entry -/+ mult * ATR(16)         |
+//|                    SL_ATR      = entry -/+ mult * ATR(16)   (def) |
+//|                    SL_DONCHIAN = Donchian band -/+ buffer*ATR     |
 //|  - Sizing      : risk 1% of balance via OrderCalcProfit (Cent OK)|
 //|  - Exit        : no fixed TP, SL only, let profit run via        |
 //|                  multi-layer trailing                            |
@@ -98,9 +99,9 @@ input int      InpADXPeriod          = 14;         // ADX period
 input double   InpADXMin             = 20.0;       // Minimum ADX to trade
 
 input group "=== Stop Loss ==="
-input ENUM_SL_MODE InpSLMode             = SL_DONCHIAN; // SL method (DONCHIAN = profitable wide stop = file 2)
+input ENUM_SL_MODE InpSLMode             = SL_ATR;      // SL method (ATR = tight KRV-like stop ~75pt; DONCHIAN = wide channel)
 input int          InpSL_ATRPeriod       = 16;     // ATR period for SL (entry TF)
-input double       InpSL_ATRMult         = 1.5;    // ATR mode: SL = mult x ATR
+input double       InpSL_ATRMult         = 2.5;    // ATR mode: SL = mult x ATR (~75pt KRV-like; tune 2.0-3.0)
 input double       InpSL_DonchBufferMult = 0.75;   // Donchian mode: buffer = mult x ATR
 
 input group "=== Risk Management ==="
