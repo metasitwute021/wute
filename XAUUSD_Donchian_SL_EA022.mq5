@@ -22,6 +22,7 @@
 //|    - LockTrailUntilPartial: true -> false (trail immediately)     |
 //|    - InpSLMode    : SL_DONCHIAN -> SL_ATR (tight ~75pt like KRV)  |
 //|    - InpSL_ATRMult: 1.5 -> 2.5                                     |
+//|    - Re-entry cooldown: wait 1 bar after a close (anti-whipsaw)   |
 //|      (set InpSLMode back to SL_DONCHIAN for the old wide stop)    |
 //|                                                                  |
 //|  Strategy summary                                                |
@@ -111,6 +112,7 @@ input ENUM_ASSET_MODE InpAssetType   = ASSET_2_DECIMAL; // Asset price decimals
 input ENUM_K_MODE     InpKParameter  = K_CENT;          // Lot coefficient profile (K)
 input double          InpLotStepOverride = 0.0;         // Force lot step (0 = auto/broker; e.g. 0.01)
 input int             InpMaxPositions= 1;               // Max simultaneous positions
+input int             InpReentryCooldownBars = 1;        // Wait N entry-TF bars after a close before re-entering (0 = off, anti-whipsaw)
 
 input group "=== Trade management ==="
 input double   InpBreakEvenR         = 0.25;       // Move SL to BE at this R
@@ -162,6 +164,7 @@ int hATR3     = INVALID_HANDLE;   // trailing layer 3 - mini strong move (M30)
 
 // new-bar tracking
 datetime gLastEntryBar = 0;
+int      gCooldownBarsLeft = 0;   // entry-TF bars still to skip after a full close (re-entry cooldown)
 
 // per-position state (parallel arrays keyed by ticket)
 ulong    gPosTicket[];
@@ -237,6 +240,7 @@ int OnInit()
    gDayStart       = 0;
    gDayStartEquity = AccountInfoDouble(ACCOUNT_EQUITY);
    gConfidence     = 1.0;
+   gCooldownBarsLeft = 0;
 
    EventSetTimer(5);  // protection / news checks every 5 sec
 
@@ -298,6 +302,15 @@ void OnTick()
    if(curBar == gLastEntryBar)
       return;
    gLastEntryBar = curBar;
+
+   // Re-entry cooldown: after a full close, skip whole entry-TF bars before
+   // trading again. Skipping a bar also forces the signal to be RECALCULATED
+   // fresh on the next bar instead of blindly re-entering the same spot.
+   if(gCooldownBarsLeft > 0)
+   {
+      gCooldownBarsLeft--;
+      return;
+   }
 
    if(!TradingAllowed())
       return;
@@ -954,6 +967,7 @@ void AccumulateAndMaybeFinalize(const ulong posId, const double profit)
    {
       double total = gAccProfit[idx];
       PushClosedTrade(total);
+      gCooldownBarsLeft = InpReentryCooldownBars;   // start re-entry cooldown after a full close
       // remove accumulator entry
       int n = ArraySize(gAccPos);
       for(int j=idx; j<n-1; j++){ gAccPos[j]=gAccPos[j+1]; gAccProfit[j]=gAccProfit[j+1]; }
