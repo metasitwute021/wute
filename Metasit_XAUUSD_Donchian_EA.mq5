@@ -26,6 +26,7 @@
 //|    - Profit-target auto-stop: hit target % -> close all + stop   |
 //|      (InpProfitTargetPercent, e.g. 6.0 for The5ers Step 1)       |
 //|  *** v2.01 : colourful emoji push notifications ***               |
+//|  *** v2.02 : InpTrailWidest (let winners run -> higher PF) ***    |
 //|                                                                  |
 //|  Strategy summary                                                |
 //|  - Market / TF : XAUUSD, signals on H4, trailing managed on M30  |
@@ -47,7 +48,7 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "Metasit XAUUSD Donchian EA - prop-safe build"
-#property version   "2.01"
+#property version   "2.02"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -134,6 +135,7 @@ input int      InpTr3_ATRPeriod      = 16;         // Mini strong move ATR perio
 input double   InpTr3_ATRMult        = 2.0;        // Mini strong move ATR multiplier
 input int      InpSwingLookback      = 20;         // Swing high/low lookback (M30 bars)
 input int      InpCandleBackShift    = 3;          // "3rd candle" shift for trailing
+input bool     InpTrailWidest        = true;       // Trailing stop choice: true = WIDEST (let winners run, higher PF) / false = tightest
 
 input group "=== Drawdown protection ==="
 input double   InpMaxDD_Percent      = 20.0;       // Max drawdown -> pause EA (%)
@@ -907,8 +909,10 @@ double ComputeTrailingSL(const bool isBuy, const double price)
 
    if(c==0) return 0.0;
 
-   // "Safest" = the stop that protects the most profit while still being on
-   // the correct side of price: highest for buys, lowest for sells.
+   // Stop selection among the candidate layers:
+   //   InpTrailWidest = false -> tightest (most protective, hugs price)
+   //   InpTrailWidest = true  -> widest valid (let winners run, fewer early exits)
+   // ModifySL still only ever tightens, so the SL never loosens once set.
    double best = 0.0;
    bool   have = false;
    for(int i=0;i<c;i++)
@@ -917,12 +921,14 @@ double ComputeTrailingSL(const bool isBuy, const double price)
       if(isBuy)
       {
          if(s >= price) continue;          // must be below price
-         if(!have || s > best){ best=s; have=true; }
+         if(!have)                                         { best=s; have=true; }
+         else if(InpTrailWidest ? (s < best) : (s > best)) { best=s; }
       }
       else
       {
          if(s <= price) continue;          // must be above price
-         if(!have || s < best){ best=s; have=true; }
+         if(!have)                                         { best=s; have=true; }
+         else if(InpTrailWidest ? (s > best) : (s < best)) { best=s; }
       }
    }
    return have ? best : 0.0;
