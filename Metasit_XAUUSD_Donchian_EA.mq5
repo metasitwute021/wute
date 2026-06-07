@@ -25,6 +25,7 @@
 //|    - Partial 40% @1R kept; break-even @0.25R kept                |
 //|    - Profit-target auto-stop: hit target % -> close all + stop   |
 //|      (InpProfitTargetPercent, e.g. 6.0 for The5ers Step 1)       |
+//|  *** v2.01 : colourful emoji push notifications ***               |
 //|                                                                  |
 //|  Strategy summary                                                |
 //|  - Market / TF : XAUUSD, signals on H4, trailing managed on M30  |
@@ -46,7 +47,7 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "Metasit XAUUSD Donchian EA - prop-safe build"
-#property version   "2.00"
+#property version   "2.01"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -267,7 +268,7 @@ int OnInit()
                AccountInfoString(ACCOUNT_CURRENCY),
                (InpAccountType==ACCOUNT_CENT ? "CENT" : "STANDARD"));
 
-   Notify("EA started on " + _Symbol + " (entry " + EnumToString(InpEntryTF) +
+   Notify("🚀 EA started on " + _Symbol + " (entry " + EnumToString(InpEntryTF) +
           ", trail " + EnumToString(InpTrailTF) + ", SLmode " + EnumToString(InpSLMode) + ")");
    return(INIT_SUCCEEDED);
 }
@@ -285,7 +286,7 @@ void OnDeinit(const int reason)
    if(hATR2!=INVALID_HANDLE)     IndicatorRelease(hATR2);
    if(hATR3!=INVALID_HANDLE)     IndicatorRelease(hATR3);
 
-   Notify("EA stopped (reason " + IntegerToString(reason) + ")");
+   Notify("🛑 EA stopped (reason " + IntegerToString(reason) + ")");
 }
 
 //+------------------------------------------------------------------+
@@ -345,13 +346,13 @@ void CheckDrawdownProtection()
    if(!gMaxDDPaused && ddPct >= InpMaxDD_Percent)
    {
       gMaxDDPaused = true;
-      Notify(StringFormat("MAX DRAWDOWN %.2f%% >= %.2f%% -> EA PAUSED",
+      Notify(StringFormat("🚨 MAX DRAWDOWN %.2f%% >= %.2f%% -> EA PAUSED",
                           ddPct, InpMaxDD_Percent));
    }
    else if(gMaxDDPaused && ddPct <= (InpMaxDD_Percent - InpMaxDD_ResumeBuffer))
    {
       gMaxDDPaused = false;
-      Notify(StringFormat("Drawdown recovered to %.2f%% -> EA RESUMED", ddPct));
+      Notify(StringFormat("✅ Drawdown recovered to %.2f%% -> EA RESUMED", ddPct));
    }
 
    // ----- Daily drawdown -----
@@ -363,7 +364,7 @@ void CheckDrawdownProtection()
       gDayStart       = today;
       gDayStartEquity = equity;
       if(gDailyStopped)
-         Notify("New trading day -> daily stop reset");
+         Notify("🔄 New trading day -> daily stop reset");
       gDailyStopped   = false;
    }
 
@@ -373,7 +374,7 @@ void CheckDrawdownProtection()
       if(dailyLoss >= InpDailyDD_Percent)
       {
          gDailyStopped = true;
-         Notify(StringFormat("DAILY DRAWDOWN %.2f%% >= %.2f%% -> trading stopped for today",
+         Notify(StringFormat("🛑 DAILY DRAWDOWN %.2f%% >= %.2f%% -> trading stopped for today",
                             dailyLoss, InpDailyDD_Percent));
       }
    }
@@ -440,12 +441,12 @@ void UpdateNewsState()
    if(blocking && !gInNews)
    {
       gInNews = true;
-      Notify("NEWS filter ON - high-impact event window, trading paused");
+      Notify("📰⛔ NEWS filter ON - high-impact event window, trading paused");
    }
    else if(!blocking && gInNews)
    {
       gInNews = false;
-      Notify("NEWS filter OFF - trading resumed");
+      Notify("📰✅ NEWS filter OFF - trading resumed");
    }
 }
 
@@ -476,7 +477,7 @@ void CheckProfitTarget()
    {
       gTargetReached = true;
       CloseAllMyPositions();
-      Notify(StringFormat("PROFIT TARGET %.2f%% reached (equity %.2f) -> closed all & trading STOPPED",
+      Notify(StringFormat("🏆🎉 PROFIT TARGET %.2f%% reached (equity %.2f) -> closed all & trading STOPPED",
                           gainPct, equity));
    }
 }
@@ -656,14 +657,14 @@ double CalcLotSize(const ENUM_ORDER_TYPE type, const double entry, const double 
 
    // Safety: warn if the broker MINIMUM lot already risks above the target.
    if(riskPctReal > InpRiskPercent * 1.5)
-      Notify(StringFormat("WARNING: min-lot %.2f risks %.2f%% (> target %.2f%%) - account too small for this SL",
+      Notify(StringFormat("⚠️ WARNING: min-lot %.2f risks %.2f%% (> target %.2f%%) - account too small for this SL",
                           lotsFinal, riskPctReal, InpRiskPercent));
 
    // PROP-SAFE HARD CAP: never take a trade that risks more than the cap.
    // Guarantees a single trade can NEVER breach the challenge loss limit.
    if(InpMaxRiskCapPercent > 0.0 && riskPctReal > InpMaxRiskCapPercent)
    {
-      Notify(StringFormat("SKIP trade: min-lot %.2f risks %.2f%% > cap %.2f%% (too risky, not opened)",
+      Notify(StringFormat("🚫 SKIP trade: min-lot %.2f risks %.2f%% > cap %.2f%% (too risky, not opened)",
                           lotsFinal, riskPctReal, InpMaxRiskCapPercent));
       return 0.0;
    }
@@ -813,7 +814,7 @@ void ManageOpenPositions()
          {
             gPosBEDone[i] = true;
             sl = beSL;
-            Notify(StringFormat("Break-even set #%I64u @ %.2f", ticket, beSL));
+            Notify(StringFormat("🛡️ Break-even set #%I64u @ %.2f", ticket, beSL));
          }
       }
 
@@ -827,17 +828,17 @@ void ManageOpenPositions()
             if(trade.PositionClosePartial(ticket, closeVol))
             {
                gPosPartialDone[i] = true;
-               Notify(StringFormat("Partial close %.2f lots #%I64u @ %.2fR",
+               Notify(StringFormat("💰✂️ Partial close %.2f lots #%I64u @ %.2fR",
                                    closeVol, ticket, profitDist/R));
             }
             else
-               Notify(StringFormat("Partial FAILED #%I64u: %s",
+               Notify(StringFormat("❗ Partial FAILED #%I64u: %s",
                                    ticket, trade.ResultRetcodeDescription()));
          }
          else
          {
             // log ให้ชัดว่าทำไมข้าม (lot เล็กเกิน split)
-            Notify(StringFormat("Partial SKIP #%I64u: closeVol %.2f / remain %.2f < min %.2f",
+            Notify(StringFormat("↪️ Partial SKIP #%I64u: closeVol %.2f / remain %.2f < min %.2f",
                                ticket, closeVol, vol-closeVol, minV));
             gPosPartialDone[i] = true; // cannot split further, skip
          }
@@ -982,12 +983,14 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
 
    if(entry == DEAL_ENTRY_IN)
    {
-      string dir = (HistoryDealGetInteger(dealTicket, DEAL_TYPE)==DEAL_TYPE_BUY) ? "BUY" : "SELL";
-      Notify(StringFormat("OPEN %s %.2f lots @ %.2f (conf x%.2f)", dir, vol, price, gConfidence));
+      bool   dealIsBuy = (HistoryDealGetInteger(dealTicket, DEAL_TYPE)==DEAL_TYPE_BUY);
+      string dir = dealIsBuy ? "🟢 OPEN BUY ⬆️" : "🔴 OPEN SELL ⬇️";
+      Notify(StringFormat("%s %.2f lots @ %.2f (conf x%.2f)", dir, vol, price, gConfidence));
    }
    else if(entry == DEAL_ENTRY_OUT)
    {
-      Notify(StringFormat("CLOSE %.2f lots @ %.2f  P/L %.2f", vol, price, profit));
+      string closeTag = (profit >= 0.0) ? "✅ CLOSE 💰" : "❌ CLOSE 📉";
+      Notify(StringFormat("%s %.2f lots @ %.2f  P/L %.2f", closeTag, vol, price, profit));
       AccumulateAndMaybeFinalize(posId, profit);
    }
 }
