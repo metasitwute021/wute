@@ -27,6 +27,8 @@
 //|      (InpProfitTargetPercent, e.g. 6.0 for The5ers Step 1)       |
 //|  *** v2.01 : colourful emoji push notifications ***               |
 //|  *** v2.02 : InpTrailWidest (let winners run -> higher PF) ***    |
+//|  *** v2.03 : EMERGENCY BRAKE - InpMaxTotalLossPercent ***         |
+//|      (lose X% from start -> close all + stop; never hit the limit)|
 //|                                                                  |
 //|  Strategy summary                                                |
 //|  - Market / TF : XAUUSD, signals on H4, trailing managed on M30  |
@@ -48,7 +50,7 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "Metasit XAUUSD Donchian EA - prop-safe build"
-#property version   "2.02"
+#property version   "2.03"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -142,6 +144,7 @@ input double   InpMaxDD_Percent      = 20.0;       // Max drawdown -> pause EA (
 input double   InpMaxDD_ResumeBuffer = 2.0;        // Resume when DD below (Max - buffer)
 input double   InpDailyDD_Percent    = 1.5;        // Daily drawdown -> stop for day (%)
 input double   InpProfitTargetPercent = 0.0;       // Reach this % profit -> close all + STOP (0 = off; e.g. 6.0 for The5ers Step 1)
+input double   InpMaxTotalLossPercent = 3.5;       // EMERGENCY BRAKE: lose this % from start -> close all + STOP (0 = off; keep < challenge limit)
 
 input group "=== News filter ==="
 input bool     InpEnableNewsFilter   = true;       // Avoid trading around news
@@ -172,8 +175,9 @@ int hATR3     = INVALID_HANDLE;   // trailing layer 3 - mini strong move (M30)
 // new-bar tracking
 datetime gLastEntryBar = 0;
 int      gCooldownBarsLeft = 0;   // entry-TF bars still to skip after a full close (re-entry cooldown)
-double   gStartBalance     = 0.0; // baseline captured at init, for the profit-target stop
+double   gStartBalance     = 0.0; // baseline captured at init, for the profit-target / loss-stop
 bool     gTargetReached    = false; // true once InpProfitTargetPercent is hit -> stop trading
+bool     gLossStopReached  = false; // true once InpMaxTotalLossPercent is hit -> stop trading
 
 // per-position state (parallel arrays keyed by ticket)
 ulong    gPosTicket[];
@@ -252,6 +256,7 @@ int OnInit()
    gCooldownBarsLeft = 0;
    gStartBalance   = AccountInfoDouble(ACCOUNT_BALANCE);
    gTargetReached  = false;
+   gLossStopReached = false;
 
    EventSetTimer(5);  // protection / news checks every 5 sec
 
@@ -306,6 +311,7 @@ void OnTimer()
 void OnTick()
 {
    CheckProfitTarget();     // close all + stop once the profit target is reached
+   CheckMaxTotalLoss();     // EMERGENCY BRAKE: close all + stop if total loss limit hit
    SyncPositionState();
    ManageOpenPositions();   // trailing / BE / partial run every tick
 
@@ -484,12 +490,30 @@ void CheckProfitTarget()
    }
 }
 
+void CheckMaxTotalLoss()
+{
+   if(InpMaxTotalLossPercent <= 0.0) return;   // feature off
+   if(gLossStopReached)              return;   // already triggered
+   if(gStartBalance <= 0.0)          return;
+
+   double equity  = AccountInfoDouble(ACCOUNT_EQUITY);
+   double lossPct = (gStartBalance - equity) / gStartBalance * 100.0;
+   if(lossPct >= InpMaxTotalLossPercent)
+   {
+      gLossStopReached = true;
+      CloseAllMyPositions();
+      Notify(StringFormat("🚨🛑 EMERGENCY BRAKE: loss %.2f%% (equity %.2f) -> closed all & trading STOPPED",
+                          lossPct, equity));
+   }
+}
+
 //==================================================================
 //  Trading gate
 //==================================================================
 bool TradingAllowed()
 {
    if(gTargetReached) return false;
+   if(gLossStopReached) return false;
    if(gMaxDDPaused)  return false;
    if(gDailyStopped) return false;
    if(gInNews)       return false;
