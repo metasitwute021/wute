@@ -29,6 +29,8 @@
 //|  *** v2.02 : InpTrailWidest (let winners run -> higher PF) ***    |
 //|  *** v2.03 : EMERGENCY BRAKE - InpMaxTotalLossPercent ***         |
 //|      (lose X% from start -> close all + stop; never hit the limit)|
+//|  *** v2.04 : DD LOCK - InpPeakDDStopPercent ***                   |
+//|      (drop X% from PEAK equity -> close all + stop; protects gains)|
 //|                                                                  |
 //|  Strategy summary                                                |
 //|  - Market / TF : XAUUSD, signals on H4, trailing managed on M30  |
@@ -50,7 +52,7 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "Metasit XAUUSD Donchian EA - prop-safe build"
-#property version   "2.03"
+#property version   "2.04"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -119,7 +121,7 @@ input ENUM_K_MODE     InpKParameter  = K_CENT;          // Lot coefficient profi
 input double          InpLotStepOverride = 0.0;         // Force lot step (0 = auto/broker; e.g. 0.01)
 input int             InpMaxPositions= 1;               // Max simultaneous positions
 input int             InpReentryCooldownBars = 1;        // Wait N entry-TF bars after a close before re-entering (0 = off, anti-whipsaw)
-input double          InpMaxRiskCapPercent = 1.5;        // SKIP a trade if min-lot would risk more than this % (0 = never skip; prop-safe guard)
+input double          InpMaxRiskCapPercent = 1.7;        // SKIP a trade if min-lot would risk more than this % (0 = never skip; prop-safe guard)
 
 input group "=== Trade management ==="
 input double   InpBreakEvenR         = 0.25;       // Move SL to BE at this R
@@ -143,8 +145,9 @@ input group "=== Drawdown protection ==="
 input double   InpMaxDD_Percent      = 20.0;       // Max drawdown -> pause EA (%)
 input double   InpMaxDD_ResumeBuffer = 2.0;        // Resume when DD below (Max - buffer)
 input double   InpDailyDD_Percent    = 1.5;        // Daily drawdown -> stop for day (%)
-input double   InpProfitTargetPercent = 0.0;       // Reach this % profit -> close all + STOP (0 = off; e.g. 6.0 for The5ers Step 1)
+input double   InpProfitTargetPercent = 6.0;       // Reach this % profit -> close all + STOP (0 = off; e.g. 6.0 for The5ers Step 1)
 input double   InpMaxTotalLossPercent = 3.5;       // EMERGENCY BRAKE: lose this % from start -> close all + STOP (0 = off; keep < challenge limit)
+input double   InpPeakDDStopPercent  = 3.0;        // DD LOCK: drop this % from PEAK equity -> close all + STOP (0 = off; protects gains)
 
 input group "=== News filter ==="
 input bool     InpEnableNewsFilter   = true;       // Avoid trading around news
@@ -178,6 +181,7 @@ int      gCooldownBarsLeft = 0;   // entry-TF bars still to skip after a full cl
 double   gStartBalance     = 0.0; // baseline captured at init, for the profit-target / loss-stop
 bool     gTargetReached    = false; // true once InpProfitTargetPercent is hit -> stop trading
 bool     gLossStopReached  = false; // true once InpMaxTotalLossPercent is hit -> stop trading
+bool     gPeakDDStopReached = false; // true once InpPeakDDStopPercent (give-back from peak) is hit -> stop trading
 
 // per-position state (parallel arrays keyed by ticket)
 ulong    gPosTicket[];
@@ -257,6 +261,7 @@ int OnInit()
    gStartBalance   = AccountInfoDouble(ACCOUNT_BALANCE);
    gTargetReached  = false;
    gLossStopReached = false;
+   gPeakDDStopReached = false;
 
    EventSetTimer(5);  // protection / news checks every 5 sec
 
@@ -312,6 +317,7 @@ void OnTick()
 {
    CheckProfitTarget();     // close all + stop once the profit target is reached
    CheckMaxTotalLoss();     // EMERGENCY BRAKE: close all + stop if total loss limit hit
+   CheckPeakDDStop();       // DD LOCK: close all + stop if give-back from peak too large
    SyncPositionState();
    ManageOpenPositions();   // trailing / BE / partial run every tick
 
@@ -507,6 +513,25 @@ void CheckMaxTotalLoss()
    }
 }
 
+void CheckPeakDDStop()
+{
+   if(InpPeakDDStopPercent <= 0.0) return;   // feature off
+   if(gPeakDDStopReached)          return;   // already triggered
+
+   double equity = AccountInfoDouble(ACCOUNT_EQUITY);
+   if(equity > gPeakEquity) gPeakEquity = equity;   // keep the running peak up to date
+   if(gPeakEquity <= 0.0) return;
+
+   double ddPct = (gPeakEquity - equity) / gPeakEquity * 100.0;
+   if(ddPct >= InpPeakDDStopPercent)
+   {
+      gPeakDDStopReached = true;
+      CloseAllMyPositions();
+      Notify(StringFormat("🔒 DD LOCK: dropped %.2f%% from peak (equity %.2f) -> closed all & trading STOPPED",
+                          ddPct, equity));
+   }
+}
+
 //==================================================================
 //  Trading gate
 //==================================================================
@@ -514,6 +539,7 @@ bool TradingAllowed()
 {
    if(gTargetReached) return false;
    if(gLossStopReached) return false;
+   if(gPeakDDStopReached) return false;
    if(gMaxDDPaused)  return false;
    if(gDailyStopped) return false;
    if(gInNews)       return false;
