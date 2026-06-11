@@ -122,7 +122,7 @@ input ENUM_K_MODE     InpKParameter  = K_CENT;          // Lot coefficient profi
 input double          InpLotStepOverride = 0.0;         // Force lot step (0 = auto/broker; e.g. 0.01)
 input int             InpMaxPositions= 1;               // Max simultaneous positions
 input int             InpReentryCooldownBars = 1;        // Wait N entry-TF bars after a close before re-entering (0 = off, anti-whipsaw)
-input double          InpMaxRiskCapPercent = 1.7;        // SKIP a trade if min-lot would risk more than this % (0 = never skip; prop-safe guard)
+input double          InpMaxRiskCapPercent = 0.0;        // [MFE-TEST off] SKIP if min-lot risk > this % (0 = never skip, so ALL trades open for the study)
 
 input group "=== Trade management ==="
 input double   InpBreakEvenR         = 0.25;       // Move SL to BE at this R
