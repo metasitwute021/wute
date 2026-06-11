@@ -55,6 +55,8 @@
 #property version   "2.04"
 #property strict
 
+#define EA_VERSION "2.04"
+
 #include <Trade\Trade.mqh>
 
 //==================================================================
@@ -280,7 +282,7 @@ int OnInit()
                AccountInfoString(ACCOUNT_CURRENCY),
                (InpAccountType==ACCOUNT_CENT ? "CENT" : "STANDARD"));
 
-   Notify("🚀 EA started on " + _Symbol + " (entry " + EnumToString(InpEntryTF) +
+   Notify("🚀 EA v" + EA_VERSION + " started on " + _Symbol + " (entry " + EnumToString(InpEntryTF) +
           ", trail " + EnumToString(InpTrailTF) + ", SLmode " + EnumToString(InpSLMode) + ")");
    return(INIT_SUCCEEDED);
 }
