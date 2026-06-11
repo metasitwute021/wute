@@ -143,12 +143,12 @@ input int      InpCandleBackShift    = 3;          // "3rd candle" shift for tra
 input bool     InpTrailWidest        = true;       // Trailing stop choice: true = WIDEST (let winners run, higher PF) / false = tightest
 
 input group "=== Drawdown protection ==="
-input double   InpMaxDD_Percent      = 20.0;       // Max drawdown -> pause EA (%)
+input double   InpMaxDD_Percent      = 100.0;      // [MFE-TEST off] Max drawdown -> pause EA (%)  (100 = disabled for full run)
 input double   InpMaxDD_ResumeBuffer = 2.0;        // Resume when DD below (Max - buffer)
-input double   InpDailyDD_Percent    = 1.5;        // Daily drawdown -> stop for day (%)
-input double   InpProfitTargetPercent = 6.0;       // Reach this % profit -> close all + STOP (0 = off; e.g. 6.0 for The5ers Step 1)
-input double   InpMaxTotalLossPercent = 3.5;       // EMERGENCY BRAKE: lose this % from start -> close all + STOP (0 = off; keep < challenge limit)
-input double   InpPeakDDStopPercent  = 3.0;        // DD LOCK: drop this % from PEAK equity -> close all + STOP (0 = off; protects gains)
+input double   InpDailyDD_Percent    = 100.0;      // [MFE-TEST off] Daily drawdown -> stop for day (%)  (100 = disabled)
+input double   InpProfitTargetPercent = 0.0;       // [MFE-TEST off] Reach this % profit -> close all + STOP (0 = off)
+input double   InpMaxTotalLossPercent = 0.0;       // [MFE-TEST off] EMERGENCY BRAKE (0 = off)
+input double   InpPeakDDStopPercent  = 0.0;        // [MFE-TEST off] DD LOCK (0 = off)
 
 input group "=== News filter ==="
 input bool     InpEnableNewsFilter   = true;       // Avoid trading around news
