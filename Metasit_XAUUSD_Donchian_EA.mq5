@@ -30,6 +30,7 @@
 //|  *** v2.03 : EMERGENCY BRAKE - InpMaxTotalLossPercent ***         |
 //|      (lose X% from start -> close all + stop; never hit the limit)|
 //|  *** v2.04 : DD LOCK - InpPeakDDStopPercent ***                   |
+//|  *** v2.05 : BE buffer 200pt -> locks small win (~$6), not $0 ***  |
 //|      (drop X% from PEAK equity -> close all + stop; protects gains)|
 //|                                                                  |
 //|  Strategy summary                                                |
@@ -52,10 +53,10 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "Metasit XAUUSD Donchian EA - prop-safe build"
-#property version   "2.04"
+#property version   "2.05"
 #property strict
 
-#define EA_VERSION "2.04"
+#define EA_VERSION "2.05"
 
 #include <Trade\Trade.mqh>
 
@@ -127,7 +128,7 @@ input double          InpMaxRiskCapPercent = 1.7;        // SKIP a trade if min-
 
 input group "=== Trade management ==="
 input double   InpBreakEvenR         = 0.25;       // Move SL to BE at this R
-input double   InpBE_BufferPts       = 20;         // BE buffer (points beyond entry)
+input double   InpBE_BufferPts       = 200;        // BE buffer (points beyond entry) - locks a small WIN (~$6 on 0.03 lot) instead of pure break-even
 input double   InpPartialR           = 1.0;        // Partial close at this R
 input double   InpPartialPercent     = 40.0;       // Percent of position to close
 input bool     InpLockTrailUntilPartial = true;    // Lock trailing until 1R partial (true = let it breathe, fewer premature exits)
