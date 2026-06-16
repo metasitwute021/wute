@@ -57,6 +57,13 @@ input bool     InpUseSession          = false;     // Restrict to a trading sess
 input int      InpSessionStartHour     = 12;       // Session start hour (server time)
 input int      InpSessionEndHour       = 20;       // Session end hour (server time)
 
+input group "=== Visualization ==="
+input bool     InpDrawZones          = true;       // Draw FVG boxes on the chart
+input color    InpBearColor          = clrTomato;  // Bearish FVG box (waits for BUY)
+input color    InpBullColor          = clrDodgerBlue; // Bullish FVG box (waits for SELL)
+input bool     InpFillZones          = true;       // Fill boxes (vs. outline only)
+input bool     InpDrawEntryArrows    = true;       // Mark entries with arrows
+
 input group "=== Risk / sizing ==="
 input double   InpRiskPercent        = 1.0;        // Risk per trade (% balance)
 input double   InpSL_BufferPoints    = 30;         // SL buffer beyond the 3rd candle (points)
@@ -110,8 +117,11 @@ struct FVGZone
    double   protLevel;   // structural SL reference (extreme of the 3-candle trio)
    datetime formedTime;  // bar time of the 3rd (newest) candle
    int      ageBars;     // bars since formation
+   string   objName;     // chart rectangle object name ("" if not drawn)
 };
 FVGZone  gZones[];
+
+#define IFVG_PREFIX "IFVG_"   // chart-object name prefix
 
 // per-position state
 ulong    gPosTicket[];
@@ -177,6 +187,8 @@ int OnInit()
    gDayStart       = 0;
    gDayStartEquity = AccountInfoDouble(ACCOUNT_EQUITY);
 
+   DeleteAllObjects();   // clear any leftovers from a previous run
+
    EventSetTimer(5);
 
    Notify("EA started on " + _Symbol + " (entry " + EnumToString(InpEntryTF) +
@@ -190,6 +202,7 @@ int OnInit()
 void OnDeinit(const int reason)
 {
    EventKillTimer();
+   DeleteAllObjects();
    if(hEMA!=INVALID_HANDLE)     IndicatorRelease(hEMA);
    if(hATRdisp!=INVALID_HANDLE) IndicatorRelease(hATRdisp);
    if(hATR1!=INVALID_HANDLE)    IndicatorRelease(hATR1);
@@ -223,6 +236,9 @@ void OnTick()
    AgeAndPruneZones();      // age existing FVGs, drop expired ones
    DetectNewFVG();          // did a new FVG just complete on the closed bar?
    ScanForInversion();      // did price just invert any stored FVG? -> entry
+   ExtendZones();           // grow active FVG boxes to the current bar
+   if(InpDrawZones || InpDrawEntryArrows)
+      ChartRedraw(0);
 }
 
 //==================================================================
@@ -354,7 +370,10 @@ void ScanForInversion()
       double slPrice = (dir==ORDER_TYPE_BUY) ? z.protLevel - buf
                                              : z.protLevel + buf;
 
+      double entryPx = (dir==ORDER_TYPE_BUY) ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
+                                              : SymbolInfoDouble(_Symbol, SYMBOL_BID);
       OpenTrade(dir, slPrice);
+      DrawEntryArrow(dir, entryPx);
       RemoveZoneAt(i);       // one shot per gap
       return;                // one entry per bar
    }
@@ -392,21 +411,89 @@ void AddZone(const int type, const double top, const double bottom, const double
 {
    int n = ArraySize(gZones);
    ArrayResize(gZones, n+1);
+   datetime formed     = (datetime)iTime(_Symbol, InpEntryTF, 1);
    gZones[n].type       = type;
    gZones[n].top        = top;
    gZones[n].bottom     = bottom;
    gZones[n].protLevel  = prot;
-   gZones[n].formedTime = (datetime)iTime(_Symbol, InpEntryTF, 1);
+   gZones[n].formedTime = formed;
    gZones[n].ageBars    = 0;
+   gZones[n].objName    = DrawZone(type, top, bottom, formed);
 }
 
 void RemoveZoneAt(const int idx)
 {
    int n = ArraySize(gZones);
    if(idx<0 || idx>=n) return;
+   if(gZones[idx].objName != "")
+      ObjectDelete(0, gZones[idx].objName);
    for(int i=idx; i<n-1; i++)
       gZones[i] = gZones[i+1];
    ArrayResize(gZones, n-1);
+}
+
+//==================================================================
+//  Chart visualization
+//==================================================================
+// Create a rectangle for a freshly detected FVG. Returns object name.
+string DrawZone(const int type, const double top, const double bottom,
+                const datetime formed)
+{
+   if(!InpDrawZones) return "";
+
+   // the trio started 2 bars before the newest (formation) candle
+   datetime t1 = (datetime)iTime(_Symbol, InpEntryTF, 3);
+   datetime t2 = formed;   // extended forward each bar while active
+
+   string name = StringFormat("%s%d_%I64d", IFVG_PREFIX, type, (long)formed);
+   if(ObjectFind(0, name) >= 0)
+      ObjectDelete(0, name);
+
+   color col = (type > 0) ? InpBearColor : InpBullColor;
+   if(!ObjectCreate(0, name, OBJ_RECTANGLE, 0, t1, top, t2, bottom))
+      return "";
+   ObjectSetInteger(0, name, OBJPROP_COLOR,     col);
+   ObjectSetInteger(0, name, OBJPROP_FILL,      InpFillZones);
+   ObjectSetInteger(0, name, OBJPROP_BACK,      true);
+   ObjectSetInteger(0, name, OBJPROP_STYLE,     STYLE_SOLID);
+   ObjectSetInteger(0, name, OBJPROP_WIDTH,     1);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE,false);
+   return name;
+}
+
+// Stretch every active zone's right edge to the current bar.
+void ExtendZones()
+{
+   if(!InpDrawZones) return;
+   datetime now = (datetime)iTime(_Symbol, InpEntryTF, 0);
+   for(int i=0; i<ArraySize(gZones); i++)
+   {
+      if(gZones[i].objName == "") continue;
+      ObjectSetInteger(0, gZones[i].objName, OBJPROP_TIME, 1, now);
+   }
+}
+
+// Drop an arrow where an entry was triggered.
+void DrawEntryArrow(const ENUM_ORDER_TYPE dir, const double price)
+{
+   if(!InpDrawEntryArrows) return;
+   datetime t   = (datetime)iTime(_Symbol, InpEntryTF, 0);
+   string   nm  = StringFormat("%sENTRY_%I64d", IFVG_PREFIX, (long)t);
+   if(ObjectFind(0, nm) >= 0) ObjectDelete(0, nm);
+
+   bool isBuy = (dir==ORDER_TYPE_BUY);
+   ObjectCreate(0, nm, OBJ_ARROW, 0, t, price);
+   ObjectSetInteger(0, nm, OBJPROP_ARROWCODE, isBuy ? 233 : 234); // up / down arrow
+   ObjectSetInteger(0, nm, OBJPROP_COLOR,     isBuy ? clrLime : clrRed);
+   ObjectSetInteger(0, nm, OBJPROP_WIDTH,     2);
+   ObjectSetInteger(0, nm, OBJPROP_ANCHOR,    isBuy ? ANCHOR_TOP : ANCHOR_BOTTOM);
+   ObjectSetInteger(0, nm, OBJPROP_SELECTABLE,false);
+}
+
+// Remove every object this EA created.
+void DeleteAllObjects()
+{
+   ObjectsDeleteAll(0, IFVG_PREFIX);
 }
 
 //==================================================================
