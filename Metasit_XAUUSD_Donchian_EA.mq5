@@ -31,6 +31,7 @@
 //|      (lose X% from start -> close all + stop; never hit the limit)|
 //|  *** v2.04 : DD LOCK - InpPeakDDStopPercent ***                   |
 //|  *** v2.05 : BE buffer 200pt -> locks small win (~$6), not $0 ***  |
+//|  *** v2.06 : KRV confidence gate (no scale-up on weak streak) ***  |
 //|      (drop X% from PEAK equity -> close all + stop; protects gains)|
 //|                                                                  |
 //|  Strategy summary                                                |
@@ -53,10 +54,10 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "Metasit XAUUSD Donchian EA - prop-safe build"
-#property version   "2.05"
+#property version   "2.06"
 #property strict
 
-#define EA_VERSION "2.05"
+#define EA_VERSION "2.06"
 
 #include <Trade\Trade.mqh>
 
@@ -164,6 +165,8 @@ input int      InpConfidenceTrades   = 10;         // Number of recent trades to
 input double   InpConfidenceMin      = 0.5;        // Minimum lot multiplier
 input double   InpConfidenceMax      = 2.0;        // Maximum lot multiplier
 input double   InpConfidenceSmooth   = 0.25;       // Smoothing factor (EMA alpha)
+input double   InpConfMinWinRate     = 0.45;       // [KRV gate] scale lot UP only if recent win rate >= this (0 = gate off)
+input double   InpConfMinPF          = 1.2;        // [KRV gate] scale lot UP only if recent profit factor >= this (0 = gate off)
 
 //==================================================================
 //  Globals
@@ -1143,6 +1146,16 @@ void UpdateConfidence()
    double combined = 0.5*winRate + 0.5*pfScore;             // 0..1
    double target   = InpConfidenceMin +
                      combined * (InpConfidenceMax - InpConfidenceMin);
+
+   // *** KRV-style gate ***
+   // Only allow the lot to scale ABOVE neutral (1.0x) when the recent record
+   // is genuinely good (win rate AND profit factor above the thresholds).
+   // Otherwise cap the target at 1.0 so a weak/losing streak can NEVER lever
+   // the lot up into bigger losses (this was the flaw that turned the 6.5y
+   // backtest negative). Set either threshold to 0 to disable the gate.
+   bool gatePass = (winRate >= InpConfMinWinRate && pf >= InpConfMinPF);
+   if(!gatePass)
+      target = MathMin(target, 1.0);
 
    // exponential smoothing
    gConfidence = gConfidence + InpConfidenceSmooth * (target - gConfidence);
