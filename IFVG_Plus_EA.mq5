@@ -18,8 +18,11 @@
 //|  - SL     : structural - below the 3rd candle (buy) / above it   |
 //|             (sell), with a small buffer. NO fixed take-profit.   |
 //|  - Exit   : profit runs via multi-layer trailing (safest stop).  |
-//|  - Sizing : risk % of balance vs. SL distance (cent-account OK). |
-//|  - Guards : max DD pause, daily DD stop, high-impact news filter.|
+//|  - Sizing : risk % of balance vs. SL distance (cent-account OK), |
+//|             with a hard risk cap so one trade can't blow up.      |
+//|  - Guards : prop-style protection - profit target & emergency     |
+//|             brake (hard stop), max DD pause, daily DD stop,       |
+//|             weekend flatten, spread guard, high-impact news.      |
 //+------------------------------------------------------------------+
 #property copyright "IFVG+ EA"
 #property version   "1.00"
@@ -66,7 +69,10 @@ input bool     InpDrawEntryArrows    = true;       // Mark entries with arrows
 
 input group "=== Risk / sizing ==="
 input double   InpRiskPercent        = 1.0;        // Risk per trade (% balance)
+input double   InpMaxRiskCapPercent  = 1.7;        // Skip trade if min-lot risk exceeds this % (0 = off)
 input double   InpSL_BufferPoints    = 30;         // SL buffer beyond the 3rd candle (points)
+input double   InpMaxSpreadPoints    = 0;          // Skip entry if spread exceeds this (points, 0 = off)
+input int      InpReentryCooldownBars= 0;          // Bars to wait after a close before re-entering (0 = off)
 input int      InpMaxPositions       = 1;          // Max simultaneous positions
 
 input group "=== Trade management ==="
@@ -83,10 +89,16 @@ input double   InpTr2_ATRMult        = 2.5;        // Strong move ATR multiplier
 input int      InpSwingLookback      = 15;         // Swing high/low lookback (trail TF bars)
 input int      InpCandleBackShift    = 3;          // "3rd candle" shift for trailing
 
-input group "=== Drawdown protection ==="
-input double   InpMaxDD_Percent      = 20.0;       // Max drawdown -> pause EA (%)
-input double   InpMaxDD_ResumeBuffer = 2.0;        // Resume when DD below (Max - buffer)
+input group "=== Prop-firm protection ==="
+input double   InpProfitTargetPercent= 6.0;        // Reach +% of start balance -> close all + STOP (0 = off)
+input double   InpMaxTotalLossPercent= 3.5;        // EMERGENCY BRAKE: -% from start -> close all + STOP (0 = off)
+input double   InpMaxDD_Percent      = 3.0;        // Max drawdown -> pause EA (%)  [NOT 20]
+input double   InpMaxDD_ResumeBuffer = 1.0;        // Resume when DD below (Max - buffer)
 input double   InpDailyDD_Percent    = 1.5;        // Daily drawdown -> stop for day (%)
+
+input group "=== Weekend guard ==="
+input bool     InpWeekendGuard       = true;       // Flatten + block trades over the weekend
+input int      InpFridayCloseHour     = 20;        // Friday hour (server) to flatten / stop new trades
 
 input group "=== News filter ==="
 input bool     InpEnableNewsFilter   = true;       // Avoid trading around news
@@ -131,11 +143,17 @@ bool     gPosBEDone[];
 bool     gPosPartialDone[];
 
 // drawdown / protection state
+double   gStartBalance   = 0.0;    // balance captured at init (prop reference line)
+bool     gHardStopped    = false;  // profit-target or emergency-brake hit -> stop for the session
 double   gPeakEquity     = 0.0;
 bool     gMaxDDPaused    = false;
 datetime gDayStart       = 0;
 double   gDayStartEquity = 0.0;
 bool     gDailyStopped   = false;
+
+// re-entry cooldown
+int      gCooldownBars   = 0;      // bars remaining before a new entry is allowed
+int      gPrevPosCount   = 0;      // position count on the previous tick (close detector)
 
 // news state
 bool     gInNews         = false;
@@ -183,6 +201,8 @@ int OnInit()
       return(INIT_FAILED);
    }
 
+   gStartBalance   = AccountInfoDouble(ACCOUNT_BALANCE);
+   gHardStopped    = false;
    gPeakEquity     = AccountInfoDouble(ACCOUNT_EQUITY);
    gDayStart       = 0;
    gDayStartEquity = AccountInfoDouble(ACCOUNT_EQUITY);
@@ -215,7 +235,9 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTimer()
 {
+   CheckPropTargets();          // profit target / emergency brake (hard stop)
    CheckDrawdownProtection();
+   UpdateWeekendGuard();        // flatten before the weekend
    UpdateNewsState();
 }
 
@@ -225,6 +247,13 @@ void OnTimer()
 void OnTick()
 {
    SyncPositionState();
+
+   // Prop guards first: a hard stop (profit target / emergency brake) closes
+   // everything and halts the EA for the rest of the session.
+   CheckPropTargets();
+   if(gHardStopped)
+      return;
+
    ManageOpenPositions();   // trailing / BE / partial every tick
 
    // Work once per closed entry-TF bar
@@ -233,6 +262,7 @@ void OnTick()
       return;
    gLastEntryBar = curBar;
 
+   UpdateCooldown();        // tick down the re-entry cooldown on each new bar
    AgeAndPruneZones();      // age existing FVGs, drop expired ones
    DetectNewFVG();          // did a new FVG just complete on the closed bar?
    ScanForInversion();      // did price just invert any stored FVG? -> entry
@@ -609,8 +639,11 @@ void UpdateNewsState()
 //==================================================================
 bool TradingAllowed()
 {
+   if(gHardStopped)  return false;   // profit target / emergency brake hit
    if(gMaxDDPaused)  return false;
    if(gDailyStopped) return false;
+   if(gCooldownBars > 0) return false; // re-entry cooldown after a close
+   if(IsWeekendBlock()) return false;  // weekend guard
    if(gInNews)       return false;
    if(CountMyPositions() >= InpMaxPositions) return false;
    if(!MQLInfoInteger(MQL_TRADE_ALLOWED)) return false;
@@ -633,10 +666,105 @@ int CountMyPositions()
 }
 
 //==================================================================
+//  Prop-firm protection (A2): profit target, emergency brake
+//==================================================================
+// Close every position belonging to this EA on this symbol.
+void CloseAllPositions(const string reason)
+{
+   for(int i=PositionsTotal()-1; i>=0; i--)
+   {
+      ulong t = PositionGetTicket(i);
+      if(t==0) continue;
+      if(PositionGetInteger(POSITION_MAGIC)!=InpMagic) continue;
+      if(PositionGetString(POSITION_SYMBOL)!=_Symbol)  continue;
+      if(!trade.PositionClose(t))
+         Print("CloseAll (", reason, ") failed #", t, ": ",
+               trade.ResultRetcodeDescription());
+   }
+}
+
+// Hard guards measured against the START balance (the prop reference line):
+//  - reach +InpProfitTargetPercent  -> lock the pass, close all, STOP
+//  - drop  -InpMaxTotalLossPercent  -> emergency brake, close all, STOP
+// A hard stop halts the EA for the rest of the session (re-init to reset).
+void CheckPropTargets()
+{
+   if(gHardStopped)        return;
+   if(gStartBalance <= 0.0) return;
+
+   double equity = AccountInfoDouble(ACCOUNT_EQUITY);
+
+   if(InpProfitTargetPercent > 0.0 &&
+      equity >= gStartBalance * (1.0 + InpProfitTargetPercent/100.0))
+   {
+      CloseAllPositions("PROFIT TARGET");
+      gHardStopped = true;
+      Notify(StringFormat("PROFIT TARGET +%.2f%% reached (equity %.2f) -> all closed, EA STOPPED",
+             InpProfitTargetPercent, equity));
+      return;
+   }
+
+   if(InpMaxTotalLossPercent > 0.0 &&
+      equity <= gStartBalance * (1.0 - InpMaxTotalLossPercent/100.0))
+   {
+      CloseAllPositions("EMERGENCY BRAKE");
+      gHardStopped = true;
+      Notify(StringFormat("EMERGENCY BRAKE -%.2f%% hit (equity %.2f) -> all closed, EA STOPPED",
+             InpMaxTotalLossPercent, equity));
+   }
+}
+
+//==================================================================
+//  Weekend guard (B5): flatten + block over the weekend
+//==================================================================
+bool IsWeekendBlock()
+{
+   if(!InpWeekendGuard) return false;
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   if(dt.day_of_week == 6) return true;   // Saturday
+   if(dt.day_of_week == 0) return true;   // Sunday
+   if(dt.day_of_week == 5 && dt.hour >= InpFridayCloseHour) return true; // late Friday
+   return false;
+}
+
+void UpdateWeekendGuard()
+{
+   if(!InpWeekendGuard) return;
+   if(IsWeekendBlock() && CountMyPositions() > 0)
+   {
+      CloseAllPositions("WEEKEND GUARD");
+      Notify("WEEKEND GUARD - flattening positions before the weekend");
+   }
+}
+
+//==================================================================
+//  Re-entry cooldown (A3): tick down once per new bar
+//==================================================================
+void UpdateCooldown()
+{
+   if(gCooldownBars > 0)
+      gCooldownBars--;
+}
+
+//==================================================================
 //  Order open  (SL passed explicitly; no fixed TP)
 //==================================================================
 void OpenTrade(const ENUM_ORDER_TYPE type, const double slPrice)
 {
+   // Spread guard (A3): gold spread blows out around news -> skip the entry.
+   if(InpMaxSpreadPoints > 0.0)
+   {
+      double spreadPts = (SymbolInfoDouble(_Symbol, SYMBOL_ASK) -
+                          SymbolInfoDouble(_Symbol, SYMBOL_BID)) / _Point;
+      if(spreadPts > InpMaxSpreadPoints)
+      {
+         Print(StringFormat("Spread %.0f pts > cap %.0f -> skipping entry",
+               spreadPts, InpMaxSpreadPoints));
+         return;
+      }
+   }
+
    double price = (type==ORDER_TYPE_BUY) ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
                                          : SymbolInfoDouble(_Symbol, SYMBOL_BID);
 
@@ -694,7 +822,23 @@ double CalcLotSize(const double riskDist)
    if(lossPerLot <= 0.0) return 0.0;
 
    double lots = riskMoney / lossPerLot;
-   return NormalizeVolume(lots);
+   lots = NormalizeVolume(lots);
+
+   // Risk cap (A1): after rounding to the broker's min lot, the real risk can
+   // exceed the intended %. If even the resulting lot risks more than the cap,
+   // refuse the trade so one entry can never blow the account / fail the test.
+   if(InpMaxRiskCapPercent > 0.0 && lots > 0.0)
+   {
+      double lossAtLot = lossPerLot * lots;
+      double riskPct   = (balance > 0.0) ? lossAtLot / balance * 100.0 : 0.0;
+      if(riskPct > InpMaxRiskCapPercent)
+      {
+         Print(StringFormat("Min-lot risk %.2f%% > cap %.2f%% -> skipping entry (lot %.2f)",
+               riskPct, InpMaxRiskCapPercent, lots));
+         return 0.0;
+      }
+   }
+   return lots;
 }
 
 double NormalizeVolume(double vol)
@@ -778,6 +922,12 @@ void SyncPositionState()
    for(int i=ArraySize(gPosTicket)-1; i>=0; i--)
       if(!PositionSelectByTicket(gPosTicket[i]))
          RemovePosStateAt(i);
+
+   // Re-entry cooldown (A3): when the last position just closed, arm the timer.
+   int curCount = CountMyPositions();
+   if(gPrevPosCount > 0 && curCount == 0 && InpReentryCooldownBars > 0)
+      gCooldownBars = InpReentryCooldownBars;
+   gPrevPosCount = curCount;
 }
 
 //==================================================================
