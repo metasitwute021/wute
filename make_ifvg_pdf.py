@@ -202,13 +202,42 @@ story.append(tbl(["ฟังก์ชัน", "หน้าที่"], [
 story.append(P("สรุปการไหลของงาน (1 รอบสมบูรณ์)", h2))
 story.append(codebox([
     "ราคาขยับ -> OnTick",
+    "   |- CheckPropTargets()  (ถึงเป้า +6%? / เบรก -3.5%? -> ปิดหมด STOP)",
     "   |- ManageOpenPositions()   (มีไม้อยู่? เทรล/BE/ปิดบางส่วน)",
     "   |- ขึ้นแท่งใหม่?",
-    "        |- AgeAndPruneZones()  (เก็บกวาด FVG เก่า)",
-    "        |- DetectNewFVG()      (เจอช่องใหม่? จดไว้ + วาดกล่อง)",
-    "        |- ScanForInversion()  (ราคาทะลุกลับ? -> เข้าไม้ + ปักลูกศร)",
-    "        |- ExtendZones()       (ยืดกล่องที่ยังรออยู่)",
+    "        |- UpdateCooldown()   (นับถอยหลัง cooldown หลังปิดไม้)",
+    "        |- AgeAndPruneZones() (เก็บกวาด FVG เก่า)",
+    "        |- DetectNewFVG()     (เจอช่องใหม่? จดไว้ + วาดกล่อง)",
+    "        |- ScanForInversion() (ราคาทะลุกลับ? -> เข้าไม้ + ปักลูกศร)",
+    "        |- ExtendZones()      (ยืดกล่องที่ยังรออยู่)",
 ]))
+
+story.append(P("8. เกราะความปลอดภัย (Prop-firm)", h2))
+story.append(P("ส่วนที่เสริมเข้ามาจากบทเรียนการพัฒนา EA ทอง (Donchian) — เพื่อให้ปลอดภัย "
+               "พอจะใช้กับบัญชีสอบกองทุน (Prop firm)", body))
+story.append(tbl(["เกราะ", "การทำงาน", "Input / ค่าเริ่มต้น"], [
+    ["**A1 Risk Cap", "ถ้า lot ขั้นต่ำเสี่ยงเกินเพดาน -> ไม่เปิดไม้ (กันแตก ไม้เดียวไม่ทำสอบตก)", "InpMaxRiskCapPercent = 1.7%"],
+    ["**A2 Profit Target", "ถึง +% ของทุนเริ่มต้น -> ปิดหมด + STOP (ล็อกผ่านสอบ)", "InpProfitTargetPercent = 6.0%"],
+    ["**A2 Emergency Brake", "ขาดทุนถึง -% ของทุนเริ่มต้น -> ปิดหมด + STOP (hard)", "InpMaxTotalLossPercent = 3.5%"],
+    ["**A2 Max DD", "ขาดทุนรวมถึง % -> พัก EA (แก้จาก 20% เป็น 3% ให้แน่นพอกับเส้นกองทุน)", "InpMaxDD_Percent = 3.0%"],
+    ["**A3 Spread Guard", "spread กว้างเกิน -> ข้ามการเข้า (กันช่วงข่าวทอง spread บาน)", "InpMaxSpreadPoints = 0 (ปิด)"],
+    ["**A3 Cooldown", "รอกี่แท่งหลังปิดไม้ก่อนเข้าใหม่ (กัน whipsaw)", "InpReentryCooldownBars = 0 (ปิด)"],
+    ["**B5 Weekend Guard", "ศุกร์เย็น -> ปิดไม้ทั้งหมด + งดเข้าเสาร์-อาทิตย์ (กัน Monday gap)", "InpWeekendGuard = true"],
+], [38 * mm, 92 * mm, 40 * mm]))
+story.append(Spacer(1, 4))
+story.append(box([P("<b>เส้นตายกองทุน = 5% static จากเงินตั้งต้น</b> &nbsp;→ Emergency Brake "
+                    "ที่ 3.5% หยุดก่อน เหลือ buffer ~1.5% กัน slippage/gap &nbsp;·&nbsp; "
+                    "Hard stop = ต้อง re-init (ถอด/ใส่ EA ใหม่) ถึงจะรันต่อ → บังคับวินัย ไม่เทรดฝืน",
+                    body)], BOXBG, GRID))
+
+story.append(P("9. บทเรียนที่ยึด (Money Management)", h2))
+story.append(tbl(["หลักการ", "เหตุผล"], [
+    ["**ใช้ Fix Risk % เท่านั้น", "Sharpe ดีสุด (พิสูจน์แล้ว) — ตัว EA นี้ใช้แนวนี้ล้วน"],
+    ["**ห้าม Martingale", "เบิ้ลหลังแพ้ = ล้างพอร์ตแน่นอน"],
+    ["**ห้าม Confidence / Anti-Martingale", "เทสจริงพบว่าฉุดผลงาน (PF 0.80 vs 1.11) -> จึงไม่ใส่ในตัวนี้"],
+    ["**ปล่อยกำไรวิ่ง (R:R)", "อย่าตัด winner เร็ว — trailing ช่วยดัน PF + ลด DD"],
+    ["**SL คือเกราะจริง", "News filter จับได้แค่ข่าวในตาราง ข่าวด่วน/สุดสัปดาห์จับไม่ได้"],
+], [58 * mm, 112 * mm]))
 
 story.append(Spacer(1, 8))
 story.append(box([
