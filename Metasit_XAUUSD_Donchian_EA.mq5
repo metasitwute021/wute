@@ -59,7 +59,7 @@
 #property version   "2.08"
 #property strict
 
-#define EA_VERSION "2.12"
+#define EA_VERSION "2.13"
 
 #include <Trade\Trade.mqh>
 
@@ -177,10 +177,15 @@ input bool     InpNoWeekendHold      = true;       // ✅ Close + block before w
 input int      InpWeekendCloseHour   = 20;         // ↳ Friday server hour to close (0-23)
 
 input group "📰  NEWS FILTER"
-input bool     InpEnableNewsFilter   = true;       // ✅ Avoid trading around news
+input bool     InpEnableNewsFilter   = true;       // ✅ Live calendar filter (MT5 economic calendar; LIVE only, empty in tester)
 input int      InpNewsMinutesBefore  = 90;         // Block minutes BEFORE news
 input int      InpNewsMinutesAfter   = 30;         // Block minutes AFTER news
 input string   InpNewsCurrencies     = "USD";      // Currencies to watch (comma sep.)
+input bool     InpUseFFNews          = false;      // ✅ Forex Factory CSV file (WORKS IN STRATEGY TESTER, like KRV)
+input string   InpFFNewsFile         = "ff_news.csv"; // ↳ file in MQL5/Files — columns: Date,Time,Currency,Impact
+input string   InpFFBlockImpact      = "High";     // ↳ impacts to block (comma sep: High  or  High,Medium)
+input int      InpFFTimeOffsetHours  = 0;          // ↳ shift CSV times to broker SERVER time (+/- hours)
+input bool     InpFFCloseBeforeNews  = false;      // ↳ also CLOSE open positions when a news window starts
 
 input group "🎲  CONFIDENCE SYSTEM (keep OFF)"
 input bool     InpEnableConfidence   = false;      // ⚠️ Scale lot by recent form (OFF = proven better)
@@ -231,6 +236,13 @@ bool     gDailyStopped   = false;
 
 // news state
 bool     gInNews         = false;
+
+// Forex Factory news (loaded from CSV file; works in Strategy Tester)
+datetime gFFTime[];      // event time (server time, sorted ascending)
+string   gFFCcy[];       // event currency
+string   gFFImp[];       // event impact text
+int      gFFCount        = 0;
+int      gFFIdx          = 0;   // moving pointer: skips events already past (tester time only moves forward)
 
 // confidence state
 double   gClosedProfit[];   // ring buffer of recent closed-trade results
@@ -294,6 +306,8 @@ int OnInit()
    gTargetReached  = false;
    gLossStopReached = false;
    gPeakDDStopReached = false;
+
+   LoadFFNews();      // load Forex Factory CSV (works in tester) if enabled
 
    EventSetTimer(5);  // protection / news checks every 5 sec
 
@@ -446,9 +460,118 @@ bool IsWatchedCurrency(const string ccy)
    return false;
 }
 
-// Returns true if a high-impact news event is within the block window.
+// True if 'val' is in a comma-separated list (case-insensitive).
+bool InListCSV(const string list, const string val)
+{
+   string parts[];
+   int n = StringSplit(list, ',', parts);
+   for(int i=0; i<n; i++)
+   {
+      string p = parts[i];
+      StringTrimLeft(p); StringTrimRight(p);
+      if(StringCompare(p, val, false) == 0)
+         return true;
+   }
+   return false;
+}
+
+// Parse a FF row's date + time into server time. Date "yyyy.mm.dd", time "HH:MM" (24h).
+datetime ParseFFDateTime(string dateStr, string timeStr)
+{
+   StringTrimLeft(dateStr); StringTrimRight(dateStr);
+   StringTrimLeft(timeStr); StringTrimRight(timeStr);
+   if(StringLen(dateStr) < 8) return 0;
+   if(StringLen(timeStr) < 4) timeStr = "00:00";   // all-day / tentative -> midnight
+   datetime t = StringToTime(dateStr + " " + timeStr);
+   if(t <= 0) return 0;
+   return t + (datetime)(InpFFTimeOffsetHours * 3600);
+}
+
+// Insertion-sort the parallel FF arrays by time ascending (run once after load).
+void SortFFNews()
+{
+   for(int i=1; i<gFFCount; i++)
+   {
+      datetime kt = gFFTime[i]; string kc = gFFCcy[i]; string ki = gFFImp[i];
+      int j = i-1;
+      while(j>=0 && gFFTime[j] > kt)
+      {
+         gFFTime[j+1]=gFFTime[j]; gFFCcy[j+1]=gFFCcy[j]; gFFImp[j+1]=gFFImp[j];
+         j--;
+      }
+      gFFTime[j+1]=kt; gFFCcy[j+1]=kc; gFFImp[j+1]=ki;
+   }
+}
+
+// Load the Forex Factory CSV from MQL5/Files. Columns: Date,Time,Currency,Impact[,Title...]
+void LoadFFNews()
+{
+   gFFCount = 0; gFFIdx = 0;
+   ArrayResize(gFFTime,0); ArrayResize(gFFCcy,0); ArrayResize(gFFImp,0);
+   if(!InpUseFFNews) return;
+
+   int fh = FileOpen(InpFFNewsFile, FILE_READ|FILE_CSV|FILE_ANSI|FILE_SHARE_READ, ',');
+   if(fh == INVALID_HANDLE)
+   {
+      Notify("📰❗ FF file NOT found: " + InpFFNewsFile + " (put it in MQL5/Files). FF filter OFF.");
+      return;
+   }
+
+   while(!FileIsEnding(fh))
+   {
+      string c1 = FileReadString(fh);   // Date
+      // blank trailing line
+      if(c1=="" && FileIsLineEnding(fh)) continue;
+      string c2 = FileReadString(fh);   // Time
+      string c3 = FileReadString(fh);   // Currency
+      string c4 = FileReadString(fh);   // Impact
+      // consume any extra columns (e.g. Title) up to end of line
+      while(!FileIsLineEnding(fh) && !FileIsEnding(fh)) FileReadString(fh);
+
+      datetime t = ParseFFDateTime(c1, c2);
+      if(t <= 0) continue;              // header row or unparseable -> skip
+      StringTrimLeft(c3); StringTrimRight(c3);
+      StringTrimLeft(c4); StringTrimRight(c4);
+
+      int n = gFFCount;
+      ArrayResize(gFFTime, n+1); ArrayResize(gFFCcy, n+1); ArrayResize(gFFImp, n+1);
+      gFFTime[n]=t; gFFCcy[n]=c3; gFFImp[n]=c4;
+      gFFCount = n+1;
+   }
+   FileClose(fh);
+
+   SortFFNews();
+   Notify(StringFormat("📰✅ Forex Factory news loaded: %d events from %s", gFFCount, InpFFNewsFile));
+}
+
+// True if a watched, high-impact FF event is inside the block window now.
+bool IsFFNewsBlocking()
+{
+   if(!InpUseFFNews || gFFCount == 0) return false;
+   datetime now    = TimeCurrent();
+   datetime before = (datetime)(InpNewsMinutesBefore * 60);
+   datetime after  = (datetime)(InpNewsMinutesAfter  * 60);
+
+   // advance pointer past events whose "after" window has fully passed
+   while(gFFIdx < gFFCount && (gFFTime[gFFIdx] + after) < now)
+      gFFIdx++;
+
+   for(int j=gFFIdx; j<gFFCount; j++)
+   {
+      datetime t = gFFTime[j];
+      if((t - before) > now) break;     // sorted: no nearer events ahead
+      if(IsWatchedCurrency(gFFCcy[j]) && InListCSV(InpFFBlockImpact, gFFImp[j]))
+         return true;
+   }
+   return false;
+}
+
+// Returns true if a high-impact news event is within the block window
+// (Forex Factory file first — works in tester — then the live MT5 calendar).
 bool IsNewsBlocking()
 {
+   if(IsFFNewsBlocking())
+      return true;
    if(!InpEnableNewsFilter)
       return false;
 
@@ -490,6 +613,11 @@ void UpdateNewsState()
    {
       gInNews = true;
       Notify("📰⛔ NEWS filter ON - high-impact event window, trading paused");
+      if(InpFFCloseBeforeNews && PositionsTotal() > 0)
+      {
+         CloseAllMyPositions();
+         Notify("📰✂️ Closed open positions ahead of the news window");
+      }
    }
    else if(!blocking && gInNews)
    {
