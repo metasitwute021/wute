@@ -161,7 +161,7 @@ input int      InpCandleBackShift    = 3;          // "3rd candle" shift
 input bool     InpTrailWidest        = true;       // true = WIDEST (let winners run, higher PF)
 
 input group "🏃  LET WINNERS RUN (experiment)"
-input bool     InpLetWinnersRun      = false;      // 🧪 ON = skip partial + mini-bank, widen trail (KRV-style runners: lower win%, higher R:R)
+input bool     InpLetWinnersRun      = true;       // 🧪 ON = skip partial + mini-bank, widen trail (KRV-style runners: lower win%, higher R:R)  [RUN build default]
 input double   InpRunTrailWiden      = 1.5;        // ↳ widen trailing ATR multipliers by this factor while running
 
 input group "🛡️  DRAWDOWN PROTECTION (PROP)"
