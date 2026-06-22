@@ -32,6 +32,7 @@
 //|  *** v2.04 : DD LOCK - InpPeakDDStopPercent ***                   |
 //|  *** v2.05 : BE buffer 200pt -> locks small win (~$6), not $0 ***  |
 //|  *** v2.06 : KRV confidence gate (no scale-up on weak streak) ***  |
+//|  *** v2.07 : live-ready - Weekend Guard ON, conf OFF, Partial 2R ***|
 //|      (drop X% from PEAK equity -> close all + stop; protects gains)|
 //|                                                                  |
 //|  Strategy summary                                                |
@@ -54,10 +55,10 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "Metasit XAUUSD Donchian EA - prop-safe build"
-#property version   "2.06"
+#property version   "2.07"
 #property strict
 
-#define EA_VERSION "2.06"
+#define EA_VERSION "2.07"
 
 #include <Trade\Trade.mqh>
 
@@ -130,7 +131,7 @@ input double          InpMaxRiskCapPercent = 1.7;        // SKIP a trade if min-
 input group "=== Trade management ==="
 input double   InpBreakEvenR         = 0.25;       // Move SL to BE at this R
 input double   InpBE_BufferPts       = 200;        // BE buffer (points beyond entry) - locks a small WIN (~$6 on 0.03 lot) instead of pure break-even
-input double   InpPartialR           = 1.0;        // Partial close at this R
+input double   InpPartialR           = 2.0;        // Partial close at this R (2.0 = proven better PF/DD, let winner run)
 input double   InpPartialPercent     = 40.0;       // Percent of position to close
 input bool     InpLockTrailUntilPartial = true;    // Lock trailing until 1R partial (true = let it breathe, fewer premature exits)
 
@@ -146,12 +147,16 @@ input int      InpCandleBackShift    = 3;          // "3rd candle" shift for tra
 input bool     InpTrailWidest        = true;       // Trailing stop choice: true = WIDEST (let winners run, higher PF) / false = tightest
 
 input group "=== Drawdown protection ==="
-input double   InpMaxDD_Percent      = 20.0;       // Max drawdown -> pause EA (%)
+input double   InpMaxDD_Percent      = 3.0;        // Max drawdown -> pause EA (%)  (3 = prop-safe; 20 was too loose for 5% limit)
 input double   InpMaxDD_ResumeBuffer = 2.0;        // Resume when DD below (Max - buffer)
 input double   InpDailyDD_Percent    = 1.5;        // Daily drawdown -> stop for day (%)
 input double   InpProfitTargetPercent = 6.0;       // Reach this % profit -> close all + STOP (0 = off; e.g. 6.0 for The5ers Step 1)
 input double   InpMaxTotalLossPercent = 3.5;       // EMERGENCY BRAKE: lose this % from start -> close all + STOP (0 = off; keep < challenge limit)
-input double   InpPeakDDStopPercent  = 3.0;        // DD LOCK: drop this % from PEAK equity -> close all + STOP (0 = off; protects gains)
+input double   InpPeakDDStopPercent  = 0.0;        // DD LOCK: drop this % from PEAK equity -> close all + STOP (0 = off; using Max DD pause instead)
+
+input group "=== Weekend guard ==="
+input bool     InpNoWeekendHold      = true;       // Close all + block entries Friday-late (avoid Mon gap / 'Trump weekend'). false = backtest edge
+input int      InpWeekendCloseHour   = 20;         // Friday SERVER hour to close all / stop new entries (0-23)
 
 input group "=== News filter ==="
 input bool     InpEnableNewsFilter   = true;       // Avoid trading around news
@@ -160,7 +165,7 @@ input int      InpNewsMinutesAfter   = 30;         // Block window AFTER news (m
 input string   InpNewsCurrencies     = "USD";      // Currencies to watch (comma sep.)
 
 input group "=== Confidence system ==="
-input bool     InpEnableConfidence   = true;       // Scale lot by recent performance
+input bool     InpEnableConfidence   = false;      // Scale lot by recent performance (OFF = proven better; ON hurt PF in 6.5y test)
 input int      InpConfidenceTrades   = 10;         // Number of recent trades to assess
 input double   InpConfidenceMin      = 0.5;        // Minimum lot multiplier
 input double   InpConfidenceMax      = 2.0;        // Maximum lot multiplier
@@ -183,6 +188,7 @@ int hATR3     = INVALID_HANDLE;   // trailing layer 3 - mini strong move (M30)
 
 // new-bar tracking
 datetime gLastEntryBar = 0;
+datetime gWeekendClosedDay = 0;   // which Friday we already flat-closed (weekend guard), avoid repeat
 int      gCooldownBarsLeft = 0;   // entry-TF bars still to skip after a full close (re-entry cooldown)
 double   gStartBalance     = 0.0; // baseline captured at init, for the profit-target / loss-stop
 bool     gTargetReached    = false; // true once InpProfitTargetPercent is hit -> stop trading
@@ -324,6 +330,7 @@ void OnTick()
    CheckProfitTarget();     // close all + stop once the profit target is reached
    CheckMaxTotalLoss();     // EMERGENCY BRAKE: close all + stop if total loss limit hit
    CheckPeakDDStop();       // DD LOCK: close all + stop if give-back from peak too large
+   CheckWeekendClose();     // WEEKEND GUARD: flat all before the weekend (avoid Mon gap)
    SyncPositionState();
    ManageOpenPositions();   // trailing / BE / partial run every tick
 
@@ -485,6 +492,38 @@ void CloseAllMyPositions()
    }
 }
 
+//==================================================================
+//  Weekend guard: flat all + block new entries on Friday from
+//  InpWeekendCloseHour onward (avoids Monday-open gap risk, e.g.
+//  "Trump weekend" geopolitical headlines). Off via InpNoWeekendHold.
+//==================================================================
+bool IsWeekendBlockTime()
+{
+   if(!InpNoWeekendHold) return false;
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   // day_of_week: 0=Sun .. 5=Fri .. 6=Sat ; market closed Sat/Sun anyway
+   return (dt.day_of_week == 5 && dt.hour >= InpWeekendCloseHour);
+}
+
+void CheckWeekendClose()
+{
+   if(!InpNoWeekendHold)     return;
+   if(!IsWeekendBlockTime()) return;
+
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   datetime todayKey = StringToTime(StringFormat("%04d.%02d.%02d", dt.year, dt.mon, dt.day));
+   if(gWeekendClosedDay == todayKey) return;   // already flattened this Friday
+
+   if(CountMyPositions() > 0)
+   {
+      CloseAllMyPositions();
+      Notify(StringFormat("🌅 WEEKEND GUARD: closed all before weekend (Fri %02d:00 server) - avoid Mon gap", dt.hour));
+   }
+   gWeekendClosedDay = todayKey;
+}
+
 void CheckProfitTarget()
 {
    if(InpProfitTargetPercent <= 0.0) return;   // feature off
@@ -549,6 +588,7 @@ bool TradingAllowed()
    if(gMaxDDPaused)  return false;
    if(gDailyStopped) return false;
    if(gInNews)       return false;
+   if(IsWeekendBlockTime()) return false;   // WEEKEND GUARD: no new entries Friday-late
    if(CountMyPositions() >= InpMaxPositions) return false;
    if(!MQLInfoInteger(MQL_TRADE_ALLOWED)) return false;
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED)) return false;
