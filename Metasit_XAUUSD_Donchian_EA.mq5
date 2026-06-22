@@ -59,7 +59,7 @@
 #property version   "2.08"
 #property strict
 
-#define EA_VERSION "2.10"
+#define EA_VERSION "2.11"
 
 #include <Trade\Trade.mqh>
 
@@ -98,94 +98,94 @@ enum ENUM_SL_MODE
 //==================================================================
 //  Inputs
 //==================================================================
-input group "=== General ==="
-input long     InpMagic              = 20250117;   // Magic number
-input bool     InpEnableNotifications= true;       // Send push notifications
-input string   InpNotifPrefix        = "[XAU-EA] ";// Notification prefix
+input group "⚙️  GENERAL"
+input long     InpMagic              = 20250117;   // 🔑 Magic number (EA id)
+input bool     InpEnableNotifications= true;       // 🔔 Push notifications ON/OFF
+input string   InpNotifPrefix        = "[XAU-EA] ";// 🏷️ Notification prefix
 
-input group "=== Timeframes ==="
-input ENUM_TIMEFRAMES InpEntryTF      = PERIOD_H4;  // Entry / signal timeframe
-input ENUM_TIMEFRAMES InpTrailTF      = PERIOD_M30; // Trailing management timeframe
+input group "⏰  TIMEFRAMES"
+input ENUM_TIMEFRAMES InpEntryTF      = PERIOD_H4;  // 📈 Entry / signal timeframe
+input ENUM_TIMEFRAMES InpTrailTF      = PERIOD_M30; // 🔧 Trailing / manage timeframe
 
-input group "=== Entry filters ==="
-input int      InpDonchianPeriod     = 20;         // Donchian channel period
+input group "🎯  ENTRY FILTERS"
+input int      InpDonchianPeriod     = 20;         // Donchian breakout period
 input int      InpMAPeriod           = 50;         // Trend SMA period
 input int      InpADXPeriod          = 14;         // ADX period
-input double   InpADXMin             = 20.0;       // Minimum ADX to trade
-input bool     InpUseMomentumFilter  = true;       // [KRV V19] entry candle must close near its extreme (filters weak breakouts)
-input double   InpMomentumPct        = 30.0;       // [KRV V19] close must be in top/bottom this % of candle range (Long top / Short bottom)
+input double   InpADXMin             = 20.0;       // Min ADX (trend strength)
+input bool     InpUseMomentumFilter  = true;       // ✅ Momentum filter: entry candle closes near its extreme
+input double   InpMomentumPct        = 30.0;       // ↳ close must be in top/bottom this % of candle
 
-input group "=== Stop Loss ==="
-input ENUM_SL_MODE InpSLMode             = SL_ATR;      // SL method (ATR = tight KRV-like stop ~75pt; DONCHIAN = wide channel)
-input int          InpSL_ATRPeriod       = 16;     // ATR period for SL (entry TF)
-input double       InpSL_ATRMult         = 1.5;    // ATR mode: SL = mult x ATR (tight ~1% risk; tune 1.2-2.0)
-input double       InpSL_DonchBufferMult = 0.75;   // Donchian mode: buffer = mult x ATR
+input group "🛑  STOP LOSS"
+input ENUM_SL_MODE InpSLMode             = SL_ATR;      // SL method: ATR (tight) / Donchian (wide)
+input int          InpSL_ATRPeriod       = 16;     // SL ATR period
+input double       InpSL_ATRMult         = 1.5;    // SL = this x ATR (tune 1.2-2.0)
+input double       InpSL_DonchBufferMult = 0.75;   // Donchian mode buffer (x ATR)
 
-input group "=== Risk Management ==="
-input double          InpRiskPercent = 1.0;             // Risk per trade (% balance)
-input ENUM_ACCT_MODE  InpAccountType = ACCOUNT_CENT;    // Account type
+input group "💰  RISK MANAGEMENT"
+input double          InpRiskPercent = 1.0;             // 💵 Risk per trade (% balance)
+input ENUM_ACCT_MODE  InpAccountType = ACCOUNT_CENT;    // Account type (Cent / Standard)
 input ENUM_ASSET_MODE InpAssetType   = ASSET_2_DECIMAL; // Asset price decimals
-input ENUM_K_MODE     InpKParameter  = K_CENT;          // Lot coefficient profile (K)
-input double          InpLotStepOverride = 0.0;         // Force lot step (0 = auto/broker; e.g. 0.01)
-input int             InpMaxPositions= 1;               // Max simultaneous positions
-input int             InpReentryCooldownBars = 1;        // Wait N entry-TF bars after a close before re-entering (0 = off, anti-whipsaw)
-input double          InpMaxRiskCapPercent = 1.7;        // SKIP a trade if min-lot would risk more than this % (0 = never skip; prop-safe guard)
+input ENUM_K_MODE     InpKParameter  = K_CENT;          // Lot coefficient (K)
+input double          InpLotStepOverride = 0.0;         // Force lot step (0 = auto/broker)
+input int             InpMaxPositions= 1;               // Max open positions
+input int             InpReentryCooldownBars = 1;       // Cooldown bars after close (anti-whipsaw)
+input double          InpMaxRiskCapPercent = 1.7;       // 🚧 Skip trade if risk > this % (0 = off; prop guard)
 
-input group "=== Trade management ==="
-input double   InpBreakEvenR         = 0.25;       // Move SL to BE at this R (used when BE-ATR is OFF)
-input bool     InpUseBE_ATR          = true;       // [KRV V19] trigger BE by ATR distance instead of R (adapts to volatility)
-input double   InpBE_TriggerATR      = 1.0;        // BE-ATR: move to BE once profit >= this x ATR(SL TF)
-input double   InpBE_BufferPts       = 200;        // BE buffer (points beyond entry) - locks a small WIN (~$6 on 0.03 lot) instead of pure break-even
-input double   InpPartialR           = 2.0;        // Partial close at this R (2.0 = proven better PF/DD, let winner run)
-input double   InpPartialPercent     = 40.0;       // Percent of position to close
-input bool     InpLockTrailUntilPartial = true;    // Lock trailing until 1R partial (true = let it breathe, fewer premature exits)
+input group "🔧  TRADE MGMT — Break-even / Partial"
+input double   InpBreakEvenR         = 0.25;       // BE at this R (used only when BE-ATR is OFF)
+input bool     InpUseBE_ATR          = true;       // ✅ BE by ATR distance (KRV V19, volatility-aware)
+input double   InpBE_TriggerATR      = 1.0;        // ↳ move to BE once profit >= this x ATR
+input double   InpBE_BufferPts       = 200;        // BE buffer (pts) — locks a tiny win, not pure BE
+input double   InpPartialR           = 2.0;        // Partial close at this R
+input double   InpPartialPercent     = 40.0;       // ↳ close this % of the position
+input bool     InpLockTrailUntilPartial = true;    // Lock trailing until partial (let it breathe)
 
-input group "=== Staged closes (KRV V19) ==="
-input bool     InpUseStagedCloses     = true;      // [KRV V19] momentum-candle staged exits: ride STRONG moves (lock profit), BANK mini moves
-input double   InpStagedMinProfitR    = 0.5;       // only act when open profit >= this R (ignore noise near entry)
-input double   InpStrongMoveATRMult    = 1.6;      // candle range >= this x ATR(trailTF) AND closes near extreme = STRONG move -> lock profit & keep running
-input double   InpStrongMoveSLPercent  = 60.0;     // STRONG move: tighten SL to lock this % of the current open profit (then let it run)
-input double   InpMiniMoveATRMult      = 1.0;      // candle range >= this x ATR (but below STRONG) = MINI move -> bank most of the position
-input double   InpMiniMoveClosePercent = 80.0;     // MINI move: close this % of the REMAINING volume (capture the spike, give back less MFE)
-input double   InpStagedMomentumPct    = 30.0;     // candle close must be in top/bottom this % of its range (true momentum body, not a wick)
+input group "📊  STAGED CLOSES (KRV V19)"
+input bool     InpUseStagedCloses     = true;      // ✅ Momentum staged exits ON/OFF
+input double   InpStagedMinProfitR    = 0.5;       // Act only when profit >= this R
+input double   InpStrongMoveATRMult    = 1.6;      // STRONG move = candle range >= this x ATR
+input double   InpStrongMoveSLPercent  = 60.0;     // ↳ STRONG: lock this % of profit & keep running
+input double   InpMiniMoveATRMult      = 1.0;      // MINI move = candle range >= this x ATR
+input double   InpMiniMoveClosePercent = 80.0;     // ↳ MINI: bank this % of remaining volume
+input double   InpStagedMomentumPct    = 30.0;     // Candle close in top/bottom % (true momentum)
 
-input group "=== Trailing layers (M30) ==="
+input group "📉  TRAILING LAYERS (M30)"
 input int      InpTr1_ATRPeriod      = 18;         // Layer 1 ATR period
-input double   InpTr1_ATRMult        = 5.75;       // Layer 1 ATR multiplier
-input int      InpTr2_ATRPeriod      = 12;         // Strong move ATR period
-input double   InpTr2_ATRMult        = 2.75;       // Strong move ATR multiplier
-input int      InpTr3_ATRPeriod      = 16;         // Mini strong move ATR period
-input double   InpTr3_ATRMult        = 2.0;        // Mini strong move ATR multiplier
-input int      InpSwingLookback      = 20;         // Swing high/low lookback (M30 bars)
-input int      InpCandleBackShift    = 3;          // "3rd candle" shift for trailing
-input bool     InpTrailWidest        = true;       // Trailing stop choice: true = WIDEST (let winners run, higher PF) / false = tightest
+input double   InpTr1_ATRMult        = 5.75;       // Layer 1 ATR mult (widest)
+input int      InpTr2_ATRPeriod      = 12;         // Layer 2 ATR period
+input double   InpTr2_ATRMult        = 2.75;       // Layer 2 ATR mult
+input int      InpTr3_ATRPeriod      = 16;         // Layer 3 ATR period
+input double   InpTr3_ATRMult        = 2.0;        // Layer 3 ATR mult
+input int      InpSwingLookback      = 20;         // Swing high/low lookback (bars)
+input int      InpCandleBackShift    = 3;          // "3rd candle" shift
+input bool     InpTrailWidest        = true;       // true = WIDEST (let winners run, higher PF)
 
-input group "=== Drawdown protection ==="
-input double   InpMaxDD_Percent      = 3.0;        // Max drawdown -> pause EA (%)  (3 = prop-safe; 20 was too loose for 5% limit)
-input double   InpMaxDD_ResumeBuffer = 2.0;        // Resume when DD below (Max - buffer)
-input double   InpDailyDD_Percent    = 1.5;        // Daily drawdown -> stop for day (%)
-input double   InpProfitTargetPercent = 6.0;       // Reach this % profit -> close all + STOP (0 = off; e.g. 6.0 for The5ers Step 1)
-input double   InpMaxTotalLossPercent = 3.5;       // EMERGENCY BRAKE: lose this % from start -> close all + STOP (0 = off; keep < challenge limit)
-input double   InpPeakDDStopPercent  = 0.0;        // DD LOCK: drop this % from PEAK equity -> close all + STOP (0 = off; using Max DD pause instead)
+input group "🛡️  DRAWDOWN PROTECTION (PROP)"
+input double   InpMaxDD_Percent      = 3.0;        // Max DD -> pause EA (%)
+input double   InpMaxDD_ResumeBuffer = 2.0;        // Resume when DD < (Max - this)
+input double   InpDailyDD_Percent    = 1.5;        // Daily DD -> stop for the day (%)
+input double   InpProfitTargetPercent = 6.0;       // 🎯 +this % profit -> close all + STOP (0 = off)
+input double   InpMaxTotalLossPercent = 3.5;       // 🚨 EMERGENCY BRAKE: -this % -> close all + STOP (0 = off)
+input double   InpPeakDDStopPercent  = 0.0;        // DD LOCK from peak equity (0 = off)
 
-input group "=== Weekend guard ==="
-input bool     InpNoWeekendHold      = true;       // Close all + block entries Friday-late (avoid Mon gap / 'Trump weekend'). false = backtest edge
-input int      InpWeekendCloseHour   = 20;         // Friday SERVER hour to close all / stop new entries (0-23)
+input group "📅  WEEKEND GUARD"
+input bool     InpNoWeekendHold      = true;       // ✅ Close + block before weekend (avoid Mon gap)
+input int      InpWeekendCloseHour   = 20;         // ↳ Friday server hour to close (0-23)
 
-input group "=== News filter ==="
-input bool     InpEnableNewsFilter   = true;       // Avoid trading around news
-input int      InpNewsMinutesBefore  = 90;         // Block window BEFORE news (min) - wide, avoid pre-news uncertainty
-input int      InpNewsMinutesAfter   = 30;         // Block window AFTER news (min) - short, re-enter to catch post-news trend
+input group "📰  NEWS FILTER"
+input bool     InpEnableNewsFilter   = true;       // ✅ Avoid trading around news
+input int      InpNewsMinutesBefore  = 90;         // Block minutes BEFORE news
+input int      InpNewsMinutesAfter   = 30;         // Block minutes AFTER news
 input string   InpNewsCurrencies     = "USD";      // Currencies to watch (comma sep.)
 
-input group "=== Confidence system ==="
-input bool     InpEnableConfidence   = false;      // Scale lot by recent performance (OFF = proven better; ON hurt PF in 6.5y test)
-input int      InpConfidenceTrades   = 10;         // Number of recent trades to assess
-input double   InpConfidenceMin      = 0.5;        // Minimum lot multiplier
-input double   InpConfidenceMax      = 2.0;        // Maximum lot multiplier
-input double   InpConfidenceSmooth   = 0.25;       // Smoothing factor (EMA alpha)
-input double   InpConfMinWinRate     = 0.45;       // [KRV gate] scale lot UP only if recent win rate >= this (0 = gate off)
-input double   InpConfMinPF          = 1.2;        // [KRV gate] scale lot UP only if recent profit factor >= this (0 = gate off)
+input group "🎲  CONFIDENCE SYSTEM (keep OFF)"
+input bool     InpEnableConfidence   = false;      // ⚠️ Scale lot by recent form (OFF = proven better)
+input int      InpConfidenceTrades   = 10;         // Recent trades to assess
+input double   InpConfidenceMin      = 0.5;        // Min lot multiplier
+input double   InpConfidenceMax      = 2.0;        // Max lot multiplier
+input double   InpConfidenceSmooth   = 0.25;       // Smoothing (EMA alpha)
+input double   InpConfMinWinRate     = 0.45;       // Gate: scale up only if win rate >= this
+input double   InpConfMinPF          = 1.2;        // Gate: scale up only if PF >= this
 
 //==================================================================
 //  Globals
@@ -1068,8 +1068,12 @@ void ManageOpenPositions()
       if(trailAllowed)
       {
          double newSL = ComputeTrailingSL(isBuy, cur);
-         if(newSL > 0.0)
-            ModifySL(ticket, isBuy, newSL, sl);
+         if(newSL > 0.0 && ModifySL(ticket, isBuy, newSL, sl))
+         {
+            string arrow = isBuy ? "⬆️" : "⬇️";
+            Notify(StringFormat("📈🔧 Trailing SL #%I64u %s %.2f → %.2f", ticket, arrow, sl, newSL));
+            sl = newSL;
+         }
       }
    }
 }
@@ -1205,7 +1209,10 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    {
       bool   dealIsBuy = (HistoryDealGetInteger(dealTicket, DEAL_TYPE)==DEAL_TYPE_BUY);
       string dir = dealIsBuy ? "🟢 OPEN BUY ⬆️" : "🔴 OPEN SELL ⬇️";
-      Notify(StringFormat("%s %.2f lots @ %.2f (conf x%.2f)", dir, vol, price, gConfidence));
+      double slPx = 0.0;
+      if(PositionSelectByTicket(posId)) slPx = PositionGetDouble(POSITION_SL);
+      Notify(StringFormat("%s %.2f lots @ %.2f  🛑 SL @ %.2f  (conf x%.2f)",
+                          dir, vol, price, slPx, gConfidence));
    }
    else if(entry == DEAL_ENTRY_OUT)
    {
