@@ -59,7 +59,7 @@
 #property version   "2.08"
 #property strict
 
-#define EA_VERSION "2.09"
+#define EA_VERSION "2.10"
 
 #include <Trade\Trade.mqh>
 
@@ -132,7 +132,9 @@ input int             InpReentryCooldownBars = 1;        // Wait N entry-TF bars
 input double          InpMaxRiskCapPercent = 1.7;        // SKIP a trade if min-lot would risk more than this % (0 = never skip; prop-safe guard)
 
 input group "=== Trade management ==="
-input double   InpBreakEvenR         = 0.25;       // Move SL to BE at this R
+input double   InpBreakEvenR         = 0.25;       // Move SL to BE at this R (used when BE-ATR is OFF)
+input bool     InpUseBE_ATR          = true;       // [KRV V19] trigger BE by ATR distance instead of R (adapts to volatility)
+input double   InpBE_TriggerATR      = 1.0;        // BE-ATR: move to BE once profit >= this x ATR(SL TF)
 input double   InpBE_BufferPts       = 200;        // BE buffer (points beyond entry) - locks a small WIN (~$6 on 0.03 lot) instead of pure break-even
 input double   InpPartialR           = 2.0;        // Partial close at this R (2.0 = proven better PF/DD, let winner run)
 input double   InpPartialPercent     = 40.0;       // Percent of position to close
@@ -945,7 +947,15 @@ void ManageOpenPositions()
       double profitDist = isBuy ? (cur - open) : (open - cur);
 
       // ---- Break-even ----
-      if(!gPosBEDone[i] && profitDist >= InpBreakEvenR * R)
+      // BE trigger: ATR-based (KRV V19, adapts to volatility) or R-based (fallback)
+      double beTrigger = InpBreakEvenR * R;
+      if(InpUseBE_ATR)
+      {
+         double atrBE;
+         if(BufVal(hATRslBuf, 0, 1, atrBE) && atrBE > 0.0)
+            beTrigger = InpBE_TriggerATR * atrBE;
+      }
+      if(!gPosBEDone[i] && profitDist >= beTrigger)
       {
          double buf  = InpBE_BufferPts * _Point;
          double beSL = isBuy ? open + buf : open - buf;
