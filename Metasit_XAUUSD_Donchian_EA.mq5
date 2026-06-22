@@ -59,7 +59,7 @@
 #property version   "2.08"
 #property strict
 
-#define EA_VERSION "2.08"
+#define EA_VERSION "2.09"
 
 #include <Trade\Trade.mqh>
 
@@ -138,6 +138,15 @@ input double   InpPartialR           = 2.0;        // Partial close at this R (2
 input double   InpPartialPercent     = 40.0;       // Percent of position to close
 input bool     InpLockTrailUntilPartial = true;    // Lock trailing until 1R partial (true = let it breathe, fewer premature exits)
 
+input group "=== Staged closes (KRV V19) ==="
+input bool     InpUseStagedCloses     = true;      // [KRV V19] momentum-candle staged exits: ride STRONG moves (lock profit), BANK mini moves
+input double   InpStagedMinProfitR    = 0.5;       // only act when open profit >= this R (ignore noise near entry)
+input double   InpStrongMoveATRMult    = 1.6;      // candle range >= this x ATR(trailTF) AND closes near extreme = STRONG move -> lock profit & keep running
+input double   InpStrongMoveSLPercent  = 60.0;     // STRONG move: tighten SL to lock this % of the current open profit (then let it run)
+input double   InpMiniMoveATRMult      = 1.0;      // candle range >= this x ATR (but below STRONG) = MINI move -> bank most of the position
+input double   InpMiniMoveClosePercent = 80.0;     // MINI move: close this % of the REMAINING volume (capture the spike, give back less MFE)
+input double   InpStagedMomentumPct    = 30.0;     // candle close must be in top/bottom this % of its range (true momentum body, not a wick)
+
 input group "=== Trailing layers (M30) ==="
 input int      InpTr1_ATRPeriod      = 18;         // Layer 1 ATR period
 input double   InpTr1_ATRMult        = 5.75;       // Layer 1 ATR multiplier
@@ -204,6 +213,8 @@ double   gPosInitRisk[];   // price distance of initial risk (R), per position
 double   gPosInitVol[];    // original volume
 bool     gPosBEDone[];
 bool     gPosPartialDone[];
+bool     gPosMiniDone[];     // staged close: mini-move bank already taken for this position
+datetime gPosStagedBar[];    // staged close: last trail-TF bar already evaluated (act once per closed candle)
 
 // drawdown / protection state
 double   gPeakEquity     = 0.0;
@@ -850,11 +861,15 @@ void AddPosState(const ulong ticket, const double risk, const double vol)
    ArrayResize(gPosInitVol,     n+1);
    ArrayResize(gPosBEDone,      n+1);
    ArrayResize(gPosPartialDone, n+1);
+   ArrayResize(gPosMiniDone,    n+1);
+   ArrayResize(gPosStagedBar,   n+1);
    gPosTicket[n]      = ticket;
    gPosInitRisk[n]    = risk;
    gPosInitVol[n]     = vol;
    gPosBEDone[n]      = false;
    gPosPartialDone[n] = false;
+   gPosMiniDone[n]    = false;
+   gPosStagedBar[n]   = 0;
 }
 
 void RemovePosStateAt(const int idx)
@@ -868,12 +883,16 @@ void RemovePosStateAt(const int idx)
       gPosInitVol[i]     = gPosInitVol[i+1];
       gPosBEDone[i]      = gPosBEDone[i+1];
       gPosPartialDone[i] = gPosPartialDone[i+1];
+      gPosMiniDone[i]    = gPosMiniDone[i+1];
+      gPosStagedBar[i]   = gPosStagedBar[i+1];
    }
    ArrayResize(gPosTicket,      n-1);
    ArrayResize(gPosInitRisk,    n-1);
    ArrayResize(gPosInitVol,     n-1);
    ArrayResize(gPosBEDone,      n-1);
    ArrayResize(gPosPartialDone, n-1);
+   ArrayResize(gPosMiniDone,    n-1);
+   ArrayResize(gPosStagedBar,   n-1);
 }
 
 // Register new positions and drop closed ones from state.
@@ -961,6 +980,73 @@ void ManageOpenPositions()
             Notify(StringFormat("↪️ Partial SKIP #%I64u: closeVol %.2f / remain %.2f < min %.2f",
                                ticket, closeVol, vol-closeVol, minV));
             gPosPartialDone[i] = true; // cannot split further, skip
+         }
+      }
+
+      // ---- Staged closes (KRV V19): momentum-candle exits ----
+      // ปัญหาเดิม: ราคาวิ่งไปไกล (avg MFE ~0.93R) แต่เราเก็บได้แค่ ~0.18R (คืนกำไรเยอะ)
+      // วิธีแก้: ดูแท่งบน trail TF (M30) ที่ "โมเมนตัมแรง" ในทางเรา
+      //   STRONG move (แท่งใหญ่มาก) = มีแรงไปต่อ -> ไม่ปิด แค่ดึง SL ล็อกกำไร 60% แล้วปล่อยวิ่ง
+      //   MINI move   (แท่งแรงปานกลาง) = น่าจะหมดแรง/spike -> เก็บกำไร 80% ของไม้ที่เหลือ
+      if(InpUseStagedCloses && profitDist >= InpStagedMinProfitR * R)
+      {
+         datetime barT = iTime(_Symbol, InpTrailTF, 1);   // last CLOSED trail-TF candle
+         if(barT > 0 && barT != gPosStagedBar[i])
+         {
+            gPosStagedBar[i] = barT;                       // evaluate this candle once
+
+            double h1 = iHigh(_Symbol, InpTrailTF, 1);
+            double l1 = iLow (_Symbol, InpTrailTF, 1);
+            double c1 = iClose(_Symbol, InpTrailTF, 1);
+            double rng = h1 - l1;
+            double atrT;
+            bool   haveATR = BufVal(hATR1, 0, 0, atrT) && atrT > 0.0;
+
+            if(rng > 0.0 && haveATR)
+            {
+               // momentum body: close near the extreme in OUR direction
+               double thr     = InpStagedMomentumPct / 100.0;
+               double posInRng = (c1 - l1) / rng;          // 0 = at low, 1 = at high
+               bool   momOK   = isBuy ? (posInRng >= (1.0 - thr)) : (posInRng <= thr);
+               // candle must also be in our favour (green for buy / red for sell)
+               bool   dirOK   = isBuy ? (c1 > iOpen(_Symbol,InpTrailTF,1))
+                                      : (c1 < iOpen(_Symbol,InpTrailTF,1));
+               double ratio   = rng / atrT;
+
+               if(momOK && dirOK)
+               {
+                  if(ratio >= InpStrongMoveATRMult)
+                  {
+                     // STRONG: lock InpStrongMoveSLPercent of current profit, keep running
+                     double lockDist = profitDist * (InpStrongMoveSLPercent/100.0);
+                     double lockSL   = isBuy ? open + lockDist : open - lockDist;
+                     if(ModifySL(ticket, isBuy, lockSL, sl))
+                     {
+                        sl = lockSL;
+                        Notify(StringFormat("🚀🔒 Strong move #%I64u: SL locks %.0f%% of %.2fR profit",
+                                            ticket, InpStrongMoveSLPercent, profitDist/R));
+                     }
+                  }
+                  else if(ratio >= InpMiniMoveATRMult && !gPosMiniDone[i])
+                  {
+                     // MINI: bank InpMiniMoveClosePercent of the REMAINING volume
+                     double curVol  = PositionGetDouble(POSITION_VOLUME);
+                     double closeVol= NormalizeVolume(curVol * (InpMiniMoveClosePercent/100.0));
+                     double minV    = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+                     if(closeVol >= minV && (curVol - closeVol) >= minV)
+                     {
+                        if(trade.PositionClosePartial(ticket, closeVol))
+                        {
+                           gPosMiniDone[i] = true;
+                           Notify(StringFormat("⚡💰 Mini move bank %.2f lots #%I64u @ %.2fR",
+                                               closeVol, ticket, profitDist/R));
+                        }
+                     }
+                     else
+                        gPosMiniDone[i] = true;   // too small to split, skip future mini banks
+                  }
+               }
+            }
          }
       }
 
