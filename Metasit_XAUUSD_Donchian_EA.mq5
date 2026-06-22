@@ -33,6 +33,7 @@
 //|  *** v2.05 : BE buffer 200pt -> locks small win (~$6), not $0 ***  |
 //|  *** v2.06 : KRV confidence gate (no scale-up on weak streak) ***  |
 //|  *** v2.07 : live-ready - Weekend Guard ON, conf OFF, Partial 2R ***|
+//|  *** v2.08 : KRV V19 Momentum Candle Filter (close near extreme) ***|
 //|      (drop X% from PEAK equity -> close all + stop; protects gains)|
 //|                                                                  |
 //|  Strategy summary                                                |
@@ -55,10 +56,10 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "Metasit XAUUSD Donchian EA - prop-safe build"
-#property version   "2.07"
+#property version   "2.08"
 #property strict
 
-#define EA_VERSION "2.07"
+#define EA_VERSION "2.08"
 
 #include <Trade\Trade.mqh>
 
@@ -111,6 +112,8 @@ input int      InpDonchianPeriod     = 20;         // Donchian channel period
 input int      InpMAPeriod           = 50;         // Trend SMA period
 input int      InpADXPeriod          = 14;         // ADX period
 input double   InpADXMin             = 20.0;       // Minimum ADX to trade
+input bool     InpUseMomentumFilter  = true;       // [KRV V19] entry candle must close near its extreme (filters weak breakouts)
+input double   InpMomentumPct        = 30.0;       // [KRV V19] close must be in top/bottom this % of candle range (Long top / Short bottom)
 
 input group "=== Stop Loss ==="
 input ENUM_SL_MODE InpSLMode             = SL_ATR;      // SL method (ATR = tight KRV-like stop ~75pt; DONCHIAN = wide channel)
@@ -636,6 +639,25 @@ void TryEnter()
 
    bool buySignal  = (close1 > upper) && (close1 > ma);
    bool sellSignal = (close1 < lower) && (close1 < ma);
+
+   // --- Momentum candle filter (KRV V19) ---
+   // The breakout candle must close near its extreme, proving conviction:
+   //   Long  : close in the TOP    InpMomentumPct% of the candle range
+   //   Short : close in the BOTTOM InpMomentumPct% of the candle range
+   // Filters out weak/indecisive breakouts that spike then close mid-range.
+   if(InpUseMomentumFilter)
+   {
+      double h1 = iHigh(_Symbol, InpEntryTF, 1);
+      double l1 = iLow (_Symbol, InpEntryTF, 1);
+      double rng = h1 - l1;
+      if(rng > 0.0)
+      {
+         double pos = (close1 - l1) / rng;          // 0 = at low, 1 = at high
+         double thr = InpMomentumPct / 100.0;       // e.g. 0.30
+         if(buySignal  && pos < (1.0 - thr)) buySignal  = false;  // not in top X%
+         if(sellSignal && pos > thr)         sellSignal = false;  // not in bottom X%
+      }
+   }
 
    if(buySignal)
    {
