@@ -59,7 +59,7 @@
 #property version   "2.08"
 #property strict
 
-#define EA_VERSION "2.11"
+#define EA_VERSION "2.12"
 
 #include <Trade\Trade.mqh>
 
@@ -159,6 +159,10 @@ input double   InpTr3_ATRMult        = 2.0;        // Layer 3 ATR mult
 input int      InpSwingLookback      = 20;         // Swing high/low lookback (bars)
 input int      InpCandleBackShift    = 3;          // "3rd candle" shift
 input bool     InpTrailWidest        = true;       // true = WIDEST (let winners run, higher PF)
+
+input group "🏃  LET WINNERS RUN (experiment)"
+input bool     InpLetWinnersRun      = false;      // 🧪 ON = skip partial + mini-bank, widen trail (KRV-style runners: lower win%, higher R:R)
+input double   InpRunTrailWiden      = 1.5;        // ↳ widen trailing ATR multipliers by this factor while running
 
 input group "🛡️  DRAWDOWN PROTECTION (PROP)"
 input double   InpMaxDD_Percent      = 3.0;        // Max DD -> pause EA (%)
@@ -967,8 +971,8 @@ void ManageOpenPositions()
          }
       }
 
-      // ---- Partial close ----
-      if(!gPosPartialDone[i] && profitDist >= InpPartialR * R)
+      // ---- Partial close ----  (skipped in let-winners-run mode: let the whole position ride)
+      if(!InpLetWinnersRun && !gPosPartialDone[i] && profitDist >= InpPartialR * R)
       {
          double closeVol = NormalizeVolume(gPosInitVol[i] * (InpPartialPercent/100.0));
          double minV     = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
@@ -1037,9 +1041,10 @@ void ManageOpenPositions()
                                             ticket, InpStrongMoveSLPercent, profitDist/R));
                      }
                   }
-                  else if(ratio >= InpMiniMoveATRMult && !gPosMiniDone[i])
+                  else if(!InpLetWinnersRun && ratio >= InpMiniMoveATRMult && !gPosMiniDone[i])
                   {
                      // MINI: bank InpMiniMoveClosePercent of the REMAINING volume
+                     //       (skipped in let-winners-run mode — this is the biggest cap on runners)
                      double curVol  = PositionGetDouble(POSITION_VOLUME);
                      double closeVol= NormalizeVolume(curVol * (InpMiniMoveClosePercent/100.0));
                      double minV    = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
@@ -1064,7 +1069,13 @@ void ManageOpenPositions()
       // *** ล็อค trailing ไว้จนกว่าจะถึง 1R (หลัง partial) ***
       // ก่อน 1R: มีแค่ break-even ป้องกันทุน ไม่ให้ trailing ดึง SL ออกก่อน
       // ทำให้ราคามีโอกาสวิ่งไปถึง 1R เพื่อ trigger partial ได้จริง
-      bool trailAllowed = (!InpLockTrailUntilPartial) || gPosPartialDone[i];
+      // In let-winners-run mode there is no partial, so let the trade breathe until it
+      // reaches the partial level, then trail (wide). Otherwise use the lock-until-partial rule.
+      bool trailAllowed;
+      if(InpLetWinnersRun)
+         trailAllowed = (profitDist >= InpPartialR * R);
+      else
+         trailAllowed = (!InpLockTrailUntilPartial) || gPosPartialDone[i];
       if(trailAllowed)
       {
          double newSL = ComputeTrailingSL(isBuy, cur);
@@ -1084,20 +1095,26 @@ double ComputeTrailingSL(const bool isBuy, const double price)
    double candidates[];
    int    c = 0;
 
+   // Let-winners-run widens the ATR layers so the trail rides bigger trends (fewer early exits).
+   double w = InpLetWinnersRun ? InpRunTrailWiden : 1.0;
+
    double atr1, atr2, atr3;
    if(BufVal(hATR1,0,0,atr1) && atr1>0.0)
    {
-      double s = isBuy ? price - atr1*InpTr1_ATRMult : price + atr1*InpTr1_ATRMult;
+      double m = atr1*InpTr1_ATRMult*w;
+      double s = isBuy ? price - m : price + m;
       ArrayResize(candidates, c+1); candidates[c++] = s;
    }
    if(BufVal(hATR2,0,0,atr2) && atr2>0.0)
    {
-      double s = isBuy ? price - atr2*InpTr2_ATRMult : price + atr2*InpTr2_ATRMult;
+      double m = atr2*InpTr2_ATRMult*w;
+      double s = isBuy ? price - m : price + m;
       ArrayResize(candidates, c+1); candidates[c++] = s;
    }
    if(BufVal(hATR3,0,0,atr3) && atr3>0.0)
    {
-      double s = isBuy ? price - atr3*InpTr3_ATRMult : price + atr3*InpTr3_ATRMult;
+      double m = atr3*InpTr3_ATRMult*w;
+      double s = isBuy ? price - m : price + m;
       ArrayResize(candidates, c+1); candidates[c++] = s;
    }
 
