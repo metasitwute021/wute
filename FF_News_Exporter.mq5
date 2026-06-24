@@ -10,7 +10,10 @@
 //|      (open the "Calendar" tab once so MT5 downloads it).          |
 //|   3) Drag the script onto any chart, set the date range +         |
 //|      currency + impact, press OK.                                 |
-//|   4) It writes the CSV into  MQL5/Files/  (default ff_news.csv).  |
+//|   4) It writes the CSV into  COMMON\Files\  (default ff_news.csv) |
+//|      so the Strategy Tester can read it (its sandbox can't see    |
+//|      MQL5\Files). Find it: File > Open Data Folder, go up to      |
+//|      Terminal\Common\Files.                                       |
 //|   5) In the EA set InpUseFFNews=true and InpFFNewsFile to that    |
 //|      name. Times are the SAME MT5 time base, so the EA's          |
 //|      InpFFTimeOffsetHours can stay 0.                             |
@@ -45,7 +48,9 @@ bool InList(const string list, const string val)
 
 void OnStart()
 {
-   int fh = FileOpen(InpOutFile, FILE_WRITE|FILE_CSV|FILE_ANSI, ',');
+   // FILE_COMMON: write into the shared Common\Files folder so the EA can read
+   // the same file in the Strategy Tester (its sandbox can't see MQL5\Files).
+   int fh = FileOpen(InpOutFile, FILE_WRITE|FILE_CSV|FILE_ANSI|FILE_COMMON, ',');
    if(fh == INVALID_HANDLE)
    {
       Print("❌ Cannot create ", InpOutFile, "  err=", GetLastError());
@@ -101,7 +106,7 @@ void OnStart()
    }
 
    FileClose(fh);
-   string msg = StringFormat("✅ FF export done: %d events -> MQL5/Files/%s  (scanned %d)",
+   string msg = StringFormat("✅ FF export done: %d events -> COMMON\\Files\\%s  (scanned %d)",
                              written, InpOutFile, scanned);
    Print(msg);
    Alert(msg);

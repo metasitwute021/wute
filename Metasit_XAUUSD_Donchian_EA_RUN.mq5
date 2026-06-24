@@ -59,7 +59,7 @@
 #property version   "2.08"
 #property strict
 
-#define EA_VERSION "2.13"
+#define EA_VERSION "2.14"
 
 #include <Trade\Trade.mqh>
 
@@ -182,7 +182,7 @@ input int      InpNewsMinutesBefore  = 90;         // Block minutes BEFORE news
 input int      InpNewsMinutesAfter   = 30;         // Block minutes AFTER news
 input string   InpNewsCurrencies     = "USD";      // Currencies to watch (comma sep.)
 input bool     InpUseFFNews          = false;      // ✅ Forex Factory CSV file (WORKS IN STRATEGY TESTER, like KRV)
-input string   InpFFNewsFile         = "ff_news.csv"; // ↳ file in MQL5/Files — columns: Date,Time,Currency,Impact
+input string   InpFFNewsFile         = "ff_news.csv"; // ↳ file in COMMON\Files (works in tester!) — cols: Date,Time,Currency,Impact
 input string   InpFFBlockImpact      = "High";     // ↳ impacts to block (comma sep: High  or  High,Medium)
 input int      InpFFTimeOffsetHours  = 0;          // ↳ shift CSV times to broker SERVER time (+/- hours)
 input bool     InpFFCloseBeforeNews  = false;      // ↳ also CLOSE open positions when a news window starts
@@ -510,10 +510,12 @@ void LoadFFNews()
    ArrayResize(gFFTime,0); ArrayResize(gFFCcy,0); ArrayResize(gFFImp,0);
    if(!InpUseFFNews) return;
 
-   int fh = FileOpen(InpFFNewsFile, FILE_READ|FILE_CSV|FILE_ANSI|FILE_SHARE_READ, ',');
+   // FILE_COMMON: read from the shared Common\Files folder so the Strategy
+   // Tester (which has its own sandbox) can see the same file as live.
+   int fh = FileOpen(InpFFNewsFile, FILE_READ|FILE_CSV|FILE_ANSI|FILE_SHARE_READ|FILE_COMMON, ',');
    if(fh == INVALID_HANDLE)
    {
-      Notify("📰❗ FF file NOT found: " + InpFFNewsFile + " (put it in MQL5/Files). FF filter OFF.");
+      Notify("📰❗ FF file NOT found: " + InpFFNewsFile + " (put it in COMMON\\Files). FF filter OFF.");
       return;
    }
 
