@@ -59,7 +59,7 @@
 #property version   "2.08"
 #property strict
 
-#define EA_VERSION "2.17"
+#define EA_VERSION "2.18"
 
 #include <Trade\Trade.mqh>
 
@@ -1068,18 +1068,17 @@ void SyncPositionState()
 }
 
 // Builds a "% of balance" tag for an SL-move notification, measured fresh
-// per trade (this position only): current floating profit, and what would be
-// locked if the SL is hit. Both as a % of the live account balance.
+// per trade (this position only): what would be LOCKED if the SL is hit.
+// (Floating profit is intentionally omitted — it changes every tick.)
 string SLPercentTag(const long posType, const double openP, const double curP, const double slP)
 {
    double bal = AccountInfoDouble(ACCOUNT_BALANCE);
    if(bal <= 0.0) return "";
    double vol = PositionGetDouble(POSITION_VOLUME);          // current (post-partial) size
    ENUM_ORDER_TYPE ot = (posType==POSITION_TYPE_BUY) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
-   double pNow = 0.0, pSL = 0.0;
-   OrderCalcProfit(ot, _Symbol, vol, openP, curP, pNow);     // profit if closed now
-   OrderCalcProfit(ot, _Symbol, vol, openP, slP,  pSL);      // profit if SL is hit
-   return StringFormat("  💹 now %+.2f%% | @SL %+.2f%%", pNow/bal*100.0, pSL/bal*100.0);
+   double pSL = 0.0;
+   OrderCalcProfit(ot, _Symbol, vol, openP, slP, pSL);       // profit if SL is hit
+   return StringFormat("  💹 @SL %+.2f%%", pSL/bal*100.0);
 }
 
 //==================================================================
