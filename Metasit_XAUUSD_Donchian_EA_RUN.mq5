@@ -59,7 +59,7 @@
 #property version   "2.08"
 #property strict
 
-#define EA_VERSION "2.15"
+#define EA_VERSION "2.16"
 
 #include <Trade\Trade.mqh>
 
@@ -1067,6 +1067,21 @@ void SyncPositionState()
          RemovePosStateAt(i);
 }
 
+// Builds a "% of balance" tag for an SL-move notification, measured fresh
+// per trade (this position only): current floating profit, and what would be
+// locked if the SL is hit. Both as a % of the live account balance.
+string SLPercentTag(const long posType, const double openP, const double curP, const double slP)
+{
+   double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+   if(bal <= 0.0) return "";
+   double vol = PositionGetDouble(POSITION_VOLUME);          // current (post-partial) size
+   ENUM_ORDER_TYPE ot = (posType==POSITION_TYPE_BUY) ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+   double pNow = 0.0, pSL = 0.0;
+   OrderCalcProfit(ot, _Symbol, vol, openP, curP, pNow);     // profit if closed now
+   OrderCalcProfit(ot, _Symbol, vol, openP, slP,  pSL);      // profit if SL is hit
+   return StringFormat("  💹 now %+.2f%% | @SL %+.2f%%", pNow/bal*100.0, pSL/bal*100.0);
+}
+
 //==================================================================
 //  Trade management: BE, partial, multi-layer trailing
 //==================================================================
@@ -1107,7 +1122,8 @@ void ManageOpenPositions()
          {
             gPosBEDone[i] = true;
             sl = beSL;
-            Notify(StringFormat("🛡️ Break-even set #%I64u @ %.2f", ticket, beSL));
+            Notify(StringFormat("🛡️ Break-even set #%I64u @ %.2f", ticket, beSL)
+                   + SLPercentTag(type, open, cur, beSL));
          }
       }
 
@@ -1178,7 +1194,8 @@ void ManageOpenPositions()
                      {
                         sl = lockSL;
                         Notify(StringFormat("🚀🔒 Strong move #%I64u: SL locks %.0f%% of %.2fR profit",
-                                            ticket, InpStrongMoveSLPercent, profitDist/R));
+                                            ticket, InpStrongMoveSLPercent, profitDist/R)
+                               + SLPercentTag(type, open, cur, lockSL));
                      }
                   }
                   else if(!InpLetWinnersRun && ratio >= InpMiniMoveATRMult && !gPosMiniDone[i])
@@ -1222,7 +1239,8 @@ void ManageOpenPositions()
          if(newSL > 0.0 && ModifySL(ticket, isBuy, newSL, sl))
          {
             string arrow = isBuy ? "⬆️" : "⬇️";
-            Notify(StringFormat("📈🔧 Trailing SL #%I64u %s %.2f → %.2f", ticket, arrow, sl, newSL));
+            Notify(StringFormat("📈🔧 Trailing SL #%I64u %s %.2f → %.2f", ticket, arrow, sl, newSL)
+                   + SLPercentTag(type, open, cur, newSL));
             sl = newSL;
          }
       }
