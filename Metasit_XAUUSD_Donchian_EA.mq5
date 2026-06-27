@@ -59,7 +59,7 @@
 #property version   "2.08"
 #property strict
 
-#define EA_VERSION "2.16"
+#define EA_VERSION "2.17"
 
 #include <Trade\Trade.mqh>
 
@@ -1386,13 +1386,23 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       string dir = dealIsBuy ? "🟢 OPEN BUY ⬆️" : "🔴 OPEN SELL ⬇️";
       double slPx = 0.0;
       if(PositionSelectByTicket(posId)) slPx = PositionGetDouble(POSITION_SL);
-      Notify(StringFormat("%s %.2f lots @ %.2f  🛑 SL @ %.2f  (conf x%.2f)",
-                          dir, vol, price, slPx, gConfidence));
+      // risk of THIS trade as % of balance (what you lose if the SL is hit)
+      double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+      double riskM = 0.0;
+      if(slPx > 0.0)
+         OrderCalcProfit(dealIsBuy?ORDER_TYPE_BUY:ORDER_TYPE_SELL, _Symbol, vol, price, slPx, riskM);
+      double riskPct = (bal > 0.0) ? riskM/bal*100.0 : 0.0;
+      Notify(StringFormat("%s %.2f lots @ %.2f  🛑 SL @ %.2f  (💹 @SL %+.2f%%)",
+                          dir, vol, price, slPx, riskPct));
    }
    else if(entry == DEAL_ENTRY_OUT)
    {
       string closeTag = (profit >= 0.0) ? "✅ CLOSE 💰" : "❌ CLOSE 📉";
-      Notify(StringFormat("%s %.2f lots @ %.2f  P/L %.2f", closeTag, vol, price, profit));
+      // result of THIS trade as % of balance
+      double balC = AccountInfoDouble(ACCOUNT_BALANCE);
+      double pl   = (balC > 0.0) ? profit/balC*100.0 : 0.0;
+      Notify(StringFormat("%s %.2f lots @ %.2f  P/L %.2f (💹 %+.2f%%)",
+                          closeTag, vol, price, profit, pl));
       AccumulateAndMaybeFinalize(posId, profit);
    }
 }
