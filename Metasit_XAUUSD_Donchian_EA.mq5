@@ -59,7 +59,7 @@
 #property version   "2.08"
 #property strict
 
-#define EA_VERSION "2.14"
+#define EA_VERSION "2.15"
 
 #include <Trade\Trade.mqh>
 
@@ -139,6 +139,8 @@ input double   InpBE_BufferPts       = 200;        // BE buffer (pts) — locks 
 input double   InpPartialR           = 2.0;        // Partial close at this R
 input double   InpPartialPercent     = 40.0;       // ↳ close this % of the position
 input bool     InpLockTrailUntilPartial = true;    // Lock trailing until partial (let it breathe)
+input bool     InpUseFixedTP          = false;     // 🎯 Hard take-profit: close 100% at a fixed R (caps the trade, no manual click)
+input double   InpFixedTP_R           = 2.0;       // ↳ close the WHOLE trade at this R (2.0 = +2% when risk is 1%)
 
 input group "📊  STAGED CLOSES (KRV V19)"
 input bool     InpUseStagedCloses     = true;      // ✅ Momentum staged exits ON/OFF
@@ -850,9 +852,16 @@ void OpenTrade(const ENUM_ORDER_TYPE type, const double entry, const double sl)
       return;
    }
 
+   // Optional hard take-profit: close the whole trade at a fixed R (broker-side,
+   // works even if the EA is offline). 0 = off -> let the trail/staged exits run.
+   double tp = 0.0;
+   if(InpUseFixedTP && InpFixedTP_R > 0.0)
+      tp = (type==ORDER_TYPE_BUY) ? entry + InpFixedTP_R*riskDist
+                                  : entry - InpFixedTP_R*riskDist;
+
    bool ok = (type==ORDER_TYPE_BUY)
-             ? trade.Buy (lots, _Symbol, entry, sl, 0.0, "Donchian-SL")
-             : trade.Sell(lots, _Symbol, entry, sl, 0.0, "Donchian-SL");
+             ? trade.Buy (lots, _Symbol, entry, sl, tp, "Donchian-SL")
+             : trade.Sell(lots, _Symbol, entry, sl, tp, "Donchian-SL");
    if(!ok)
    {
       Print("Order send failed: ", trade.ResultRetcode(), " ",
