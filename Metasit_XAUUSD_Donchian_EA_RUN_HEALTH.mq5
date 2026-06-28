@@ -59,7 +59,7 @@
 #property version   "2.08"
 #property strict
 
-#define EA_VERSION "3.2-HEALTH"
+#define EA_VERSION "4.0-ATHE"
 
 #include <Trade\Trade.mqh>
 
@@ -166,25 +166,31 @@ input group "🏃  LET WINNERS RUN (experiment)"
 input bool     InpLetWinnersRun      = true;       // 🧪 ON = skip partial + mini-bank, widen trail (KRV-style runners: lower win%, higher R:R)  [RUN build default]
 input double   InpRunTrailWiden      = 1.5;        // ↳ widen trailing ATR multipliers by this factor while running
 
-input group "🩺  TREND HEALTH ENGINE v3.2 (test)"
-input bool     InpUseHealthEngine    = true;       // grade trend health each bar -> PROGRESSIVE profit protection (acts only when in profit)
+input group "🩺  ADAPTIVE TREND HEALTH ENGINE v4 (test)"
+input bool     InpUseHealthEngine    = true;       // ATHE: grade trend health -> graduated profit protection (acts only when in profit)
 input ENUM_TIMEFRAMES InpHealthTF     = PERIOD_M30; // timeframe to evaluate health on
 input int      InpHealthADXPeriod     = 14;        // ADX period for the health score
-// --- P3: weighted factors (proportional, not pass/fail). Should sum to 100 ---
+// --- weighted factors (proportional, not pass/fail). Should sum to 100 ---
 input double   InpHW_Momentum         = 30.0;      // weight: momentum (close near extreme)
 input double   InpHW_Structure        = 25.0;      // weight: structure (HH+HL / LL+LH)
-input double   InpHW_ADX              = 20.0;      // weight: ADX strength + DI dominance
+input double   InpHW_ADX              = 20.0;      // weight: ADX level + DI dominance + slope
 input double   InpHW_Body             = 15.0;      // weight: body-strength trend
 input double   InpHW_ATR              = 10.0;      // weight: ATR vs ATR moving-average
-// --- P7: progressive exit (smooth, no hard steps) ---
-input double   InpHealthRunScore      = 80.0;      // score >= this -> LET RUN (no health lock)
-input double   InpHealthExitScore     = 35.0;      // score <= this -> EXIT (close whole trade)
-input double   InpHealthMaxLockPct    = 85.0;      // lock this % of profit at the exit boundary (scales up as score falls)
-// --- P2: health memory / decay (react to SPEED of decline) ---
+input int      InpHealthADXSlopeBars  = 3;         // bars back to measure ADX slope (rising/falling)
+// --- 5 exit modes (by adjusted score) ---
+input double   InpHealthRunScore      = 80.0;      // adj >= this -> LET RUN (no lock)
+input double   InpHealthMonitorScore  = 65.0;      // adj >= this -> MONITOR (watch, no tighten)
+input double   InpHealthLockScore     = 48.0;      // adj <  this -> LOCK label (tighten harder)
+input double   InpHealthExitScore     = 35.0;      // adj <= this -> EXIT (close whole trade)
+input double   InpHealthMaxLockPct    = 85.0;      // max % of profit locked (at the exit boundary)
+// --- memory / decay (linear-regression slope) ---
 input int      InpHealthMemoryBars    = 5;         // how many recent scores to remember
-input double   InpHealthDecayFactor   = 1.0;       // rapid drop -> protect sooner (0 = ignore decay)
-// --- P8: on-chart dashboard ---
-input bool     InpHealthDashboard     = true;      // show the health breakdown on the chart
+input double   InpHealthDecayFactor   = 1.0;       // rapid drop -> protect sooner (0 = ignore slope)
+// --- confirmation + critical override ---
+input int      InpHealthConfirmBars   = 2;         // need this many consecutive weak bars before tightening (anti-noise)
+input double   InpCritMomentumRatio   = 0.20;      // momentum below this (0-1) = CRITICAL -> force protect, ignore total
+// --- dashboard ---
+input bool     InpHealthDashboard     = true;      // show the health breakdown + mode + reason on chart
 
 input group "🛡️  DRAWDOWN PROTECTION (PROP)"
 input double   InpMaxDD_Percent      = 3.0;        // Max DD -> pause EA (%)
@@ -228,7 +234,8 @@ int hMA       = INVALID_HANDLE;
 int hADX      = INVALID_HANDLE;
 int hADXhealth= INVALID_HANDLE;   // ADX on the health TF (+DI/-DI for the health score)
 datetime gHealthLastBar = 0;      // last health-TF bar already graded (act once per bar)
-double   gHealthHist[];           // P2: recent total scores (for decay/slope), reset per trade
+double   gHealthHist[];           // recent total scores (for decay/slope), reset per trade
+int      gHealthWeakCount = 0;    // consecutive weak bars (confirmation rule), reset per trade
 int hATRslBuf = INVALID_HANDLE;   // entry-TF ATR(16) used for the SL buffer
 int hATR1     = INVALID_HANDLE;   // trailing layer 1 (M30)
 int hATR2     = INVALID_HANDLE;   // trailing layer 2 - strong move (M30)
@@ -1042,7 +1049,8 @@ void AddPosState(const ulong ticket, const double risk, const double vol)
    gPosPartialDone[n] = false;
    gPosMiniDone[n]    = false;
    gPosStagedBar[n]   = 0;
-   ArrayResize(gHealthHist, 0);   // P2: fresh health memory for each new trade
+   ArrayResize(gHealthHist, 0);   // fresh health memory for each new trade
+   gHealthWeakCount = 0;
 }
 
 void RemovePosStateAt(const int idx)
@@ -1133,7 +1141,9 @@ double HF_BodyTrend(const bool isBuy)
    return MathMin(avg*trendAdj, 1.0);
 }
 
-// P1: ADX as a proportion — DI dominance in our favour (0..1) blended with strength.
+// ADX as a proportion (0..1): DI dominance + strength + SLOPE (rising vs falling).
+// V4: ADX value alone is not enough — a falling ADX means the trend is dying
+// even if its level is still "high", so we fold the slope into the score.
 double HF_Adx(const bool isBuy)
 {
    double adx=0,pdi=0,mdi=0;
@@ -1141,7 +1151,11 @@ double HF_Adx(const bool isBuy)
    double tot=pdi+mdi;
    double dom=(tot>0.0)?((isBuy?pdi:mdi)/tot):0.5;   // 0.5 = balanced, 1 = fully our way
    double str=MathMin(adx/40.0,1.0);                 // 40 ADX = max strength
-   return MathMin(dom*0.6 + str*0.4, 1.0);
+   // slope: ADX now vs N bars ago -> 0.5 neutral, >0.5 rising, <0.5 falling
+   double adxPast=adx, slopeScore=0.5;
+   if(BufVal(hADXhealth,0,1+InpHealthADXSlopeBars,adxPast))
+      slopeScore = 0.5 + MathMax(MathMin((adx-adxPast)/10.0, 0.5), -0.5);  // +/-10 ADX = full swing
+   return MathMin(dom*0.45 + str*0.30 + slopeScore*0.25, 1.0);
 }
 
 // P6: ATR support — current ATR vs its own moving average (more stable than vs-previous).
@@ -1182,25 +1196,49 @@ HealthBreakdown ComputeHealth(const bool isBuy)
    return b;
 }
 
-// P2: push a score into memory and return the decay (slope): negative = falling.
+// Push a score into memory, then return the DECAY as a least-squares slope
+// over the remembered scores (per-bar change). Negative = deteriorating.
+// V4: a slope/regression is preferred over a simple average difference because
+// it captures the *direction and steepness* of the recent trend in health.
 double HealthDecay(const double total)
 {
    int cap=(int)InpHealthMemoryBars; if(cap<2) cap=2;
    int n=ArraySize(gHealthHist);
-   double prevAvg=0.0;
-   if(n>0){ double s=0; for(int i=0;i<n;i++) s+=gHealthHist[i]; prevAvg=s/n; }
    if(n<cap){ ArrayResize(gHealthHist,n+1); gHealthHist[n]=total; }
    else     { for(int i=0;i<cap-1;i++) gHealthHist[i]=gHealthHist[i+1]; gHealthHist[cap-1]=total; }
-   return (n>0) ? (total-prevAvg) : 0.0;
+
+   int m=ArraySize(gHealthHist);
+   if(m<2) return 0.0;
+   // least-squares slope of y=score vs x=bar index (0..m-1)
+   double sx=0,sy=0,sxx=0,sxy=0;
+   for(int i=0;i<m;i++){ sx+=i; sy+=gHealthHist[i]; sxx+=(double)i*i; sxy+=(double)i*gHealthHist[i]; }
+   double denom = m*sxx - sx*sx;
+   if(denom==0.0) return 0.0;
+   return (m*sxy - sx*sy) / denom;     // slope: per-bar change in health
 }
 
-// P8: on-chart dashboard (debugging).
-void HealthDashboard(const HealthBreakdown &b, const double decay, const string state)
+// Human-readable reason: name the factors that are dragging health down
+// (each factor's score as a % of its own weight; < 50% counts as "weak").
+string HealthReason(const HealthBreakdown &b)
+{
+   string r = "";
+   if(InpHW_Momentum >0 && b.momentum /InpHW_Momentum  < 0.5) r += "Momentum weak; ";
+   if(InpHW_Structure>0 && b.structure/InpHW_Structure < 0.5) r += "Structure broken; ";
+   if(InpHW_ADX      >0 && b.adx      /InpHW_ADX       < 0.5) r += "ADX fading; ";
+   if(InpHW_Body     >0 && b.body     /InpHW_Body      < 0.5) r += "Body shrinking; ";
+   if(InpHW_ATR      >0 && b.atr      /InpHW_ATR       < 0.5) r += "ATR low; ";
+   if(r=="") r = "all factors healthy";
+   return r;
+}
+
+// On-chart dashboard: scores + mode + decay + SL + reason (debugging).
+void HealthDashboard(const HealthBreakdown &b, const double decay, const string mode,
+                     const double sl, const string reason)
 {
    if(!InpHealthDashboard) return;
    Comment(StringFormat(
-      "🩺 TREND HEALTH: %.0f\n  Momentum  %.0f\n  Structure %.0f\n  ADX       %.0f\n  Body      %.0f\n  ATR       %.0f\n  Decay     %+.0f\n  State: %s",
-      b.total, b.momentum, b.structure, b.adx, b.body, b.atr, decay, state));
+      "🩺 ATHE  Health: %.0f   Mode: %s\n  Momentum  %.0f\n  Structure %.0f\n  ADX       %.0f\n  Body      %.0f\n  ATR       %.0f\n  Decay(slope) %+.1f\n  SL: %.2f\n  Reason: %s",
+      b.total, mode, b.momentum, b.structure, b.adx, b.body, b.atr, decay, sl, reason));
 }
 
 // Builds a "% of balance" tag for an SL-move notification, measured fresh
@@ -1358,14 +1396,19 @@ void ManageOpenPositions()
          }
       }
 
-      // ---- Trend Health Engine v3.2 (test) ----
-      // Each health-TF bar: grade the trend (0-100), remember it (decay), then
-      // PROGRESSIVELY tighten the SL as health falls. Acts ONLY when in profit,
-      // so the loss side stays identical to the validated EA.
-      //   adj >= RunScore        -> LET RUN (no health lock)
-      //   ExitScore < adj < Run  -> lock a % of profit that scales up as adj falls
-      //   adj <= ExitScore       -> EXIT (close the whole trade)
-      // where adj = total + decay*DecayFactor  (rapid drop -> protect sooner, P2)
+      // ---- Adaptive Trend Health Engine v4 (ATHE, test) ----
+      // Each health-TF bar: grade the trend (0-100), remember it (regression
+      // slope = decay), then act via a 5-state machine. Acts ONLY when in
+      // profit, so the loss side stays identical to the validated EA.
+      //   LET RUN  (adj >= RunScore)        : no lock
+      //   MONITOR  (Monitor <= adj < Run)   : watch, no tighten
+      //   PROTECT  (Lock <= adj < Monitor)  : tighten (needs confirmation)
+      //   LOCK     (Exit < adj < Lock)      : tighten harder
+      //   EXIT     (adj <= ExitScore)       : close the whole trade
+      // adj = total + slope*DecayFactor (rapid drop -> protect sooner).
+      // Confirmation: need N consecutive weak bars before the first tighten.
+      // Critical: extremely weak momentum overrides the score (force protect).
+      // One-way SL: ModifySL only ever tightens; recovery never widens it.
       if(InpUseHealthEngine && profitDist > 0.0)
       {
          datetime hbar = iTime(_Symbol, InpHealthTF, 1);
@@ -1373,41 +1416,53 @@ void ManageOpenPositions()
          {
             gHealthLastBar = hbar;
             HealthBreakdown hb = ComputeHealth(isBuy);
-            double decay = HealthDecay(hb.total);                         // P2
-            double adj   = hb.total + decay * InpHealthDecayFactor;       // react to speed of decline
+            double decay = HealthDecay(hb.total);
+            double adj   = hb.total + decay * InpHealthDecayFactor;
 
-            if(adj <= InpHealthExitScore)
+            // CRITICAL override: if momentum collapses, do not allow LET RUN/MONITOR
+            bool critical = (HF_Momentum(isBuy) < InpCritMomentumRatio);
+            if(critical) adj = MathMin(adj, InpHealthMonitorScore - 1.0);
+
+            // confirmation counter: count consecutive weak (below MONITOR) bars
+            bool weak = (adj < InpHealthMonitorScore);
+            gHealthWeakCount = weak ? (gHealthWeakCount + 1) : 0;
+            bool confirmed = critical || (gHealthWeakCount >= InpHealthConfirmBars);
+
+            // resolve mode
+            string mode;
+            if(adj <= InpHealthExitScore)        mode = "EXIT";
+            else if(adj >= InpHealthRunScore)    mode = "LET RUN";
+            else if(adj >= InpHealthMonitorScore)mode = "MONITOR";
+            else if(adj >= InpHealthLockScore)   mode = "PROTECT";
+            else                                 mode = "LOCK";
+
+            HealthDashboard(hb, decay, mode, sl, HealthReason(hb));
+
+            if(mode == "EXIT")
             {
-               HealthDashboard(hb, decay, "EXIT");
                if(trade.PositionClose(ticket))
                {
-                  Notify(StringFormat("🩺❌ Health %.0f (adj %.0f) -> EXIT #%I64u (trend dead)",
-                                      hb.total, adj, ticket));
-                  continue;                                               // closed; skip the rest
+                  Notify(StringFormat("🩺❌ ATHE Health %.0f (adj %.0f) -> EXIT #%I64u (%s)",
+                                      hb.total, adj, ticket, HealthReason(hb)));
+                  continue;                                  // closed; skip the rest
                }
             }
-            else
+            // tighten only in PROTECT/LOCK, and only once confirmed (anti-noise)
+            else if((mode=="PROTECT" || mode=="LOCK") && confirmed)
             {
-               // P7: smooth lock %, 0 at RunScore -> MaxLockPct at ExitScore
-               double lockPct = 0.0;
-               if(adj < InpHealthRunScore)
-               {
-                  double span = InpHealthRunScore - InpHealthExitScore;
-                  if(span > 0.0)
-                     lockPct = InpHealthMaxLockPct * (InpHealthRunScore - adj) / span;
-               }
-               string state = (lockPct <= 0.0) ? "LET RUN" : (lockPct < 40.0 ? "PROTECT" : "LOCK");
-               HealthDashboard(hb, decay, state);
-
+               // progressive lock %: 0 at MonitorScore -> MaxLockPct at ExitScore
+               double span = InpHealthMonitorScore - InpHealthExitScore;
+               double lockPct = (span>0.0) ? InpHealthMaxLockPct*(InpHealthMonitorScore-adj)/span : 0.0;
+               lockPct = MathMax(MathMin(lockPct, InpHealthMaxLockPct), 0.0);
                if(lockPct > 0.0)
                {
                   double lockDist = profitDist * (lockPct/100.0);
                   double lockSL   = isBuy ? open + lockDist : open - lockDist;
-                  if(ModifySL(ticket, isBuy, lockSL, sl))    // only ever tightens -> ratchets in
+                  if(ModifySL(ticket, isBuy, lockSL, sl))    // one-way: only ever tightens
                   {
                      sl = lockSL;
-                     Notify(StringFormat("🩺🔒 Health %.0f (adj %.0f) -> lock %.0f%% [%s] #%I64u",
-                                         hb.total, adj, lockPct, state, ticket)
+                     Notify(StringFormat("🩺🔒 ATHE Health %.0f (adj %.0f) [%s] lock %.0f%% #%I64u",
+                                         hb.total, adj, mode, lockPct, ticket)
                             + SLPercentTag(type, open, cur, lockSL));
                   }
                }
