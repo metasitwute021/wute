@@ -59,7 +59,7 @@
 #property version   "2.08"
 #property strict
 
-#define EA_VERSION "2.19"
+#define EA_VERSION "2.20"
 
 #include <Trade\Trade.mqh>
 
@@ -102,6 +102,7 @@ input group "⚙️  GENERAL"
 input long     InpMagic              = 20250117;   // 🔑 Magic number (EA id)
 input bool     InpEnableNotifications= true;       // 🔔 Push notifications ON/OFF
 input string   InpNotifPrefix        = "[XAU-EA] ";// 🏷️ Notification prefix
+input bool     InpStatusReport       = true;       // 📊 send a "why no trade" status each entry bar (proves EA is alive)
 
 input group "⏰  TIMEFRAMES"
 input ENUM_TIMEFRAMES InpEntryTF      = PERIOD_H4;  // 📈 Entry / signal timeframe
@@ -376,6 +377,8 @@ void OnTick()
    if(curBar == gLastEntryBar)
       return;
    gLastEntryBar = curBar;
+
+   SendSignalStatus();   // report entry-condition state each bar (proves EA is alive)
 
    // Re-entry cooldown: after a full close, skip whole entry-TF bars before
    // trading again. Skipping a bar also forces the signal to be RECALCULATED
@@ -760,6 +763,58 @@ int CountMyPositions()
          cnt++;
    }
    return cnt;
+}
+
+//==================================================================
+//  Signal status report — tells you WHY there is no trade yet, and
+//  how close each entry condition is (proves the EA is alive & working).
+//  Runs once per entry-TF bar while FLAT (no spam while a trade runs).
+//==================================================================
+void SendSignalStatus()
+{
+   if(!InpStatusReport)          return;
+   if(CountMyPositions() > 0)     return;   // trade running -> user already gets trade alerts
+
+   int upIdx = iHighest(_Symbol, InpEntryTF, MODE_HIGH, InpDonchianPeriod, 2);
+   int loIdx = iLowest (_Symbol, InpEntryTF, MODE_LOW,  InpDonchianPeriod, 2);
+   if(upIdx < 0 || loIdx < 0)     return;
+   double upper  = iHigh (_Symbol, InpEntryTF, upIdx);
+   double lower  = iLow  (_Symbol, InpEntryTF, loIdx);
+   double close1 = iClose(_Symbol, InpEntryTF, 1);
+   double ma=0, adx=0;
+   BufVal(hMA, 0, 1, ma);
+   BufVal(hADX,0, 1, adx);
+
+   bool   trendUp = (close1 > ma);            // which side the SMA allows
+   string side    = trendUp ? "BUY" : "SELL";
+   bool   adxOK   = (adx >= InpADXMin);
+   // distance to the breakout on the SMA-aligned side
+   bool   breakoutOK = trendUp ? (close1 > upper) : (close1 < lower);
+   double target     = trendUp ? upper : lower;
+   double distPts    = MathAbs(target - close1) / _Point;
+
+   // is the path open? (news / weekend / cooldown / max positions)
+   string block = "";
+   if(gCooldownBarsLeft > 0)                        block += "cooldown ";
+   if(IsWeekendBlockTime())                         block += "weekend ";
+   if(gInNews)                                      block += "news ";
+   if(CountMyPositions() >= InpMaxPositions)        block += "maxpos ";
+   bool pathOpen = (block == "");
+
+   int met = (adxOK?1:0) + (breakoutOK?1:0) + (pathOpen?1:0);   // out of 3 gates
+
+   string txt = StringFormat(
+      "📊 EA ยังไม่เข้าไม้ (ผ่าน %d/3)\n"
+      "%s ADX %.1f / %.0f\n"
+      "%s Breakout(%s): %s\n"
+      "%s ทางเปิด: %s",
+      met,
+      adxOK?"✅":"❌", adx, InpADXMin,
+      breakoutOK?"✅":"⏳", side,
+      breakoutOK ? "ทะลุแล้ว!" :
+                   StringFormat("รอราคา %s %.2f (ห่าง %.0f จุด)", trendUp?">":"<", target, distPts),
+      pathOpen?"✅":"⛔", pathOpen ? "ว่าง" : block);
+   Notify(txt);
 }
 
 //==================================================================
