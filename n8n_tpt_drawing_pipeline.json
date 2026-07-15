@@ -40,27 +40,14 @@
   },
   {
    "parameters": {
-    "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst histObj = (staticData.historyBySubject && typeof staticData.historyBySubject === 'object') ? staticData.historyBySubject : {};\nstaticData.historyBySubject = histObj;\n\nconst subjects = ['Math', 'Reading & Phonics', 'Science', 'Writing & Grammar', 'Social Studies', 'Art & Coloring', 'Seasonal & Holiday Activities'];\nconst grades = ['PreK-Grade 1', 'Grade 2-3', 'Grade 4-5'];\n\n// หมุนช่วงชั้นทุกรอบรัน (ทั้ง 7 วิชาใช้ระดับเดียวกันในรอบนั้น รอบถัดไปเลื่อนระดับ)\nlet n = Number.isInteger(staticData.rotation) ? staticData.rotation : 0;\nconst grade = grades[n % grades.length];\nstaticData.rotation = n + 1;\n\nconst today = new Date().toISOString().slice(0, 10);\n\nreturn subjects.map((subject, idx) => {\n  let assignment = 'หาเทรนด์ \"ธีมภาพวาดการ์ตูน/coloring page\" ที่กำลังเป็นที่นิยมบน TPT, Etsy, Pinterest สำหรับใบงานเด็กวิชา ' + subject + ' ระดับ ' + grade + ' แล้วเลือกธีมภาพ + หัวข้อย่อยที่ demand สูงและคู่แข่งน้อยที่สุดตอนนี้ (วิชาและระดับชั้นถูกล็อกแล้ว ห้ามเปลี่ยน แต่ธีมภาพและหัวข้อย่อยให้เลือกเองจากผลการค้นหา)';\n  const hist = Array.isArray(histObj[subject]) ? histObj[subject] : [];\n  if (hist.length > 0) {\n    assignment += '\\n\\n**สำคัญมาก - ห้ามทำซ้ำ**: วิชานี้เคยสร้างธีม/หัวข้อต่อไปนี้ไปแล้ว ห้ามเลือกที่เหมือนหรือใกล้เคียงเด็ดขาด:\\n- ' + hist.slice(-40).join('\\n- ');\n  }\n  return { json: { chatInput: assignment, sessionId: 'auto-' + today + '-' + n + '-' + idx, subject: subject, grade: grade, auto_run: true } };\n});"
+    "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst histObj = (staticData.historyBySubject && typeof staticData.historyBySubject === 'object') ? staticData.historyBySubject : {};\nstaticData.historyBySubject = histObj;\n\nconst subjects = ['Math', 'Reading & Phonics', 'Science', 'Writing & Grammar', 'Social Studies', 'Art & Coloring', 'Seasonal & Holiday Activities'];\nconst grades = ['PreK-Grade 1', 'Grade 2-3', 'Grade 4-5'];\n\n// 1 รอบรัน = 1 วิชา — เลื่อนวิชาทุกครั้งที่รัน วนไปเรื่อยๆ\n// ครบทั้ง 7 วิชาแล้วค่อยเลื่อนระดับชั้น (Math PreK -> ... -> Seasonal PreK -> Math Grade 2-3 -> ...)\nlet n = Number.isInteger(staticData.rotation) ? staticData.rotation : 0;\nconst subject = subjects[n % subjects.length];\nconst grade = grades[Math.floor(n / subjects.length) % grades.length];\nstaticData.rotation = n + 1;\n\nlet assignment = 'หาเทรนด์ \"ธีมภาพวาดการ์ตูน/coloring page\" ที่กำลังเป็นที่นิยมบน TPT, Etsy, Pinterest สำหรับใบงานเด็กวิชา ' + subject + ' ระดับ ' + grade + ' แล้วเลือกธีมภาพ + หัวข้อย่อยที่ demand สูงและคู่แข่งน้อยที่สุดตอนนี้ (วิชาและระดับชั้นถูกล็อกแล้ว ห้ามเปลี่ยน แต่ธีมภาพและหัวข้อย่อยให้เลือกเองจากผลการค้นหา)';\nconst hist = Array.isArray(histObj[subject]) ? histObj[subject] : [];\nif (hist.length > 0) {\n  assignment += '\\n\\n**สำคัญมาก - ห้ามทำซ้ำ**: วิชานี้เคยสร้างธีม/หัวข้อต่อไปนี้ไปแล้ว ห้ามเลือกที่เหมือนหรือใกล้เคียงเด็ดขาด:\\n- ' + hist.slice(-40).join('\\n- ');\n}\n\nreturn [{\n  json: {\n    chatInput: assignment,\n    sessionId: 'auto-' + new Date().toISOString().slice(0, 10) + '-' + n,\n    subject: subject,\n    grade: grade\n  }\n}];"
    },
    "id": "d3333333-3333-3333-3333-333333333333",
-   "name": "Subjects Fan-out",
+   "name": "Daily Assignment",
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
    "position": [
-    -480,
-    120
-   ]
-  },
-  {
-   "parameters": {
-    "options": {}
-   },
-   "id": "d4444444-4444-4444-4444-444444444444",
-   "name": "Loop Subjects",
-   "type": "n8n-nodes-base.splitInBatches",
-   "typeVersion": 3,
-   "position": [
-    -280,
+    -460,
     120
    ]
   },
@@ -414,7 +401,7 @@
   },
   {
    "parameters": {
-    "jsCode": "// ---- 1) Re-attach the PDF binary (HTTP nodes dropped it) ----\nconst renameItem = $('Rename File').first();\nconst fname = (renameItem.json && renameItem.json.pdf_file_name) || 'worksheet.pdf';\nconst out = { json: { ...$json }, binary: {} };\nif (renameItem.binary && renameItem.binary.data) {\n  out.binary.data = { ...renameItem.binary.data, fileName: fname, fileExtension: 'pdf', mimeType: 'application/pdf' };\n}\n\n// ---- 2) Attach a preview image; ALWAYS create out.binary.cover so Gmail never fails ----\n// (fallback chain: cover -> mascot -> ภาพหน้าไหนก็ได้ -> 1x1 placeholder)\nlet images = {};\ntry { images = $('Collect Images').first().json.images || {}; } catch (e) {}\nlet previewB64 = images.cover || images.mascot || '';\nif (!previewB64) {\n  const k = Object.keys(images).find(key => images[key]);\n  previewB64 = k ? images[k] : '';\n}\nconst coverName = fname.replace(/\\.pdf$/i, '') + '_COVER.jpg';\nif (previewB64) {\n  out.binary.cover = await this.helpers.prepareBinaryData(Buffer.from(previewB64, 'base64'), coverName, 'image/jpeg');\n} else {\n  // last-resort tiny image so the email STILL SENDS with the PDF even if every image failed\n  const onePx = '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';\n  out.binary.cover = await this.helpers.prepareBinaryData(Buffer.from(onePx, 'base64'), coverName, 'image/jpeg');\n}\n\n// ---- 3) Grade level -> เด็กเล็ก/โต + TPT grade tags ----\nlet grade = '';\ntry { grade = $('2. Analysis Agent').first().json.output.grade_level || ''; } catch (e) {}\nif (!grade) { try { grade = $('Loop Subjects').first().json.grade || ''; } catch (e) {} }\nif (!grade) grade = 'ไม่ระบุ';\n\nconst nums = (grade.match(/\\d+/g) || []).map(Number);\nconst maxGrade = nums.length ? Math.max(...nums) : 0;\nconst lower = grade.toLowerCase();\nconst hasEarly = lower.includes('prek') || lower.includes('pre-k') || lower.includes('kindergarten') || lower.startsWith('k');\n\nlet ageGroup;\nif (maxGrade >= 3) ageGroup = 'เด็กโต (ป.3 ขึ้นไป)';\nelse if (maxGrade > 0 || hasEarly) ageGroup = 'เด็กเล็ก (อนุบาล - ป.2)';\nelse ageGroup = 'ทุกช่วงวัย';\n\nconst map = { 0: 'PreK', 1: '1st', 2: '2nd', 3: '3rd', 4: '4th', 5: '5th', 6: '6th' };\nlet tptGrades = grade;\nif (hasEarly && nums.length) tptGrades = 'PreK, K, ' + nums.map(n => map[n] || (n + 'th')).join(', ');\nelse if (hasEarly) tptGrades = 'PreK, K';\n\nconst title = $('4. Build HTML').first().json.title || '';\nconst desc = $('4. Build HTML').first().json.description || '';\nconst tags = ($('4. Build HTML').first().json.tags || []).join(', ');\n\nlet artTheme = '';\ntry { artTheme = $('2. Analysis Agent').first().json.output.art_theme || ''; } catch (e) {}\n\nout.json.age_group = ageGroup;\nout.json.grade_level = grade;\nout.json.tpt_grades = tptGrades;\n\n// ---- read TPT category recommendations from Content Agent ----\nlet tptSubjects = [], tptTags = [];\ntry {\n  const co = $('3. Content Creation Agent').last().json.output;\n  tptSubjects = Array.isArray(co.tpt_subjects) ? co.tpt_subjects : [];\n  tptTags = Array.isArray(co.tpt_tags) ? co.tpt_tags : [];\n} catch (e) {}\nconst subjectsLine = tptSubjects.length ? tptSubjects.join(', ') : '(เลือกเองตามวิชา)';\nconst resourceLine = tptTags.length ? tptTags.join(', ') : 'Worksheets, Printables, Activities';\n\n// ---- 4) Build a ready-to-paste TPT listing block ----\nout.json.tpt_kit =\n`====== TPT UPLOAD KIT (คัดลอกวางในฟอร์ม TPT) ======\n\n[TITLE]\n${title}\n\n[DESCRIPTION]\n${desc}\n\n[ART THEME]  ${artTheme}\n[GRADE LEVELS]  ${tptGrades}\n[SUBJECT AREA — เลือกใน TPT]  ${subjectsLine}\n[RESOURCE TYPE / TAGS — เลือกใน TPT]  ${resourceLine}\n[PRICE]  $4.50\n[SEARCH KEYWORDS]  ${tags}\n\n[FILE]  แนบไฟล์ PDF ในอีเมลนี้\n[PREVIEW/COVER]  ใช้ไฟล์ *_COVER.jpg ในอีเมลนี้เป็นภาพปก\n\nเหมาะสำหรับ: ${ageGroup}\n===============================================`;\n\nreturn [out];"
+    "jsCode": "// ---- 1) Re-attach the PDF binary (HTTP nodes dropped it) ----\nconst renameItem = $('Rename File').first();\nconst fname = (renameItem.json && renameItem.json.pdf_file_name) || 'worksheet.pdf';\nconst out = { json: { ...$json }, binary: {} };\nif (renameItem.binary && renameItem.binary.data) {\n  out.binary.data = { ...renameItem.binary.data, fileName: fname, fileExtension: 'pdf', mimeType: 'application/pdf' };\n}\n\n// ---- 2) Attach a preview image; ALWAYS create out.binary.cover so Gmail never fails ----\n// (fallback chain: cover -> mascot -> ภาพหน้าไหนก็ได้ -> 1x1 placeholder)\nlet images = {};\ntry { images = $('Collect Images').first().json.images || {}; } catch (e) {}\nlet previewB64 = images.cover || images.mascot || '';\nif (!previewB64) {\n  const k = Object.keys(images).find(key => images[key]);\n  previewB64 = k ? images[k] : '';\n}\nconst coverName = fname.replace(/\\.pdf$/i, '') + '_COVER.jpg';\nif (previewB64) {\n  out.binary.cover = await this.helpers.prepareBinaryData(Buffer.from(previewB64, 'base64'), coverName, 'image/jpeg');\n} else {\n  // last-resort tiny image so the email STILL SENDS with the PDF even if every image failed\n  const onePx = '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';\n  out.binary.cover = await this.helpers.prepareBinaryData(Buffer.from(onePx, 'base64'), coverName, 'image/jpeg');\n}\n\n// ---- 3) Grade level -> เด็กเล็ก/โต + TPT grade tags ----\nlet grade = '';\ntry { grade = $('2. Analysis Agent').first().json.output.grade_level || ''; } catch (e) {}\nif (!grade) { try { grade = $('Daily Assignment').first().json.grade || ''; } catch (e) {} }\nif (!grade) grade = 'ไม่ระบุ';\n\nconst nums = (grade.match(/\\d+/g) || []).map(Number);\nconst maxGrade = nums.length ? Math.max(...nums) : 0;\nconst lower = grade.toLowerCase();\nconst hasEarly = lower.includes('prek') || lower.includes('pre-k') || lower.includes('kindergarten') || lower.startsWith('k');\n\nlet ageGroup;\nif (maxGrade >= 3) ageGroup = 'เด็กโต (ป.3 ขึ้นไป)';\nelse if (maxGrade > 0 || hasEarly) ageGroup = 'เด็กเล็ก (อนุบาล - ป.2)';\nelse ageGroup = 'ทุกช่วงวัย';\n\nconst map = { 0: 'PreK', 1: '1st', 2: '2nd', 3: '3rd', 4: '4th', 5: '5th', 6: '6th' };\nlet tptGrades = grade;\nif (hasEarly && nums.length) tptGrades = 'PreK, K, ' + nums.map(n => map[n] || (n + 'th')).join(', ');\nelse if (hasEarly) tptGrades = 'PreK, K';\n\nconst title = $('4. Build HTML').first().json.title || '';\nconst desc = $('4. Build HTML').first().json.description || '';\nconst tags = ($('4. Build HTML').first().json.tags || []).join(', ');\n\nlet artTheme = '';\ntry { artTheme = $('2. Analysis Agent').first().json.output.art_theme || ''; } catch (e) {}\n\nout.json.age_group = ageGroup;\nout.json.grade_level = grade;\nout.json.tpt_grades = tptGrades;\n\n// ---- read TPT category recommendations from Content Agent ----\nlet tptSubjects = [], tptTags = [];\ntry {\n  const co = $('3. Content Creation Agent').last().json.output;\n  tptSubjects = Array.isArray(co.tpt_subjects) ? co.tpt_subjects : [];\n  tptTags = Array.isArray(co.tpt_tags) ? co.tpt_tags : [];\n} catch (e) {}\nconst subjectsLine = tptSubjects.length ? tptSubjects.join(', ') : '(เลือกเองตามวิชา)';\nconst resourceLine = tptTags.length ? tptTags.join(', ') : 'Worksheets, Printables, Activities';\n\n// ---- 4) Build a ready-to-paste TPT listing block ----\nout.json.tpt_kit =\n`====== TPT UPLOAD KIT (คัดลอกวางในฟอร์ม TPT) ======\n\n[TITLE]\n${title}\n\n[DESCRIPTION]\n${desc}\n\n[ART THEME]  ${artTheme}\n[GRADE LEVELS]  ${tptGrades}\n[SUBJECT AREA — เลือกใน TPT]  ${subjectsLine}\n[RESOURCE TYPE / TAGS — เลือกใน TPT]  ${resourceLine}\n[PRICE]  $4.50\n[SEARCH KEYWORDS]  ${tags}\n\n[FILE]  แนบไฟล์ PDF ในอีเมลนี้\n[PREVIEW/COVER]  ใช้ไฟล์ *_COVER.jpg ในอีเมลนี้เป็นภาพปก\n\nเหมาะสำหรับ: ${ageGroup}\n===============================================`;\n\nreturn [out];"
    },
    "id": "e9999999-9999-9999-9999-999999999999",
    "name": "Prep Email",
@@ -456,7 +443,7 @@
   },
   {
    "parameters": {
-    "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst histObj = (staticData.historyBySubject && typeof staticData.historyBySubject === 'object') ? staticData.historyBySubject : {};\nstaticData.historyBySubject = histObj;\n\n// วิชาปัจจุบัน + flag ว่ามาจากรอบรันอัตโนมัติ (ผ่าน Loop Subjects) หรือมาจาก chat\nlet subject = '';\nlet autoRun = false;\ntry {\n  const cur = $('Loop Subjects').first().json;\n  subject = cur.subject || '';\n  autoRun = !!cur.auto_run;\n} catch (e) {}\n\nlet topic = '';\nlet theme = '';\ntry {\n  const a = $('2. Analysis Agent').first().json.output;\n  topic = a.topic || '';\n  theme = a.art_theme || '';\n} catch (e) {}\nif (!topic) { try { topic = $('4. Build HTML').first().json.title || ''; } catch (e) {} }\n\nconst key = subject || 'chat';\nconst arr = Array.isArray(histObj[key]) ? histObj[key] : [];\nconst entry = (topic + (theme ? ' [' + theme + ']' : '')).trim();\nif (entry && !arr.includes(entry)) {\n  arr.push(entry);\n}\nhistObj[key] = arr.slice(-40);\n\n// continue_loop = true เฉพาะรอบอัตโนมัติ -> วนกลับ Loop Subjects ทำวิชาถัดไป\nreturn [{ json: { subject: key, saved_entry: entry, continue_loop: autoRun } }];"
+    "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst histObj = (staticData.historyBySubject && typeof staticData.historyBySubject === 'object') ? staticData.historyBySubject : {};\nstaticData.historyBySubject = histObj;\n\n// วิชาปัจจุบัน (รอบอัตโนมัติมาจาก Daily Assignment / เส้นทาง chat จะไม่มี node นี้)\nlet subject = '';\ntry { subject = $('Daily Assignment').first().json.subject || ''; } catch (e) {}\n\nlet topic = '';\nlet theme = '';\ntry {\n  const a = $('2. Analysis Agent').first().json.output;\n  topic = a.topic || '';\n  theme = a.art_theme || '';\n} catch (e) {}\nif (!topic) { try { topic = $('4. Build HTML').first().json.title || ''; } catch (e) {} }\n\nconst key = subject || 'chat';\nconst arr = Array.isArray(histObj[key]) ? histObj[key] : [];\nconst entry = (topic + (theme ? ' [' + theme + ']' : '')).trim();\nif (entry && !arr.includes(entry)) {\n  arr.push(entry);\n}\nhistObj[key] = arr.slice(-40);\n\nreturn [{ json: { subject: key, saved_entry: entry } }];"
    },
    "id": "ebbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
    "name": "Save History",
@@ -464,40 +451,6 @@
    "typeVersion": 2,
    "position": [
     2880,
-    300
-   ]
-  },
-  {
-   "parameters": {
-    "conditions": {
-     "options": {
-      "caseSensitive": true,
-      "leftValue": "",
-      "typeValidation": "loose",
-      "version": 2
-     },
-     "conditions": [
-      {
-       "id": "loop-cond-1",
-       "leftValue": "={{ $json.continue_loop }}",
-       "rightValue": "",
-       "operator": {
-        "type": "boolean",
-        "operation": "true",
-        "singleValue": true
-       }
-      }
-     ],
-     "combinator": "and"
-    },
-    "options": {}
-   },
-   "id": "eccccccc-cccc-cccc-cccc-cccccccccccc",
-   "name": "More Subjects?",
-   "type": "n8n-nodes-base.if",
-   "typeVersion": 2.2,
-   "position": [
-    3060,
     300
    ]
   }
@@ -518,27 +471,15 @@
    "main": [
     [
      {
-      "node": "Subjects Fan-out",
+      "node": "Daily Assignment",
       "type": "main",
       "index": 0
      }
     ]
    ]
   },
-  "Subjects Fan-out": {
+  "Daily Assignment": {
    "main": [
-    [
-     {
-      "node": "Loop Subjects",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  },
-  "Loop Subjects": {
-   "main": [
-    [],
     [
      {
       "node": "1. Research Agent",
@@ -696,29 +637,6 @@
       "index": 0
      }
     ]
-   ]
-  },
-  "Save History": {
-   "main": [
-    [
-     {
-      "node": "More Subjects?",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  },
-  "More Subjects?": {
-   "main": [
-    [
-     {
-      "node": "Loop Subjects",
-      "type": "main",
-      "index": 0
-     }
-    ],
-    []
    ]
   },
   "Gemini Model (Research)": {
