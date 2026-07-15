@@ -323,11 +323,14 @@
     1620,
     300
    ],
-   "onError": "continueRegularOutput"
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000
   },
   {
    "parameters": {
-    "jsCode": "// จับคู่ผลลัพธ์ภาพกลับเข้า job_id (ลำดับ item ตรงกับ Extract Image Jobs เพราะ HTTP node รันทีละ item)\nconst jobs = $('Extract Image Jobs').all().map(i => i.json);\nconst responses = $input.all().map(i => i.json);\n\nconst images = {};\njobs.forEach((job, i) => {\n  const r = responses[i] || {};\n  images[job.job_id] = (r.data && r.data[0] && r.data[0].b64_json) || '';\n});\n\nconst ok = Object.values(images).filter(Boolean).length;\nreturn [{ json: { images: images, images_ok: ok, images_total: jobs.length } }];"
+    "jsCode": "// จับคู่ผลลัพธ์ภาพกลับเข้า job_id (ลำดับ item ตรงกับ Extract Image Jobs เพราะ HTTP node รันทีละ item)\nconst jobs = $('Extract Image Jobs').all().map(i => i.json);\nconst responses = $input.all().map(i => i.json);\n\nconst images = {};\njobs.forEach((job, i) => {\n  const r = responses[i] || {};\n  images[job.job_id] = (r.data && r.data[0] && r.data[0].b64_json) || '';\n});\n\nconst ok = Object.values(images).filter(Boolean).length;\nreturn [{ json: { images: images, attempt: 0, images_ok: ok, images_total: jobs.length } }];"
    },
    "id": "e5555555-5555-5555-5555-555555555555",
    "name": "Collect Images",
@@ -340,7 +343,105 @@
   },
   {
    "parameters": {
-    "jsCode": "const data = $('3. Content Creation Agent').last().json.output;\nlet images = {};\ntry { images = $('Collect Images').first().json.images || {}; } catch (e) {}\n\nif (!data || !data.title || !Array.isArray(data.pages) || data.pages.length === 0) {\n  throw new Error('Content Agent ไม่ได้ส่ง title/pages ที่ถูกต้อง');\n}\n\nconst esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst blankify = s => esc(s).replace(/_{3,}/g, `<span class='blank'></span>`);\n\nconst CSS_COLORS = { red: '#e53935', blue: '#1e88e5', green: '#43a047', yellow: '#fdd835', orange: '#fb8c00', purple: '#8e24aa', pink: '#ec407a', brown: '#6d4c41', black: '#212121', gray: '#9e9e9e', grey: '#9e9e9e' };\nconst swatch = c => CSS_COLORS[String(c || '').toLowerCase().trim()] || '#cccccc';\n\nconst img = (id, cls) => images[id]\n  ? `<img class='${cls}' src='data:image/jpeg;base64,${images[id]}'/>`\n  : `<div class='img-missing'>(image was not generated)</div>`;\n\nconst mascotImg = images.mascot ? `<img class='mascot' src='data:image/jpeg;base64,${images.mascot}'/>` : '';\nconst coverHtml = images.cover ? `<div class='page cover'><img class='cover-img' src='data:image/jpeg;base64,${images.cover}'/></div>` : '';\n\nconst colorKeyHtml = key => `<div class='key'>` + key.map(k =>\n  `<div class='key-cell'><div class='key-num'>${esc(k.answer)}</div><div class='key-swatch' style='background:${swatch(k.color)}'></div><div class='key-name'>${esc(k.color)}</div></div>`\n).join('') + `</div>`;\n\nconst GRID = ['picture_grid', 'count_and_write'];\n\nconst pagesHtml = coverHtml + data.pages.map((p, i) => {\n  const t = String(p.activity_type || '').toLowerCase();\n  const items = Array.isArray(p.items) ? p.items : [];\n  const hasKey = t === 'color_by_number_scene' && Array.isArray(p.color_key) && p.color_key.length > 0;\n\n  let body = '';\n  if (t === 'answer_key') {\n    body = items.map(w => `<div class='info-box'>${blankify(w)}</div>`).join('');\n  } else if (GRID.includes(t)) {\n    // ตัดเลขข้อที่โมเดลใส่มาเองออกก่อน (กัน \"1. 1. ...\" ซ้ำ)\n    const clean = w => String(w).replace(/^\\s*\\d+\\s*[\\.\\)]\\s*/, '');\n    body = `<div class='scene-wrap'>${img('page_' + i, 'scene-grid')}</div>` +\n      `<div class='q-list'>` + items.map((w, qi) => `<div class='q-row'>${qi + 1}. ${blankify(clean(w))}</div>`).join('') + `</div>`;\n  } else {\n    body = `<div class='scene-wrap fill'>${img('page_' + i, hasKey ? 'scene-full with-key' : 'scene-full')}</div>`;\n  }\n\n  return `\n<div class='page'>\n  <div class='frame'></div>\n  <div class='meta-row'><span>Name: ____________________</span><span>Date: __________</span></div>\n  <div class='head-row'><h2 class='page-title'>${esc(p.page_title || 'Page ' + (i + 1))}</h2>${mascotImg}</div>\n  ${p.instructions ? `<p class='inst'>✏️ ${esc(p.instructions)}</p>` : ''}\n  ${hasKey ? colorKeyHtml(p.color_key) : ''}\n  <div class='body'>${body}</div>\n  <div class='foot'><div class='footer'>${esc(data.title)} • Page ${i + 1} of ${data.pages.length}</div></div>\n</div>`;\n}).join('');\n\nconst html = `<!DOCTYPE html>\n<html>\n<head>\n<meta charset='utf-8'>\n<link href='https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;800&family=Schoolbell&display=swap' rel='stylesheet'>\n<style>\n  @page { size: Letter; margin: 0; }\n  body { margin: 0; font-family: 'Baloo 2', Arial, sans-serif; color: #222; }\n  .page { width: 8.5in; min-height: 10in; box-sizing: border-box; padding: 0.45in 0.6in 0.85in 0.6in; page-break-after: always; page-break-inside: avoid; position: relative; display: flex; flex-direction: column; overflow: hidden; }\n  .frame { position: absolute; top: 0.22in; left: 0.22in; right: 0.22in; bottom: 0.22in; border: 2px dashed #c9d6f0; border-radius: 16px; pointer-events: none; }\n  .meta-row { display: flex; justify-content: space-between; margin: 4px 2px 2px; font-size: 14px; }\n  .head-row { display: flex; align-items: center; gap: 12px; justify-content: center; }\n  .page-title { text-align: center; font-size: 28px; margin: 6px 0 2px; flex: 1; }\n  .mascot { flex: none; width: 0.85in; height: 0.85in; object-fit: contain; }\n  .inst { background: #f7f7f7; border: 2px dashed #999; border-radius: 10px; padding: 7px 12px; font-size: 15px; margin: 6px 0; }\n  .key { display: flex; gap: 8px; justify-content: center; margin: 6px 0; flex-wrap: wrap; }\n  .key-cell { border: 2px solid #333; border-radius: 8px; padding: 4px 8px 5px; text-align: center; min-width: 0.72in; }\n  .key-num { font-weight: 800; font-size: 18px; line-height: 1.1; }\n  .key-swatch { height: 12px; border-radius: 6px; margin: 3px 0 2px; border: 1px solid #999; }\n  .key-name { font-size: 11px; }\n  .body { flex: 1 1 auto; display: flex; flex-direction: column; }\n  .scene-wrap { text-align: center; }\n  .scene-wrap.fill { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; }\n  .scene-full { width: 100%; max-height: 7.4in; object-fit: contain; }\n  .scene-full.with-key { max-height: 6.7in; }\n  .scene-grid { width: 100%; max-height: 5.0in; object-fit: contain; }\n  .q-list { margin-top: 10px; }\n  .q-row { font-size: 18px; line-height: 2.15; }\n  .blank { display: inline-block; min-width: 2.0in; border-bottom: 2px solid #444; height: 0.95em; }\n  .info-box { border: 2px solid #444; border-radius: 12px; padding: 9px 14px; margin: 9px 0; font-size: 15px; line-height: 1.5; }\n  .img-missing { border: 3px dashed #cc3333; color: #cc3333; border-radius: 12px; padding: 50px 20px; text-align: center; font-size: 16px; margin: 20px auto; width: 70%; }\n  .foot { position: absolute; bottom: 0.28in; left: 0.6in; right: 0.6in; }\n  .footer { text-align: center; color: #999; font-size: 11px; }\n  .page.cover { padding: 0; }\n  .cover-img { width: 8.5in; height: 11in; object-fit: cover; display: block; background: #fdf3e3; }\n</style>\n</head>\n<body>${pagesHtml}</body>\n</html>`;\n\nreturn [{ json: { title: data.title, description: data.description, tags: data.tags, html: html } }];"
+    "jsCode": "// Image QA — ตรวจว่าภาพเจนครบทุก job ไหม ถ้าขาดส่งเฉพาะรูปที่ขาดไปยิงซ้ำ (สูงสุด 2 รอบ)\nconst MAX_IMG_RETRIES = 2;\nconst jobs = $('Extract Image Jobs').all().map(i => i.json);\nconst images = $json.images || {};\nconst attempt = Number.isInteger($json.attempt) ? $json.attempt : 0;\n\nconst missing = jobs.filter(j => !images[j.job_id]);\n\nif (missing.length === 0 || attempt >= MAX_IMG_RETRIES) {\n  return [{ json: {\n    images: images,\n    qa_images_done: true,\n    attempt: attempt,\n    missing_ids: missing.map(j => j.job_id)\n  } }];\n}\n\n// ส่ง 1 item ต่อรูปที่ขาด (แนบ images map ไว้กับ item แรกเพื่อส่งต่อให้ Merge)\nreturn missing.map((j, idx) => ({ json: {\n  ...j,\n  qa_images_done: false,\n  attempt: attempt + 1,\n  images: idx === 0 ? images : undefined\n} }));"
+   },
+   "id": "f1111111-1111-1111-1111-111111111111",
+   "name": "Image QA",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1900,
+    120
+   ]
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "loose",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "id": "imgqa-cond-1",
+       "leftValue": "={{ $json.qa_images_done }}",
+       "rightValue": "",
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   },
+   "id": "f2222222-2222-2222-2222-222222222222",
+   "name": "Images Complete?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.2,
+   "position": [
+    2060,
+    120
+   ]
+  },
+  {
+   "parameters": {
+    "url": "https://api.openai.com/v1/images/generations",
+    "method": "POST",
+    "sendHeaders": true,
+    "specifyHeaders": "keypair",
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Authorization",
+       "value": "Bearer YOUR_OPENAI_API_KEY"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ model: 'gpt-image-1', prompt: $json.prompt, size: $json.size, quality: $json.quality, output_format: 'jpeg', output_compression: 95 }) }}",
+    "options": {
+     "timeout": 180000
+    }
+   },
+   "id": "f3333333-3333-3333-3333-333333333333",
+   "name": "Gen Image Retry",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    2060,
+    -40
+   ],
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000
+  },
+  {
+   "parameters": {
+    "jsCode": "// รวมภาพที่ยิงซ้ำสำเร็จกลับเข้า images map แล้ววนกลับไปตรวจอีกรอบ\nconst retriedJobs = $('Image QA').all().map(i => i.json);\nconst responses = $input.all().map(i => i.json);\n\nconst images = { ...((retriedJobs[0] && retriedJobs[0].images) || {}) };\nretriedJobs.forEach((job, i) => {\n  const r = responses[i] || {};\n  const b64 = (r.data && r.data[0] && r.data[0].b64_json) || '';\n  if (b64) images[job.job_id] = b64;\n});\n\nconst attempt = (retriedJobs[0] && retriedJobs[0].attempt) || 1;\nreturn [{ json: { images: images, attempt: attempt } }];"
+   },
+   "id": "f4444444-4444-4444-4444-444444444444",
+   "name": "Merge Retried Images",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1900,
+    -40
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const data = $('3. Content Creation Agent').last().json.output;\n// map ภาพสุดท้าย (หลัง Image QA retry) — fallback ไป Collect Images ถ้าไม่มี\nlet images = {};\nif ($json.images && typeof $json.images === 'object') images = $json.images;\nif (!Object.keys(images).length) { try { images = $('Image QA').first().json.images || {}; } catch (e) {} }\nif (!Object.keys(images).length) { try { images = $('Collect Images').first().json.images || {}; } catch (e) {} }\n\nif (!data || !data.title || !Array.isArray(data.pages) || data.pages.length === 0) {\n  throw new Error('Content Agent ไม่ได้ส่ง title/pages ที่ถูกต้อง');\n}\n\nconst esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst blankify = s => esc(s).replace(/_{3,}/g, `<span class='blank'></span>`);\n\nconst CSS_COLORS = { red: '#e53935', blue: '#1e88e5', green: '#43a047', yellow: '#fdd835', orange: '#fb8c00', purple: '#8e24aa', pink: '#ec407a', brown: '#6d4c41', black: '#212121', gray: '#9e9e9e', grey: '#9e9e9e' };\nconst swatch = c => CSS_COLORS[String(c || '').toLowerCase().trim()] || '#cccccc';\n\nconst img = (id, cls) => images[id]\n  ? `<img class='${cls}' src='data:image/jpeg;base64,${images[id]}'/>`\n  : `<div class='img-missing'>(image was not generated)</div>`;\n\nconst mascotImg = images.mascot ? `<img class='mascot' src='data:image/jpeg;base64,${images.mascot}'/>` : '';\nconst coverHtml = images.cover ? `<div class='page cover'><img class='cover-img' src='data:image/jpeg;base64,${images.cover}'/></div>` : '';\n\nconst colorKeyHtml = key => `<div class='key'>` + key.map(k =>\n  `<div class='key-cell'><div class='key-num'>${esc(k.answer)}</div><div class='key-swatch' style='background:${swatch(k.color)}'></div><div class='key-name'>${esc(k.color)}</div></div>`\n).join('') + `</div>`;\n\nconst GRID = ['picture_grid', 'count_and_write'];\n\nconst pagesHtml = coverHtml + data.pages.map((p, i) => {\n  const t = String(p.activity_type || '').toLowerCase();\n  const items = Array.isArray(p.items) ? p.items : [];\n  const hasKey = t === 'color_by_number_scene' && Array.isArray(p.color_key) && p.color_key.length > 0;\n\n  let body = '';\n  if (t === 'answer_key') {\n    body = items.map(w => `<div class='info-box'>${blankify(w)}</div>`).join('');\n  } else if (GRID.includes(t)) {\n    // ตัดเลขข้อที่โมเดลใส่มาเองออกก่อน (กัน \"1. 1. ...\" ซ้ำ)\n    const clean = w => String(w).replace(/^\\s*\\d+\\s*[\\.\\)]\\s*/, '');\n    body = `<div class='scene-wrap'>${img('page_' + i, 'scene-grid')}</div>` +\n      `<div class='q-list'>` + items.map((w, qi) => `<div class='q-row'>${qi + 1}. ${blankify(clean(w))}</div>`).join('') + `</div>`;\n  } else {\n    body = `<div class='scene-wrap fill'>${img('page_' + i, hasKey ? 'scene-full with-key' : 'scene-full')}</div>`;\n  }\n\n  return `\n<div class='page'>\n  <div class='frame'></div>\n  <div class='meta-row'><span>Name: ____________________</span><span>Date: __________</span></div>\n  <div class='head-row'><h2 class='page-title'>${esc(p.page_title || 'Page ' + (i + 1))}</h2>${mascotImg}</div>\n  ${p.instructions ? `<p class='inst'>✏️ ${esc(p.instructions)}</p>` : ''}\n  ${hasKey ? colorKeyHtml(p.color_key) : ''}\n  <div class='body'>${body}</div>\n  <div class='foot'><div class='footer'>${esc(data.title)} • Page ${i + 1} of ${data.pages.length}</div></div>\n</div>`;\n}).join('');\n\nconst html = `<!DOCTYPE html>\n<html>\n<head>\n<meta charset='utf-8'>\n<link href='https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;800&family=Schoolbell&display=swap' rel='stylesheet'>\n<style>\n  @page { size: Letter; margin: 0; }\n  body { margin: 0; font-family: 'Baloo 2', Arial, sans-serif; color: #222; }\n  .page { width: 8.5in; height: 10.95in; box-sizing: border-box; padding: 0.45in 0.6in 0.85in 0.6in; page-break-after: always; page-break-inside: avoid; position: relative; display: flex; flex-direction: column; overflow: hidden; }\n  .frame { position: absolute; top: 0.22in; left: 0.22in; right: 0.22in; bottom: 0.22in; border: 2px dashed #c9d6f0; border-radius: 16px; pointer-events: none; }\n  .meta-row { display: flex; justify-content: space-between; margin: 4px 2px 2px; font-size: 14px; }\n  .head-row { display: flex; align-items: center; gap: 12px; justify-content: center; }\n  .page-title { text-align: center; font-size: 28px; margin: 6px 0 2px; flex: 1; }\n  .mascot { flex: none; width: 0.85in; height: 0.85in; object-fit: contain; }\n  .inst { background: #f7f7f7; border: 2px dashed #999; border-radius: 10px; padding: 7px 12px; font-size: 15px; margin: 6px 0; }\n  .key { display: flex; gap: 6px; justify-content: center; margin: 5px 0; flex-wrap: nowrap; }\n  .key-cell { border: 2px solid #333; border-radius: 8px; padding: 3px 6px 4px; text-align: center; min-width: 0.58in; }\n  .key-num { font-weight: 800; font-size: 15px; line-height: 1.1; }\n  .key-swatch { height: 10px; border-radius: 5px; margin: 2px 0; border: 1px solid #999; }\n  .key-name { font-size: 9px; }\n  .body { flex: 1 1 auto; display: flex; flex-direction: column; }\n  .scene-wrap { text-align: center; }\n  .scene-wrap.fill { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; }\n  .scene-full { width: 100%; max-height: 7.2in; object-fit: contain; }\n  .scene-full.with-key { max-height: 6.4in; }\n  .scene-grid { width: 100%; max-height: 5.0in; object-fit: contain; }\n  .q-list { margin-top: 10px; }\n  .q-row { font-size: 18px; line-height: 2.15; }\n  .blank { display: inline-block; min-width: 2.0in; border-bottom: 2px solid #444; height: 0.95em; }\n  .info-box { border: 2px solid #444; border-radius: 12px; padding: 9px 14px; margin: 9px 0; font-size: 15px; line-height: 1.5; }\n  .img-missing { border: 3px dashed #cc3333; color: #cc3333; border-radius: 12px; padding: 50px 20px; text-align: center; font-size: 16px; margin: 20px auto; width: 70%; }\n  .foot { position: absolute; bottom: 0.28in; left: 0.6in; right: 0.6in; }\n  .footer { text-align: center; color: #999; font-size: 11px; }\n  .page.cover { padding: 0; }\n  .cover-img { width: 8.5in; height: 11in; object-fit: cover; object-position: center top; display: block; background: #fdf3e3; }\n</style>\n</head>\n<body>${pagesHtml}</body>\n</html>`;\n\nreturn [{ json: { title: data.title, description: data.description, tags: data.tags, html: html } }];"
    },
    "id": "e6666666-6666-6666-6666-666666666666",
    "name": "4. Build HTML",
@@ -401,7 +502,7 @@
   },
   {
    "parameters": {
-    "jsCode": "// ---- 1) Re-attach the PDF binary (HTTP nodes dropped it) ----\nconst renameItem = $('Rename File').first();\nconst fname = (renameItem.json && renameItem.json.pdf_file_name) || 'worksheet.pdf';\nconst out = { json: { ...$json }, binary: {} };\nif (renameItem.binary && renameItem.binary.data) {\n  out.binary.data = { ...renameItem.binary.data, fileName: fname, fileExtension: 'pdf', mimeType: 'application/pdf' };\n}\n\n// ---- 2) Attach a preview image; ALWAYS create out.binary.cover so Gmail never fails ----\n// (fallback chain: cover -> mascot -> ภาพหน้าไหนก็ได้ -> 1x1 placeholder)\nlet images = {};\ntry { images = $('Collect Images').first().json.images || {}; } catch (e) {}\nlet previewB64 = images.cover || images.mascot || '';\nif (!previewB64) {\n  const k = Object.keys(images).find(key => images[key]);\n  previewB64 = k ? images[k] : '';\n}\nconst coverName = fname.replace(/\\.pdf$/i, '') + '_COVER.jpg';\nif (previewB64) {\n  out.binary.cover = await this.helpers.prepareBinaryData(Buffer.from(previewB64, 'base64'), coverName, 'image/jpeg');\n} else {\n  // last-resort tiny image so the email STILL SENDS with the PDF even if every image failed\n  const onePx = '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';\n  out.binary.cover = await this.helpers.prepareBinaryData(Buffer.from(onePx, 'base64'), coverName, 'image/jpeg');\n}\n\n// ---- 3) Grade level -> เด็กเล็ก/โต + TPT grade tags ----\nlet grade = '';\ntry { grade = $('2. Analysis Agent').first().json.output.grade_level || ''; } catch (e) {}\nif (!grade) { try { grade = $('Daily Assignment').first().json.grade || ''; } catch (e) {} }\nif (!grade) grade = 'ไม่ระบุ';\n\nconst nums = (grade.match(/\\d+/g) || []).map(Number);\nconst maxGrade = nums.length ? Math.max(...nums) : 0;\nconst lower = grade.toLowerCase();\nconst hasEarly = lower.includes('prek') || lower.includes('pre-k') || lower.includes('kindergarten') || lower.startsWith('k');\n\nlet ageGroup;\nif (maxGrade >= 3) ageGroup = 'เด็กโต (ป.3 ขึ้นไป)';\nelse if (maxGrade > 0 || hasEarly) ageGroup = 'เด็กเล็ก (อนุบาล - ป.2)';\nelse ageGroup = 'ทุกช่วงวัย';\n\nconst map = { 0: 'PreK', 1: '1st', 2: '2nd', 3: '3rd', 4: '4th', 5: '5th', 6: '6th' };\nlet tptGrades = grade;\nif (hasEarly && nums.length) tptGrades = 'PreK, K, ' + nums.map(n => map[n] || (n + 'th')).join(', ');\nelse if (hasEarly) tptGrades = 'PreK, K';\n\nconst title = $('4. Build HTML').first().json.title || '';\nconst desc = $('4. Build HTML').first().json.description || '';\nconst tags = ($('4. Build HTML').first().json.tags || []).join(', ');\n\nlet artTheme = '';\ntry { artTheme = $('2. Analysis Agent').first().json.output.art_theme || ''; } catch (e) {}\n\nout.json.age_group = ageGroup;\nout.json.grade_level = grade;\nout.json.tpt_grades = tptGrades;\n\n// ---- read TPT category recommendations from Content Agent ----\nlet tptSubjects = [], tptTags = [];\ntry {\n  const co = $('3. Content Creation Agent').last().json.output;\n  tptSubjects = Array.isArray(co.tpt_subjects) ? co.tpt_subjects : [];\n  tptTags = Array.isArray(co.tpt_tags) ? co.tpt_tags : [];\n} catch (e) {}\nconst subjectsLine = tptSubjects.length ? tptSubjects.join(', ') : '(เลือกเองตามวิชา)';\nconst resourceLine = tptTags.length ? tptTags.join(', ') : 'Worksheets, Printables, Activities';\n\n// ---- 4) Build a ready-to-paste TPT listing block ----\nout.json.tpt_kit =\n`====== TPT UPLOAD KIT (คัดลอกวางในฟอร์ม TPT) ======\n\n[TITLE]\n${title}\n\n[DESCRIPTION]\n${desc}\n\n[ART THEME]  ${artTheme}\n[GRADE LEVELS]  ${tptGrades}\n[SUBJECT AREA — เลือกใน TPT]  ${subjectsLine}\n[RESOURCE TYPE / TAGS — เลือกใน TPT]  ${resourceLine}\n[PRICE]  $4.50\n[SEARCH KEYWORDS]  ${tags}\n\n[FILE]  แนบไฟล์ PDF ในอีเมลนี้\n[PREVIEW/COVER]  ใช้ไฟล์ *_COVER.jpg ในอีเมลนี้เป็นภาพปก\n\nเหมาะสำหรับ: ${ageGroup}\n===============================================`;\n\nreturn [out];"
+    "jsCode": "// ---- 1) Re-attach the PDF binary (HTTP nodes dropped it) ----\nconst renameItem = $('Rename File').first();\nconst fname = (renameItem.json && renameItem.json.pdf_file_name) || 'worksheet.pdf';\nconst out = { json: { ...$json }, binary: {} };\nif (renameItem.binary && renameItem.binary.data) {\n  out.binary.data = { ...renameItem.binary.data, fileName: fname, fileExtension: 'pdf', mimeType: 'application/pdf' };\n}\n\n// ---- 2) Attach a preview image; ALWAYS create out.binary.cover so Gmail never fails ----\n// (fallback chain: cover -> mascot -> ภาพหน้าไหนก็ได้ -> 1x1 placeholder)\nlet images = {};\ntry { images = $('Image QA').first().json.images || {}; } catch (e) {}\nif (!Object.keys(images).length) { try { images = $('Collect Images').first().json.images || {}; } catch (e) {} }\nlet previewB64 = images.cover || images.mascot || '';\nif (!previewB64) {\n  const k = Object.keys(images).find(key => images[key]);\n  previewB64 = k ? images[k] : '';\n}\nconst coverName = fname.replace(/\\.pdf$/i, '') + '_COVER.jpg';\nif (previewB64) {\n  out.binary.cover = await this.helpers.prepareBinaryData(Buffer.from(previewB64, 'base64'), coverName, 'image/jpeg');\n} else {\n  // last-resort tiny image so the email STILL SENDS with the PDF even if every image failed\n  const onePx = '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';\n  out.binary.cover = await this.helpers.prepareBinaryData(Buffer.from(onePx, 'base64'), coverName, 'image/jpeg');\n}\n\n// ---- 3) Grade level -> เด็กเล็ก/โต + TPT grade tags ----\nlet grade = '';\ntry { grade = $('2. Analysis Agent').first().json.output.grade_level || ''; } catch (e) {}\nif (!grade) { try { grade = $('Daily Assignment').first().json.grade || ''; } catch (e) {} }\nif (!grade) grade = 'ไม่ระบุ';\n\nconst nums = (grade.match(/\\d+/g) || []).map(Number);\nconst maxGrade = nums.length ? Math.max(...nums) : 0;\nconst lower = grade.toLowerCase();\nconst hasEarly = lower.includes('prek') || lower.includes('pre-k') || lower.includes('kindergarten') || lower.startsWith('k');\n\nlet ageGroup;\nif (maxGrade >= 3) ageGroup = 'เด็กโต (ป.3 ขึ้นไป)';\nelse if (maxGrade > 0 || hasEarly) ageGroup = 'เด็กเล็ก (อนุบาล - ป.2)';\nelse ageGroup = 'ทุกช่วงวัย';\n\nconst map = { 0: 'PreK', 1: '1st', 2: '2nd', 3: '3rd', 4: '4th', 5: '5th', 6: '6th' };\nlet tptGrades = grade;\nif (hasEarly && nums.length) tptGrades = 'PreK, K, ' + nums.map(n => map[n] || (n + 'th')).join(', ');\nelse if (hasEarly) tptGrades = 'PreK, K';\n\nconst title = $('4. Build HTML').first().json.title || '';\nconst desc = $('4. Build HTML').first().json.description || '';\nconst tags = ($('4. Build HTML').first().json.tags || []).join(', ');\n\nlet artTheme = '';\ntry { artTheme = $('2. Analysis Agent').first().json.output.art_theme || ''; } catch (e) {}\n\nout.json.age_group = ageGroup;\nout.json.grade_level = grade;\nout.json.tpt_grades = tptGrades;\n\n// ---- read TPT category recommendations from Content Agent ----\nlet tptSubjects = [], tptTags = [];\ntry {\n  const co = $('3. Content Creation Agent').last().json.output;\n  tptSubjects = Array.isArray(co.tpt_subjects) ? co.tpt_subjects : [];\n  tptTags = Array.isArray(co.tpt_tags) ? co.tpt_tags : [];\n} catch (e) {}\nconst subjectsLine = tptSubjects.length ? tptSubjects.join(', ') : '(เลือกเองตามวิชา)';\nconst resourceLine = tptTags.length ? tptTags.join(', ') : 'Worksheets, Printables, Activities';\n\n// ---- 3.5) เช็คภาพขาดจาก Image QA (หลัง retry ครบแล้ว) ----\nlet missingIds = [];\ntry { missingIds = $('Image QA').first().json.missing_ids || []; } catch (e) {}\nconst missingPages = missingIds.filter(id => String(id).startsWith('page_'));\nout.json.missing_images = missingIds.length;\nout.json.missing_pages = missingPages.length;\nconst warnBlock = missingIds.length\n  ? '\\n⚠️ คำเตือน: ภาพเจนไม่สำเร็จ ' + missingIds.length + ' รูป (' + missingIds.join(', ') + ')' +\n    (missingPages.length ? ' — มีหน้ากิจกรรมภาพขาด ควรรันชุดนี้ใหม่ก่อนอัปโหลดขาย!' : ' — เฉพาะภาพประกอบ ไม่กระทบหน้ากิจกรรม') + '\\n'\n  : '';\n\n// ---- 4) Build a ready-to-paste TPT listing block ----\nout.json.tpt_kit =\n`====== TPT UPLOAD KIT (คัดลอกวางในฟอร์ม TPT) ======\n${warnBlock}\n\n[TITLE]\n${title}\n\n[DESCRIPTION]\n${desc}\n\n[ART THEME]  ${artTheme}\n[GRADE LEVELS]  ${tptGrades}\n[SUBJECT AREA — เลือกใน TPT]  ${subjectsLine}\n[RESOURCE TYPE / TAGS — เลือกใน TPT]  ${resourceLine}\n[PRICE]  $4.50\n[SEARCH KEYWORDS]  ${tags}\n\n[FILE]  แนบไฟล์ PDF ในอีเมลนี้\n[PREVIEW/COVER]  ใช้ไฟล์ *_COVER.jpg ในอีเมลนี้เป็นภาพปก\n\nเหมาะสำหรับ: ${ageGroup}\n===============================================`;\n\nreturn [out];"
    },
    "id": "e9999999-9999-9999-9999-999999999999",
    "name": "Prep Email",
@@ -415,7 +516,7 @@
   {
    "parameters": {
     "sendTo": "metasitwute021@gmail.com",
-    "subject": "={{ '🎨 TPT Drawing Kit: ' + $('4. Build HTML').first().json.title + ' (' + $json.age_group + ')' }}",
+    "subject": "={{ ($json.missing_pages ? '⚠️ ' : '') + '🎨 TPT Drawing Kit: ' + $('4. Build HTML').first().json.title + ' (' + $json.age_group + ')' }}",
     "emailType": "text",
     "message": "={{ $json.tpt_kit }}",
     "options": {
@@ -577,7 +678,58 @@
    "main": [
     [
      {
+      "node": "Image QA",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Image QA": {
+   "main": [
+    [
+     {
+      "node": "Images Complete?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Images Complete?": {
+   "main": [
+    [
+     {
       "node": "4. Build HTML",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Gen Image Retry",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Gen Image Retry": {
+   "main": [
+    [
+     {
+      "node": "Merge Retried Images",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Merge Retried Images": {
+   "main": [
+    [
+     {
+      "node": "Image QA",
       "type": "main",
       "index": 0
      }
