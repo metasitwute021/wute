@@ -198,18 +198,15 @@
   },
   {
    "parameters": {
-    "model": {
-     "mode": "list",
-     "value": "gpt-5-mini"
-    },
+    "modelName": "models/gemini-2.5-pro",
     "options": {
-     "maxTokens": 8192
+     "maxOutputTokens": 8192
     }
    },
    "id": "deeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
-   "name": "OpenAI Model (Content)",
-   "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-   "typeVersion": 1.2,
+   "name": "Gemini Model (Content)",
+   "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+   "typeVersion": 1,
    "position": [
     760,
     540
@@ -833,7 +830,7 @@
     ]
    ]
   },
-  "OpenAI Model (Content)": {
+  "Gemini Model (Content)": {
    "ai_languageModel": [
     [
      {
