@@ -459,14 +459,9 @@
     "sendHeaders": true,
     "sendBody": true,
     "specifyBody": "json",
-    "jsonBody": "={{ { \"source\": $json.html, \"landscape\": false, \"format\": \"Letter\" } }}",
+    "jsonBody": "={{ { \"source\": $json.html, \"landscape\": false, \"format\": \"Letter\", \"filename\": \"worksheet.pdf\" } }}",
     "options": {
-     "response": {
-      "response": {
-       "responseFormat": "file",
-       "outputPropertyName": "data"
-      }
-     }
+     "timeout": 120000
     },
     "specifyHeaders": "keypair",
     "headerParameters": {
@@ -485,24 +480,14 @@
    "position": [
     2160,
     300
-   ]
+   ],
+   "retryOnFail": true,
+   "maxTries": 2,
+   "waitBetweenTries": 5000
   },
   {
    "parameters": {
-    "jsCode": "const title = ($('4. Build HTML').first().json.title || 'worksheet');\nconst safe = title\n  .replace(/[^a-zA-Z0-9 _-]/g, '')\n  .trim()\n  .replace(/\\s+/g, '_')\n  .slice(0, 70) || 'worksheet';\nconst fileName = safe + '.pdf';\n\n// pull the binary straight from the PDFShift node to be safe\nconst pdfItem = $('5. HTML to PDF (PDFShift)').first();\nconst bin = (items[0].binary && items[0].binary.data) || (pdfItem.binary && pdfItem.binary.data);\n\nconst out = { json: { ...$json, pdf_file_name: fileName }, binary: {} };\nif (bin) {\n  out.binary.data = { ...bin, fileName: fileName, fileExtension: 'pdf', mimeType: 'application/pdf' };\n}\nreturn [out];"
-   },
-   "id": "e8888888-8888-8888-8888-888888888888",
-   "name": "Rename File",
-   "type": "n8n-nodes-base.code",
-   "typeVersion": 2,
-   "position": [
-    2340,
-    300
-   ]
-  },
-  {
-   "parameters": {
-    "jsCode": "// ---- 1) Re-attach the PDF binary (HTTP nodes dropped it) ----\nconst renameItem = $('Rename File').first();\nconst fname = (renameItem.json && renameItem.json.pdf_file_name) || 'worksheet.pdf';\nconst out = { json: { ...$json }, binary: {} };\nif (renameItem.binary && renameItem.binary.data) {\n  out.binary.data = { ...renameItem.binary.data, fileName: fname, fileExtension: 'pdf', mimeType: 'application/pdf' };\n}\n\n// ---- 2) Attach a preview image; ALWAYS create out.binary.cover so Gmail never fails ----\n// (fallback chain: cover -> mascot -> ภาพหน้าไหนก็ได้ -> 1x1 placeholder)\nlet images = {};\ntry { images = $('Merge Retried Images').first().json.images || {}; } catch (e) {}\nif (!Object.keys(images).length) { try { images = $('Collect Images').first().json.images || {}; } catch (e) {} }\nlet previewB64 = images.cover || images.mascot || '';\nif (!previewB64) {\n  const k = Object.keys(images).find(key => images[key]);\n  previewB64 = k ? images[k] : '';\n}\nconst coverName = fname.replace(/\\.pdf$/i, '') + '_COVER.jpg';\nif (previewB64) {\n  out.binary.cover = await this.helpers.prepareBinaryData(Buffer.from(previewB64, 'base64'), coverName, 'image/jpeg');\n} else {\n  // last-resort tiny image so the email STILL SENDS with the PDF even if every image failed\n  const onePx = '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';\n  out.binary.cover = await this.helpers.prepareBinaryData(Buffer.from(onePx, 'base64'), coverName, 'image/jpeg');\n}\n\n// ---- 3) Grade level -> เด็กเล็ก/โต + TPT grade tags ----\nlet grade = '';\ntry { grade = $('2. Analysis Agent').first().json.output.grade_level || ''; } catch (e) {}\nif (!grade) { try { grade = $('Daily Assignment').first().json.grade || ''; } catch (e) {} }\nif (!grade) grade = 'ไม่ระบุ';\n\nconst nums = (grade.match(/\\d+/g) || []).map(Number);\nconst maxGrade = nums.length ? Math.max(...nums) : 0;\nconst lower = grade.toLowerCase();\nconst hasEarly = lower.includes('prek') || lower.includes('pre-k') || lower.includes('kindergarten') || lower.startsWith('k');\n\nlet ageGroup;\nif (maxGrade >= 3) ageGroup = 'เด็กโต (ป.3 ขึ้นไป)';\nelse if (maxGrade > 0 || hasEarly) ageGroup = 'เด็กเล็ก (อนุบาล - ป.2)';\nelse ageGroup = 'ทุกช่วงวัย';\n\nconst map = { 0: 'PreK', 1: '1st', 2: '2nd', 3: '3rd', 4: '4th', 5: '5th', 6: '6th' };\nlet tptGrades = grade;\nif (hasEarly && nums.length) tptGrades = 'PreK, K, ' + nums.map(n => map[n] || (n + 'th')).join(', ');\nelse if (hasEarly) tptGrades = 'PreK, K';\n\nconst title = $('4. Build HTML').first().json.title || '';\nconst desc = $('4. Build HTML').first().json.description || '';\nconst tags = ($('4. Build HTML').first().json.tags || []).join(', ');\n\nlet artTheme = '';\ntry { artTheme = $('2. Analysis Agent').first().json.output.art_theme || ''; } catch (e) {}\n\nout.json.age_group = ageGroup;\nout.json.grade_level = grade;\nout.json.tpt_grades = tptGrades;\n\n// ---- read TPT category recommendations from Content Agent ----\nlet tptSubjects = [], tptTags = [];\ntry {\n  const co = $('3. Content Creation Agent').last().json.output;\n  tptSubjects = Array.isArray(co.tpt_subjects) ? co.tpt_subjects : [];\n  tptTags = Array.isArray(co.tpt_tags) ? co.tpt_tags : [];\n} catch (e) {}\nconst subjectsLine = tptSubjects.length ? tptSubjects.join(', ') : '(เลือกเองตามวิชา)';\nconst resourceLine = tptTags.length ? tptTags.join(', ') : 'Worksheets, Printables, Activities';\n\n// ---- 3.5) เช็คภาพขาดจาก Image QA (หลัง retry ครบแล้ว) ----\nlet missingIds = [];\ntry { missingIds = $('Image QA').first().json.missing_ids || []; } catch (e) {}\nconst missingPages = missingIds.filter(id => String(id).startsWith('page_'));\nout.json.missing_images = missingIds.length;\nout.json.missing_pages = missingPages.length;\nconst warnBlock = missingIds.length\n  ? '\\n⚠️ คำเตือน: ภาพเจนไม่สำเร็จ ' + missingIds.length + ' รูป (' + missingIds.join(', ') + ')' +\n    (missingPages.length ? ' — มีหน้ากิจกรรมภาพขาด ควรรันชุดนี้ใหม่ก่อนอัปโหลดขาย!' : ' — เฉพาะภาพประกอบ ไม่กระทบหน้ากิจกรรม') + '\\n'\n  : '';\n\n// ---- 4) Build a ready-to-paste TPT listing block ----\nout.json.tpt_kit =\n`====== TPT UPLOAD KIT (คัดลอกวางในฟอร์ม TPT) ======\n${warnBlock}\n\n[TITLE]\n${title}\n\n[DESCRIPTION]\n${desc}\n\n[ART THEME]  ${artTheme}\n[GRADE LEVELS]  ${tptGrades}\n[SUBJECT AREA — เลือกใน TPT]  ${subjectsLine}\n[RESOURCE TYPE / TAGS — เลือกใน TPT]  ${resourceLine}\n[PRICE]  $4.50\n[SEARCH KEYWORDS]  ${tags}\n\n[FILE]  แนบไฟล์ PDF ในอีเมลนี้\n[PREVIEW/COVER]  ใช้ไฟล์ *_COVER.jpg ในอีเมลนี้เป็นภาพปก\n\nเหมาะสำหรับ: ${ageGroup}\n===============================================`;\n\nreturn [out];"
+    "jsCode": "// ---- 1) ดาวน์โหลด PDF จาก URL ที่ PDFShift ฝากไฟล์ไว้ (ประหยัดแรม: binary มีสำเนาเดียวตรงนี้) ----\nconst title0 = $('4. Build HTML').first().json.title || 'worksheet';\nconst safe = title0.replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\\s+/g, '_').slice(0, 70) || 'worksheet';\nconst fname = safe + '.pdf';\n\nconst out = { json: { ...$json }, binary: {} };\nconst pdfUrl = ($('5. HTML to PDF (PDFShift)').first().json || {}).url || '';\nif (pdfUrl) {\n  const pdfBuf = await this.helpers.httpRequest({ url: pdfUrl, method: 'GET', encoding: 'arraybuffer', json: false });\n  out.binary.data = await this.helpers.prepareBinaryData(Buffer.from(pdfBuf), fname, 'application/pdf');\n}\nout.json.pdf_file_name = fname;\n\n// ---- 2) Attach a preview image; ALWAYS create out.binary.cover so Gmail never fails ----\n// (fallback chain: cover -> mascot -> ภาพหน้าไหนก็ได้ -> 1x1 placeholder)\nlet images = {};\ntry { images = $('Merge Retried Images').first().json.images || {}; } catch (e) {}\nif (!Object.keys(images).length) { try { images = $('Collect Images').first().json.images || {}; } catch (e) {} }\nlet previewB64 = images.cover || images.mascot || '';\nif (!previewB64) {\n  const k = Object.keys(images).find(key => images[key]);\n  previewB64 = k ? images[k] : '';\n}\nconst coverName = fname.replace(/\\.pdf$/i, '') + '_COVER.jpg';\nif (previewB64) {\n  out.binary.cover = await this.helpers.prepareBinaryData(Buffer.from(previewB64, 'base64'), coverName, 'image/jpeg');\n} else {\n  // last-resort tiny image so the email STILL SENDS with the PDF even if every image failed\n  const onePx = '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';\n  out.binary.cover = await this.helpers.prepareBinaryData(Buffer.from(onePx, 'base64'), coverName, 'image/jpeg');\n}\n\n// ---- 3) Grade level -> เด็กเล็ก/โต + TPT grade tags ----\nlet grade = '';\ntry { grade = $('2. Analysis Agent').first().json.output.grade_level || ''; } catch (e) {}\nif (!grade) { try { grade = $('Daily Assignment').first().json.grade || ''; } catch (e) {} }\nif (!grade) grade = 'ไม่ระบุ';\n\nconst nums = (grade.match(/\\d+/g) || []).map(Number);\nconst maxGrade = nums.length ? Math.max(...nums) : 0;\nconst lower = grade.toLowerCase();\nconst hasEarly = lower.includes('prek') || lower.includes('pre-k') || lower.includes('kindergarten') || lower.startsWith('k');\n\nlet ageGroup;\nif (maxGrade >= 3) ageGroup = 'เด็กโต (ป.3 ขึ้นไป)';\nelse if (maxGrade > 0 || hasEarly) ageGroup = 'เด็กเล็ก (อนุบาล - ป.2)';\nelse ageGroup = 'ทุกช่วงวัย';\n\nconst map = { 0: 'PreK', 1: '1st', 2: '2nd', 3: '3rd', 4: '4th', 5: '5th', 6: '6th' };\nlet tptGrades = grade;\nif (hasEarly && nums.length) tptGrades = 'PreK, K, ' + nums.map(n => map[n] || (n + 'th')).join(', ');\nelse if (hasEarly) tptGrades = 'PreK, K';\n\nconst title = $('4. Build HTML').first().json.title || '';\nconst desc = $('4. Build HTML').first().json.description || '';\nconst tags = ($('4. Build HTML').first().json.tags || []).join(', ');\n\nlet artTheme = '';\ntry { artTheme = $('2. Analysis Agent').first().json.output.art_theme || ''; } catch (e) {}\n\nout.json.age_group = ageGroup;\nout.json.grade_level = grade;\nout.json.tpt_grades = tptGrades;\n\n// ---- read TPT category recommendations from Content Agent ----\nlet tptSubjects = [], tptTags = [];\ntry {\n  const co = $('3. Content Creation Agent').last().json.output;\n  tptSubjects = Array.isArray(co.tpt_subjects) ? co.tpt_subjects : [];\n  tptTags = Array.isArray(co.tpt_tags) ? co.tpt_tags : [];\n} catch (e) {}\nconst subjectsLine = tptSubjects.length ? tptSubjects.join(', ') : '(เลือกเองตามวิชา)';\nconst resourceLine = tptTags.length ? tptTags.join(', ') : 'Worksheets, Printables, Activities';\n\n// ---- 3.5) เช็คภาพขาดจาก Image QA (หลัง retry ครบแล้ว) ----\nlet missingIds = [];\ntry { missingIds = $('Image QA').first().json.missing_ids || []; } catch (e) {}\nconst missingPages = missingIds.filter(id => String(id).startsWith('page_'));\nout.json.missing_images = missingIds.length;\nout.json.missing_pages = missingPages.length;\nconst warnBlock = missingIds.length\n  ? '\\n⚠️ คำเตือน: ภาพเจนไม่สำเร็จ ' + missingIds.length + ' รูป (' + missingIds.join(', ') + ')' +\n    (missingPages.length ? ' — มีหน้ากิจกรรมภาพขาด ควรรันชุดนี้ใหม่ก่อนอัปโหลดขาย!' : ' — เฉพาะภาพประกอบ ไม่กระทบหน้ากิจกรรม') + '\\n'\n  : '';\n\n// ---- 4) Build a ready-to-paste TPT listing block ----\nout.json.tpt_kit =\n`====== TPT UPLOAD KIT (คัดลอกวางในฟอร์ม TPT) ======\n${warnBlock}\n\n[TITLE]\n${title}\n\n[DESCRIPTION]\n${desc}\n\n[ART THEME]  ${artTheme}\n[GRADE LEVELS]  ${tptGrades}\n[SUBJECT AREA — เลือกใน TPT]  ${subjectsLine}\n[RESOURCE TYPE / TAGS — เลือกใน TPT]  ${resourceLine}\n[PRICE]  $4.50\n[SEARCH KEYWORDS]  ${tags}\n\n[FILE]  แนบไฟล์ PDF ในอีเมลนี้\n[PREVIEW/COVER]  ใช้ไฟล์ *_COVER.jpg ในอีเมลนี้เป็นภาพปก\n\nเหมาะสำหรับ: ${ageGroup}\n===============================================`;\n\nreturn [out];"
    },
    "id": "e9999999-9999-9999-9999-999999999999",
    "name": "Prep Email",
@@ -748,17 +733,6 @@
    ]
   },
   "5. HTML to PDF (PDFShift)": {
-   "main": [
-    [
-     {
-      "node": "Rename File",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  },
-  "Rename File": {
    "main": [
     [
      {
