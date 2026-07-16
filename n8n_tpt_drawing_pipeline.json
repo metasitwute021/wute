@@ -487,7 +487,7 @@
   },
   {
    "parameters": {
-    "jsCode": "// ---- 1) ดาวน์โหลด PDF จาก URL ที่ PDFShift ฝากไฟล์ไว้ (ประหยัดแรม: binary มีสำเนาเดียวตรงนี้) ----\nconst title0 = $('4. Build HTML').first().json.title || 'worksheet';\nconst safe = title0.replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\\s+/g, '_').slice(0, 70) || 'worksheet';\nconst fname = safe + '.pdf';\n\nconst out = { json: { ...$json }, binary: {} };\nconst pdfUrl = ($('5. HTML to PDF (PDFShift)').first().json || {}).url || '';\nif (pdfUrl) {\n  const pdfBuf = await this.helpers.httpRequest({ url: pdfUrl, method: 'GET', encoding: 'arraybuffer', json: false });\n  out.binary.data = await this.helpers.prepareBinaryData(Buffer.from(pdfBuf), fname, 'application/pdf');\n}\nout.json.pdf_file_name = fname;\n\n// ---- 2) Attach a preview image; ALWAYS create out.binary.cover so Gmail never fails ----\n// (fallback chain: cover -> mascot -> ภาพหน้าไหนก็ได้ -> 1x1 placeholder)\nlet images = {};\ntry { images = $('Merge Retried Images').first().json.images || {}; } catch (e) {}\nif (!Object.keys(images).length) { try { images = $('Collect Images').first().json.images || {}; } catch (e) {} }\nlet previewB64 = images.cover || images.mascot || '';\nif (!previewB64) {\n  const k = Object.keys(images).find(key => images[key]);\n  previewB64 = k ? images[k] : '';\n}\nconst coverName = fname.replace(/\\.pdf$/i, '') + '_COVER.jpg';\nif (previewB64) {\n  out.binary.cover = await this.helpers.prepareBinaryData(Buffer.from(previewB64, 'base64'), coverName, 'image/jpeg');\n} else {\n  // last-resort tiny image so the email STILL SENDS with the PDF even if every image failed\n  const onePx = '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';\n  out.binary.cover = await this.helpers.prepareBinaryData(Buffer.from(onePx, 'base64'), coverName, 'image/jpeg');\n}\n\n// ---- 3) Grade level -> เด็กเล็ก/โต + TPT grade tags ----\nlet grade = '';\ntry { grade = $('2. Analysis Agent').first().json.output.grade_level || ''; } catch (e) {}\nif (!grade) { try { grade = $('Daily Assignment').first().json.grade || ''; } catch (e) {} }\nif (!grade) grade = 'ไม่ระบุ';\n\nconst nums = (grade.match(/\\d+/g) || []).map(Number);\nconst maxGrade = nums.length ? Math.max(...nums) : 0;\nconst lower = grade.toLowerCase();\nconst hasEarly = lower.includes('prek') || lower.includes('pre-k') || lower.includes('kindergarten') || lower.startsWith('k');\n\nlet ageGroup;\nif (maxGrade >= 3) ageGroup = 'เด็กโต (ป.3 ขึ้นไป)';\nelse if (maxGrade > 0 || hasEarly) ageGroup = 'เด็กเล็ก (อนุบาล - ป.2)';\nelse ageGroup = 'ทุกช่วงวัย';\n\nconst map = { 0: 'PreK', 1: '1st', 2: '2nd', 3: '3rd', 4: '4th', 5: '5th', 6: '6th' };\nlet tptGrades = grade;\nif (hasEarly && nums.length) tptGrades = 'PreK, K, ' + nums.map(n => map[n] || (n + 'th')).join(', ');\nelse if (hasEarly) tptGrades = 'PreK, K';\n\nconst title = $('4. Build HTML').first().json.title || '';\nconst desc = $('4. Build HTML').first().json.description || '';\nconst tags = ($('4. Build HTML').first().json.tags || []).join(', ');\n\nlet artTheme = '';\ntry { artTheme = $('2. Analysis Agent').first().json.output.art_theme || ''; } catch (e) {}\n\nout.json.age_group = ageGroup;\nout.json.grade_level = grade;\nout.json.tpt_grades = tptGrades;\n\n// ---- read TPT category recommendations from Content Agent ----\nlet tptSubjects = [], tptTags = [];\ntry {\n  const co = $('3. Content Creation Agent').last().json.output;\n  tptSubjects = Array.isArray(co.tpt_subjects) ? co.tpt_subjects : [];\n  tptTags = Array.isArray(co.tpt_tags) ? co.tpt_tags : [];\n} catch (e) {}\nconst subjectsLine = tptSubjects.length ? tptSubjects.join(', ') : '(เลือกเองตามวิชา)';\nconst resourceLine = tptTags.length ? tptTags.join(', ') : 'Worksheets, Printables, Activities';\n\n// ---- 3.5) เช็คภาพขาด + ภาพที่ตัวเลขไม่ผ่าน Vision QA ----\nlet missingIds = [], visionIds = [];\ntry {\n  const q = $('Image QA').first().json;\n  missingIds = q.missing_ids || [];\n  visionIds = q.vision_failed_ids || [];\n} catch (e) {}\nconst badPages = missingIds.concat(visionIds).filter(id => String(id).startsWith('page_'));\nout.json.missing_images = missingIds.length;\nout.json.missing_pages = badPages.length;\nlet warnBlock = '';\nif (missingIds.length) warnBlock += '\\n⚠️ ภาพเจนไม่สำเร็จ ' + missingIds.length + ' รูป (' + missingIds.join(', ') + ')';\nif (visionIds.length) warnBlock += '\\n⚠️ Vision QA พบตัวเลขในภาพไม่ตรงกับโจทย์ที่สั่ง: ' + visionIds.join(', ');\nif (warnBlock) warnBlock += (badPages.length ? '\\n→ มีหน้ากิจกรรมมีปัญหา ควรรันชุดนี้ใหม่/ตรวจก่อนอัปโหลดขาย!\\n' : '\\n→ เฉพาะภาพประกอบ ไม่กระทบหน้ากิจกรรม\\n');\n\n// ---- 4) Build a ready-to-paste TPT listing block ----\nout.json.tpt_kit =\n`====== TPT UPLOAD KIT (คัดลอกวางในฟอร์ม TPT) ======\n${warnBlock}\n\n[TITLE]\n${title}\n\n[DESCRIPTION]\n${desc}\n\n[ART THEME]  ${artTheme}\n[GRADE LEVELS]  ${tptGrades}\n[SUBJECT AREA — เลือกใน TPT]  ${subjectsLine}\n[RESOURCE TYPE / TAGS — เลือกใน TPT]  ${resourceLine}\n[PRICE]  $4.50\n[SEARCH KEYWORDS]  ${tags}\n\n[FILE]  แนบไฟล์ PDF ในอีเมลนี้\n[PREVIEW/COVER]  ใช้ไฟล์ *_COVER.jpg ในอีเมลนี้เป็นภาพปก\n\nเหมาะสำหรับ: ${ageGroup}\n===============================================`;\n\nreturn [out];"
+    "jsCode": "// สร้าง payload เบาๆ ส่งให้ workflow ลูก (Mailer) เป็นคนดาวน์โหลด PDF + ส่งเมลใน execution แยก\n// เหตุผล: n8n ถือ output ของทุก node ไว้ในแรมจนจบ execution — ย้ายงาน binary ไป execution ใหม่ที่แรมเริ่มจากศูนย์\nconst title0 = $('4. Build HTML').first().json.title || 'worksheet';\nconst safe = title0.replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\\s+/g, '_').slice(0, 70) || 'worksheet';\nconst fname = safe + '.pdf';\n\nconst out = { json: {} };\nout.json.pdf_url = ($('5. HTML to PDF (PDFShift)').first().json || {}).url || '';\nout.json.pdf_file_name = fname;\n\n// ---- ภาพปกสำหรับแนบเมล (ส่งเป็น b64 ใน payload — ก้อนเดียวที่หนักหน่อย ~0.5MB) ----\nlet images = {};\ntry { images = $('Merge Retried Images').first().json.images || {}; } catch (e) {}\nif (!Object.keys(images).length) { try { images = $('Collect Images').first().json.images || {}; } catch (e) {} }\nlet previewB64 = images.cover || images.mascot || '';\nif (!previewB64) {\n  const k = Object.keys(images).find(key => images[key]);\n  previewB64 = k ? images[k] : '';\n}\nout.json.cover_b64 = previewB64;\nout.json.subject_title = title0;\n\n// ---- 3) Grade level -> เด็กเล็ก/โต + TPT grade tags ----\nlet grade = '';\ntry { grade = $('2. Analysis Agent').first().json.output.grade_level || ''; } catch (e) {}\nif (!grade) { try { grade = $('Daily Assignment').first().json.grade || ''; } catch (e) {} }\nif (!grade) grade = 'ไม่ระบุ';\n\nconst nums = (grade.match(/\\d+/g) || []).map(Number);\nconst maxGrade = nums.length ? Math.max(...nums) : 0;\nconst lower = grade.toLowerCase();\nconst hasEarly = lower.includes('prek') || lower.includes('pre-k') || lower.includes('kindergarten') || lower.startsWith('k');\n\nlet ageGroup;\nif (maxGrade >= 3) ageGroup = 'เด็กโต (ป.3 ขึ้นไป)';\nelse if (maxGrade > 0 || hasEarly) ageGroup = 'เด็กเล็ก (อนุบาล - ป.2)';\nelse ageGroup = 'ทุกช่วงวัย';\n\nconst map = { 0: 'PreK', 1: '1st', 2: '2nd', 3: '3rd', 4: '4th', 5: '5th', 6: '6th' };\nlet tptGrades = grade;\nif (hasEarly && nums.length) tptGrades = 'PreK, K, ' + nums.map(n => map[n] || (n + 'th')).join(', ');\nelse if (hasEarly) tptGrades = 'PreK, K';\n\nconst title = $('4. Build HTML').first().json.title || '';\nconst desc = $('4. Build HTML').first().json.description || '';\nconst tags = ($('4. Build HTML').first().json.tags || []).join(', ');\n\nlet artTheme = '';\ntry { artTheme = $('2. Analysis Agent').first().json.output.art_theme || ''; } catch (e) {}\n\nout.json.age_group = ageGroup;\nout.json.grade_level = grade;\nout.json.tpt_grades = tptGrades;\n\n// ---- read TPT category recommendations from Content Agent ----\nlet tptSubjects = [], tptTags = [];\ntry {\n  const co = $('3. Content Creation Agent').last().json.output;\n  tptSubjects = Array.isArray(co.tpt_subjects) ? co.tpt_subjects : [];\n  tptTags = Array.isArray(co.tpt_tags) ? co.tpt_tags : [];\n} catch (e) {}\nconst subjectsLine = tptSubjects.length ? tptSubjects.join(', ') : '(เลือกเองตามวิชา)';\nconst resourceLine = tptTags.length ? tptTags.join(', ') : 'Worksheets, Printables, Activities';\n\n// ---- 3.5) เช็คภาพขาด + ภาพที่ตัวเลขไม่ผ่าน Vision QA ----\nlet missingIds = [], visionIds = [];\ntry {\n  const q = $('Image QA').first().json;\n  missingIds = q.missing_ids || [];\n  visionIds = q.vision_failed_ids || [];\n} catch (e) {}\nconst badPages = missingIds.concat(visionIds).filter(id => String(id).startsWith('page_'));\nout.json.missing_images = missingIds.length;\nout.json.missing_pages = badPages.length;\nlet warnBlock = '';\nif (missingIds.length) warnBlock += '\\n⚠️ ภาพเจนไม่สำเร็จ ' + missingIds.length + ' รูป (' + missingIds.join(', ') + ')';\nif (visionIds.length) warnBlock += '\\n⚠️ Vision QA พบตัวเลขในภาพไม่ตรงกับโจทย์ที่สั่ง: ' + visionIds.join(', ');\nif (warnBlock) warnBlock += (badPages.length ? '\\n→ มีหน้ากิจกรรมมีปัญหา ควรรันชุดนี้ใหม่/ตรวจก่อนอัปโหลดขาย!\\n' : '\\n→ เฉพาะภาพประกอบ ไม่กระทบหน้ากิจกรรม\\n');\n\n// ---- 4) Build a ready-to-paste TPT listing block ----\nout.json.tpt_kit =\n`====== TPT UPLOAD KIT (คัดลอกวางในฟอร์ม TPT) ======\n${warnBlock}\n\n[TITLE]\n${title}\n\n[DESCRIPTION]\n${desc}\n\n[ART THEME]  ${artTheme}\n[GRADE LEVELS]  ${tptGrades}\n[SUBJECT AREA — เลือกใน TPT]  ${subjectsLine}\n[RESOURCE TYPE / TAGS — เลือกใน TPT]  ${resourceLine}\n[PRICE]  $4.50\n[SEARCH KEYWORDS]  ${tags}\n\n[FILE]  แนบไฟล์ PDF ในอีเมลนี้\n[PREVIEW/COVER]  ใช้ไฟล์ *_COVER.jpg ในอีเมลนี้เป็นภาพปก\n\nเหมาะสำหรับ: ${ageGroup}\n===============================================`;\n\nreturn [out];"
    },
    "id": "e9999999-9999-9999-9999-999999999999",
    "name": "Prep Email",
@@ -500,27 +500,19 @@
   },
   {
    "parameters": {
-    "sendTo": "metasitwute021@gmail.com",
-    "subject": "={{ ($json.missing_pages ? '⚠️ ' : '') + '🎨 TPT Drawing Kit: ' + $('4. Build HTML').first().json.title + ' (' + $json.age_group + ')' }}",
-    "emailType": "text",
-    "message": "={{ $json.tpt_kit }}",
+    "workflowId": {
+     "__rl": true,
+     "mode": "list",
+     "value": ""
+    },
     "options": {
-     "attachmentsUi": {
-      "attachmentsBinary": [
-       {
-        "property": "data"
-       },
-       {
-        "property": "cover"
-       }
-      ]
-     }
+     "waitForSubWorkflow": false
     }
    },
    "id": "eaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-   "name": "7. Email PDF (Gmail)",
-   "type": "n8n-nodes-base.gmail",
-   "typeVersion": 2.1,
+   "name": "7. Send Email (Mailer Sub-workflow)",
+   "type": "n8n-nodes-base.executeWorkflow",
+   "typeVersion": 1.2,
    "position": [
     2700,
     300
@@ -747,14 +739,14 @@
    "main": [
     [
      {
-      "node": "7. Email PDF (Gmail)",
+      "node": "7. Send Email (Mailer Sub-workflow)",
       "type": "main",
       "index": 0
      }
     ]
    ]
   },
-  "7. Email PDF (Gmail)": {
+  "7. Send Email (Mailer Sub-workflow)": {
    "main": [
     [
      {
