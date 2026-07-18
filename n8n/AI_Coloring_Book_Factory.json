@@ -8,12 +8,12 @@
       "typeVersion": 1,
       "position": [
         -1560,
-        -60
+        -80
       ],
       "parameters": {
-        "content": "## 🎨 AI Coloring Book Factory\nสร้างหนังสือภาพระบายสีอัตโนมัติ 1 ชุด = **ปกสี 1 หน้า + หน้าระบายสีขาวดำ 4 หน้า** (A4 แนวนอน มีกรอบเว้นขอบกระดาษ)\n\n**ต้องตั้งค่า Credentials 2 ตัวก่อนใช้:**\n1. OpenAI API — ที่โหนด Model ทั้ง 3 + โหนด Generate Image\n2. Google Drive OAuth2 — ที่โหนด Create Folder / Upload ทั้ง 3\n\nดูวิธีติดตั้งละเอียดในไฟล์ `คู่มือติดตั้ง_Coloring_Book_Factory.md`",
-        "width": 400,
-        "height": 300
+        "content": "## 🎨 AI Coloring Book Factory (ส่งเข้า Gmail)\nสร้างหนังสือภาพระบายสีอัตโนมัติ 1 ชุด = **ปกสี 1 หน้า + หน้าระบายสีขาวดำ 4 หน้า** (A4 แนวนอน มีกรอบเว้นขอบกระดาษ) แล้วส่งอีเมลพร้อมไฟล์ PDF + ปกเข้า metasitwute021@gmail.com\n\n**ตั้งค่าครั้งเดียว: เชื่อม Gmail ที่โหนด \"Send Gmail\" เท่านั้น**\n(OpenAI API key ฝังอยู่ในโหนด Agent ทั้ง 3 + Generate Image แล้ว — Gmail เป็น OAuth ฝัง key ไม่ได้)\n\n⚠️ ไฟล์เวอร์ชัน WITH_KEYS มี API key จริงอยู่ข้างใน ห้ามแชร์ไฟล์ให้คนอื่นเด็ดขาด",
+        "width": 420,
+        "height": 320
       }
     },
     {
@@ -23,12 +23,12 @@
       "typeVersion": 1,
       "position": [
         -880,
-        80
+        60
       ],
       "parameters": {
-        "content": "## 🤖 AI Agents 3 ตัว\n1. **Creative Director** — สุ่มธีมจากคลัง 22 ธีม + คิดตัวละคร + ฉาก 4 หน้า\n2. **Prompt Artist** — เขียน prompt ภาพตามสไตล์ล็อก (โมเดลห้อง isometric + สวนนอกห้อง + กรอบเว้นขอบ)\n3. **Art Director QA** — ตรวจ/แก้ทุก prompt ก่อนจ่ายเงินสร้างภาพ",
+        "content": "## 🤖 AI Agents 3 ตัว (เรียก OpenAI ตรง — key ฝังแล้ว)\n1. **Creative Director** — สุ่มธีมจากคลัง 22 ธีม + คิดตัวละคร + ฉาก 4 หน้า\n2. **Prompt Artist** — เขียน prompt ภาพตามสไตล์ล็อก (โมเดลห้อง isometric + สวนนอกห้อง + กรอบเว้นขอบ)\n3. **Art Director QA** — ตรวจ/แก้ทุก prompt ก่อนจ่ายเงินสร้างภาพ",
         "width": 700,
-        "height": 220,
+        "height": 200,
         "color": 4
       }
     },
@@ -38,12 +38,12 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        520,
-        80
+        340,
+        60
       ],
       "parameters": {
-        "content": "## 🖼️ สร้างภาพทีละหน้า\ngpt-image-1 ขนาด 1536x1024 (แนวนอน) → ปกเป็นภาพสี / หน้าในเล่มขาวดำ\nประมาณ $0.07/ภาพ (quality: medium) = ~$0.35/ชุด",
-        "width": 620,
+        "content": "## 🖼️ สร้างภาพทีละหน้า\ngpt-image-1 ขนาด 1536x1024 (แนวนอน) → ปกภาพสี / หน้าในเล่มขาวดำ\n~$0.07/ภาพ (quality: medium) = ~$0.35/ชุด — ภาพที่พลาดจะถูกรายงานในอีเมลพร้อมสาเหตุ",
+        "width": 560,
         "height": 180,
         "color": 5
       }
@@ -54,13 +54,13 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        760,
-        -120
+        980,
+        60
       ],
       "parameters": {
-        "content": "## 📦 ส่งขึ้น Google Drive\nสร้างโฟลเดอร์ `ColoringBook_ธีม_วันที่` → อัปโหลด cover.jpg, page_1..4.jpg + รวมเล่ม PDF (A4 แนวนอน)",
-        "width": 620,
-        "height": 140,
+        "content": "## 📧 ส่งเข้า Gmail\nรวมเล่ม PDF (A4 แนวนอน) ด้วยโค้ดล้วน ไม่ใช้บริการเสริม → อีเมลข้อความ KIT + แนบ PDF + cover.jpg ไปที่ metasitwute021@gmail.com",
+        "width": 560,
+        "height": 160,
         "color": 6
       }
     },
@@ -133,180 +133,135 @@
     },
     {
       "id": "cbf-08-agent",
-      "name": "Creative Director",
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 1.7,
+      "name": "Agent 1 - Creative Director",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [
-        -820,
+        -880,
         400
       ],
       "parameters": {
-        "promptType": "define",
-        "text": "=Today: {{ $now.toFormat('yyyy-LL-dd HH:mm') }} | Random seed: {{ Math.floor(Math.random() * 1000000) }}\n\nDesign ONE new coloring book set. Number of coloring pages: {{ $('Config').first().json.num_pages }}.",
-        "hasOutputParser": true,
-        "options": {
-          "systemMessage": "You are the CREATIVE DIRECTOR of a kawaii kids' coloring book studio.\n\nYour job for every request:\n1. Pick ONE theme at RANDOM from this pool (use the random seed in the message for variety — never favor the first entries, pick a different theme than an average person would):\nSpace Adventure, Wizard & Witch Magic Shop, Woodland Animals, Cozy City Corner, Under the Sea, Dinosaur World, Fairy Garden, Farm Life, Candy & Sweets Shop, Spooky-Cute Halloween, Christmas Winter Village, Robot Workshop, Japanese Tea Cafe, Pirate Cove, Jungle Safari, Little Bakery, Forest Camping, Arctic Snow Friends, Flower Shop, Little Music Band, Beach Holiday, Magical Library.\n2. Choose ONE cute animal main character that fits the theme (cat, highland cow, owl, bunny, bear, penguin, fox, hamster, duck, red panda...). Give it a short name.\n3. Invent a short catchy English book title that includes the character.\n4. Design the requested number of DIFFERENT page scenes. EVERY scene is an isometric 3D \"room diorama\" — a cozy open room / shop corner belonging to the character, decorated to match the theme — AND every scene must ALSO include things OUTSIDE the room (a small garden, little trees, path, fence, pond, lanterns, outdoor props...) so the whole page feels full and rich.\n5. Write a cover concept: the same character in the most iconic room-with-garden scene of the book.\n\nRules: each page scene must show a different activity and different props. Cute, cozy, kid-friendly only — nothing scary or violent. Answer in the exact JSON format requested."
-        }
-      }
-    },
-    {
-      "id": "cbf-09-model",
-      "name": "Model - Creative Director",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1.2,
-      "position": [
-        -860,
-        620
-      ],
-      "parameters": {
-        "model": {
-          "__rl": true,
-          "mode": "list",
-          "value": "gpt-4.1-mini",
-          "cachedResultName": "gpt-4.1-mini"
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_OPENAI_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
         },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4.1-mini', temperature: 1, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: \"You are the CREATIVE DIRECTOR of a kawaii kids' coloring book studio.\\n\\nYour job for every request:\\n1. Pick ONE theme at RANDOM from this pool (use the random seed in the message for variety — never favor the first entries):\\nSpace Adventure, Wizard & Witch Magic Shop, Woodland Animals, Cozy City Corner, Under the Sea, Dinosaur World, Fairy Garden, Farm Life, Candy & Sweets Shop, Spooky-Cute Halloween, Christmas Winter Village, Robot Workshop, Japanese Tea Cafe, Pirate Cove, Jungle Safari, Little Bakery, Forest Camping, Arctic Snow Friends, Flower Shop, Little Music Band, Beach Holiday, Magical Library.\\n2. Choose ONE cute animal main character that fits the theme (cat, highland cow, owl, bunny, bear, penguin, fox, hamster, duck, red panda...). Give it a short name.\\n3. Invent a short catchy English book title that includes the character.\\n4. Design the requested number of DIFFERENT page scenes. EVERY scene is an isometric 3D \\\"room diorama\\\" — a cozy open room / shop corner belonging to the character, decorated to match the theme — AND every scene must ALSO include things OUTSIDE the room (a small garden, little trees, path, fence, pond, lanterns, outdoor props...) so the whole page feels full and rich.\\n5. Write a cover concept: the same character in the most iconic room-with-garden scene of the book.\\n\\nRules: each page scene must show a different activity and different props. Cute, cozy, kid-friendly only — nothing scary or violent. Never ask questions back — this runs unattended.\\n\\nReply with ONLY a raw JSON object (no markdown fences, no commentary) with exactly these keys:\\n- \\\"theme\\\": string, the chosen theme name\\n- \\\"theme_slug\\\": string, the theme in PascalCase with no spaces, e.g. WizardMagicShop\\n- \\\"book_title\\\": string\\n- \\\"main_character\\\": string, a one-line description with the character's name\\n- \\\"cover_concept\\\": string\\n- \\\"pages\\\": array with one object per page, each object has keys \\\"page\\\" (number starting at 1) and \\\"scene_idea\\\" (string, 2-3 sentences)\" }, { role: 'user', content: 'Today: ' + $now.toFormat('yyyy-LL-dd HH:mm') + ' | Random seed: ' + Math.floor(Math.random() * 1000000) + '. Design ONE new coloring book set with exactly ' + $('Config').first().json.num_pages + ' coloring pages. Reply with the raw JSON object only.' } ] }) }}",
         "options": {
-          "temperature": 1
+          "timeout": 120000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
-      "id": "cbf-10-parser",
-      "name": "Parser - Creative Director",
-      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
-      "typeVersion": 1.2,
+      "id": "cbf-09-agent",
+      "name": "Agent 2 - Prompt Artist",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [
-        -700,
-        620
-      ],
-      "parameters": {
-        "jsonSchemaExample": "{\n  \"theme\": \"Wizard & Witch Magic Shop\",\n  \"theme_slug\": \"WizardMagicShop\",\n  \"book_title\": \"Mimi the Witch Cat's Magic Shop\",\n  \"main_character\": \"Mimi, a chubby kawaii cat wearing a small witch hat and a tiny cape\",\n  \"cover_concept\": \"Mimi standing proudly in front of her cozy potion shop room, herb garden with pumpkins and a lantern tree outside\",\n  \"pages\": [\n    {\n      \"page\": 1,\n      \"scene_idea\": \"Mimi brewing a bubbling potion in a cauldron inside the shop; potion bottles on shelves; outside the room a small pumpkin patch and a bare tree with hanging lanterns\"\n    }\n  ]\n}"
-      }
-    },
-    {
-      "id": "cbf-11-agent",
-      "name": "Prompt Artist",
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 1.7,
-      "position": [
-        -440,
+        -600,
         400
       ],
       "parameters": {
-        "promptType": "define",
-        "text": "=Here is the approved book plan from the Creative Director:\n\n{{ JSON.stringify($json.output) }}\n\nWrite the final gpt-image-1 prompts: one cover prompt and one prompt per page, following your style rules exactly.",
-        "hasOutputParser": true,
-        "options": {
-          "systemMessage": "You are the PROMPT ARTIST of a kawaii coloring book studio. You turn scene ideas into prompts for the gpt-image-1 image model. Follow these rules EXACTLY.\n\nFOR EVERY COLORING PAGE prompt (black-and-white pages):\n- Describe the scene in rich detail (character, activity, props inside the room, garden/trees/props outside the room).\n- Always end with this exact locked style block:\n\"Isometric 3D room diorama scene, cute kawaii chibi style, the scene extends outside the room with a small garden and decorations, rich detailed composition that fills the whole page, thin decorative rectangular border frame with a small blank margin between the frame and the paper edge, thick bold black outlines, pure black and white line art, clean white background, no shading, no gray fill, no color, no text, simple clear shapes that are easy for kids to color, landscape orientation, coloring book page.\"\n\nFOR THE COVER prompt (full color):\n- Same main character and the iconic room-with-garden scene.\n- MUST include: the book title text written EXACTLY, e.g.: with the title text \"BOOK TITLE HERE\" written in large playful rounded letters at the top of the cover.\n- Always end with this exact locked style block:\n\"Isometric 3D room diorama scene, cute kawaii chibi style, full color, bright cheerful pastel colors, soft shading, rich detailed composition that fills the whole page, thin decorative rectangular border frame with a small blank margin between the frame and the paper edge, landscape orientation, children's coloring book front cover illustration.\"\n\nNever mention color names in the black-and-white page prompts. Answer in the exact JSON format requested."
-        }
-      }
-    },
-    {
-      "id": "cbf-12-model",
-      "name": "Model - Prompt Artist",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1.2,
-      "position": [
-        -480,
-        620
-      ],
-      "parameters": {
-        "model": {
-          "__rl": true,
-          "mode": "list",
-          "value": "gpt-4.1-mini",
-          "cachedResultName": "gpt-4.1-mini"
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_OPENAI_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
         },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4.1-mini', temperature: 0.7, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: \"You are the PROMPT ARTIST of a kawaii coloring book studio. You turn a book plan into prompts for the gpt-image-1 image model. Follow these rules EXACTLY.\\n\\nFOR EVERY COLORING PAGE prompt (black-and-white pages):\\n- Describe the scene in rich detail: the character, the activity, props inside the room, and the garden / trees / props outside the room.\\n- Always end with this exact locked style block:\\n\\\"Isometric 3D room diorama scene, cute kawaii chibi style, the scene extends outside the room with a small garden and decorations, rich detailed composition that fills the whole page, thin decorative rectangular border frame with a small blank margin between the frame and the paper edge, thick bold black outlines, pure black and white line art, clean white background, no shading, no gray fill, no color, no text, simple clear shapes that are easy for kids to color, landscape orientation, coloring book page.\\\"\\n\\nFOR THE COVER prompt (full color):\\n- Same main character and the iconic room-with-garden scene.\\n- MUST include the book title as exact text to render, phrased like: with the title text \\\"BOOK TITLE HERE\\\" written in large playful rounded letters at the top of the cover.\\n- Always end with this exact locked style block:\\n\\\"Isometric 3D room diorama scene, cute kawaii chibi style, full color, bright cheerful pastel colors, soft shading, rich detailed composition that fills the whole page, thin decorative rectangular border frame with a small blank margin between the frame and the paper edge, landscape orientation, children's coloring book front cover illustration.\\\"\\n\\nNever mention color names in the black-and-white page prompts. Never ask questions back — this runs unattended.\\n\\nReply with ONLY a raw JSON object (no markdown fences, no commentary) with exactly these keys:\\n- \\\"theme\\\": string (copy from the plan)\\n- \\\"theme_slug\\\": string (copy from the plan)\\n- \\\"book_title\\\": string (copy from the plan)\\n- \\\"main_character\\\": string (copy from the plan)\\n- \\\"cover_prompt\\\": string\\n- \\\"page_prompts\\\": array of strings, one prompt per page in order\" }, { role: 'user', content: 'Here is the approved book plan JSON from the Creative Director:\\n' + $json.choices[0].message.content + '\\nWrite the final image prompts and reply with the raw JSON object only.' } ] }) }}",
         "options": {
-          "temperature": 0.7
+          "timeout": 120000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
-      "id": "cbf-13-parser",
-      "name": "Parser - Prompt Artist",
-      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
-      "typeVersion": 1.2,
+      "id": "cbf-10-agent",
+      "name": "Agent 3 - Art Director QA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [
         -320,
-        620
-      ],
-      "parameters": {
-        "jsonSchemaExample": "{\n  \"theme\": \"Wizard & Witch Magic Shop\",\n  \"theme_slug\": \"WizardMagicShop\",\n  \"book_title\": \"Mimi the Witch Cat's Magic Shop\",\n  \"cover_prompt\": \"A full color kawaii cover of ... with the title text \\\"Mimi the Witch Cat's Magic Shop\\\" written in large playful rounded letters at the top ... (locked cover style block)\",\n  \"page_prompts\": [\n    \"Page 1 prompt ... (locked black-and-white style block)\",\n    \"Page 2 prompt ... (locked black-and-white style block)\",\n    \"Page 3 prompt ... (locked black-and-white style block)\",\n    \"Page 4 prompt ... (locked black-and-white style block)\"\n  ]\n}"
-      }
-    },
-    {
-      "id": "cbf-14-agent",
-      "name": "Art Director QA",
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 1.7,
-      "position": [
-        -60,
         400
       ],
       "parameters": {
-        "promptType": "define",
-        "text": "=Review these image prompts before we spend money generating images:\n\n{{ JSON.stringify($json.output) }}\n\nCheck every prompt against your checklist, fix any problems directly, and return the FINAL corrected JSON (same structure).",
-        "hasOutputParser": true,
-        "options": {
-          "systemMessage": "You are the ART DIRECTOR doing final Quality Control for a kawaii coloring book studio. You receive a JSON with cover_prompt and page_prompts. Verify and FIX (do not just comment):\n\nCHECKLIST for each of the page_prompts (black-and-white coloring pages):\n1. Contains: isometric 3D room diorama + something outside the room (garden/trees/props) + composition fills the whole page.\n2. Contains: thin decorative rectangular border frame with a small blank margin from the paper edge.\n3. Contains: thick bold black outlines, pure black and white line art, white background, no shading, no gray fill, no color, no text, landscape orientation, coloring book page.\n4. Contains NO color words (red, blue, golden...) and nothing scary/violent — kid-friendly only.\n5. Each page is a clearly DIFFERENT scene/activity from the others.\n\nCHECKLIST for cover_prompt:\n1. Full color, bright cheerful pastel colors, same main character.\n2. Includes the book title as exact quoted text to render on the cover.\n3. Isometric room diorama + garden, border frame with margin, landscape orientation, children's book cover.\n\nFix silently and output the final corrected JSON in the exact format requested. Keep theme, theme_slug and book_title unchanged."
-        }
-      }
-    },
-    {
-      "id": "cbf-15-model",
-      "name": "Model - Art Director QA",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1.2,
-      "position": [
-        -100,
-        620
-      ],
-      "parameters": {
-        "model": {
-          "__rl": true,
-          "mode": "list",
-          "value": "gpt-4.1-mini",
-          "cachedResultName": "gpt-4.1-mini"
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_OPENAI_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
         },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4.1-mini', temperature: 0.2, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: \"You are the ART DIRECTOR doing final Quality Control for a kawaii coloring book studio before money is spent on image generation. You receive a JSON with cover_prompt and page_prompts. Verify and FIX problems directly — do not just comment.\\n\\nCHECKLIST for each of the page_prompts (black-and-white coloring pages):\\n1. Contains: isometric 3D room diorama + something outside the room (garden/trees/props) + composition fills the whole page.\\n2. Contains: thin decorative rectangular border frame with a small blank margin from the paper edge.\\n3. Contains: thick bold black outlines, pure black and white line art, white background, no shading, no gray fill, no color, no text, landscape orientation, coloring book page.\\n4. Contains NO color words (red, blue, golden...) and nothing scary or violent — kid-friendly only.\\n5. Each page is a clearly DIFFERENT scene/activity from the others.\\n\\nCHECKLIST for cover_prompt:\\n1. Full color, bright cheerful pastel colors, same main character.\\n2. Includes the book title as exact quoted text to render on the cover.\\n3. Isometric room diorama + garden, border frame with margin, landscape orientation, children's book cover.\\n\\nFix silently. Keep theme, theme_slug, book_title and main_character unchanged. Never ask questions back.\\n\\nReply with ONLY the final corrected raw JSON object (no markdown fences, no commentary) with exactly these keys: \\\"theme\\\", \\\"theme_slug\\\", \\\"book_title\\\", \\\"main_character\\\", \\\"cover_prompt\\\", \\\"page_prompts\\\".\" }, { role: 'user', content: 'Review these image prompts before we spend money generating images:\\n' + $json.choices[0].message.content + '\\nCheck every prompt against your checklist, fix problems directly, and reply with the final corrected raw JSON object only.' } ] }) }}",
         "options": {
-          "temperature": 0.2
+          "timeout": 120000
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
-      "id": "cbf-16-parser",
-      "name": "Parser - Art Director QA",
-      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
-      "typeVersion": 1.2,
-      "position": [
-        60,
-        620
-      ],
-      "parameters": {
-        "jsonSchemaExample": "{\n  \"theme\": \"Wizard & Witch Magic Shop\",\n  \"theme_slug\": \"WizardMagicShop\",\n  \"book_title\": \"Mimi the Witch Cat's Magic Shop\",\n  \"cover_prompt\": \"A full color kawaii cover of ... with the title text \\\"Mimi the Witch Cat's Magic Shop\\\" written in large playful rounded letters at the top ... (locked cover style block)\",\n  \"page_prompts\": [\n    \"Page 1 prompt ... (locked black-and-white style block)\",\n    \"Page 2 prompt ... (locked black-and-white style block)\",\n    \"Page 3 prompt ... (locked black-and-white style block)\",\n    \"Page 4 prompt ... (locked black-and-white style block)\"\n  ]\n}"
-      }
-    },
-    {
-      "id": "cbf-17-code",
+      "id": "cbf-11-code",
       "name": "Build Page List",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        300,
+        -40,
         400
       ],
       "parameters": {
-        "jsCode": "// รับผล JSON สุดท้ายจาก Art Director QA แล้วแตกเป็นรายการภาพ: ปก 1 + หน้าระบายสี 4\nconst out = $input.first().json.output;\nconst stamp = $now.toFormat('yyyyLLdd_HHmm');\nconst slug = (out.theme_slug || out.theme || 'Theme').replace(/[^A-Za-z0-9]+/g, '');\nconst safeTitle = (out.book_title || 'Coloring Book').replace(/[^A-Za-z0-9 '\\-]+/g, '').trim();\nconst meta = {\n  theme: out.theme,\n  theme_slug: slug,\n  book_title: out.book_title,\n  folder_name: 'ColoringBook_' + slug + '_' + stamp,\n  pdf_name: safeTitle + '.pdf',\n};\n\nconst items = [{ json: { ...meta, index: 0, kind: 'cover', filename: 'cover.jpg', prompt: out.cover_prompt } }];\n(out.page_prompts || []).forEach((p, i) => {\n  items.push({ json: { ...meta, index: i + 1, kind: 'page', filename: 'page_' + (i + 1) + '.jpg', prompt: p } });\n});\nreturn items;"
+        "jsCode": "// รับ JSON สุดท้ายจาก Agent 3 (Art Director QA) แล้วแตกเป็นรายการภาพ: ปก 1 + หน้าระบายสี\nlet raw = $input.first().json.choices[0].message.content;\nlet s = String(raw).trim().replace(/^\\`\\`\\`(?:json)?\\s*/i, '').replace(/\\`\\`\\`\\s*$/, '');\nconst a = s.indexOf('{'); const b = s.lastIndexOf('}');\nif (a >= 0 && b > a) s = s.slice(a, b + 1);\nconst out = JSON.parse(s);\n\nconst stamp = $now.toFormat('yyyyLLdd_HHmm');\nconst slug = (out.theme_slug || out.theme || 'Theme').replace(/[^A-Za-z0-9]+/g, '');\nconst safeTitle = (out.book_title || 'Coloring Book').replace(/[^A-Za-z0-9 '\\-]+/g, '').trim();\nconst meta = {\n  theme: out.theme,\n  theme_slug: slug,\n  book_title: out.book_title,\n  main_character: out.main_character || '',\n  folder_name: 'ColoringBook_' + slug + '_' + stamp,\n  pdf_name: safeTitle + '.pdf',\n};\n\nconst items = [{ json: { ...meta, index: 0, kind: 'cover', filename: 'cover.jpg', prompt: out.cover_prompt } }];\n(out.page_prompts || []).forEach((p, i) => {\n  items.push({ json: { ...meta, index: i + 1, kind: 'page', filename: 'page_' + (i + 1) + '.jpg', prompt: p } });\n});\nreturn items;"
       }
     },
     {
-      "id": "cbf-18-loop",
+      "id": "cbf-12-loop",
       "name": "Loop Over Images",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
       "position": [
-        560,
+        220,
         400
       ],
       "parameters": {
@@ -315,162 +270,108 @@
       }
     },
     {
-      "id": "cbf-19-genimage",
+      "id": "cbf-13-genimage",
       "name": "Generate Image",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        820,
+        480,
         520
       ],
       "parameters": {
         "method": "POST",
         "url": "https://api.openai.com/v1/images/generations",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_OPENAI_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  model: 'gpt-image-1',\n  prompt: $json.prompt,\n  size: $('Config').first().json.image_size,\n  quality: $('Config').first().json.image_quality,\n  output_format: 'jpeg',\n  n: 1\n}) }}",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-image-1', prompt: $json.prompt, size: $('Config').first().json.image_size, quality: $('Config').first().json.image_quality, output_format: 'jpeg', output_compression: 85 }) }}",
         "options": {
           "timeout": 300000
         }
       },
+      "onError": "continueRegularOutput",
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 5000
     },
     {
-      "id": "cbf-20-code",
+      "id": "cbf-14-code",
       "name": "Attach Binary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1060,
+        720,
         520
       ],
       "parameters": {
-        "jsCode": "// แปลง base64 จาก gpt-image-1 เป็นไฟล์ binary แล้วส่งกลับเข้า Loop\nconst meta = $('Loop Over Images').first().json;\nconst b64 = $input.first().json.data[0].b64_json;\nif (!b64) throw new Error('OpenAI did not return image data (b64_json is empty)');\nconst binary = await this.helpers.prepareBinaryData(Buffer.from(b64, 'base64'), meta.filename, 'image/jpeg');\nreturn [{ json: { ...meta }, binary: { data: binary } }];"
+        "jsCode": "// แปลง base64 จาก gpt-image-1 เป็นไฟล์ binary — ถ้าภาพล้มเหลว เก็บ error ไว้รายงานในอีเมล (ไม่หยุดทั้งชุด)\nconst meta = $('Loop Over Images').first().json;\nconst resp = $input.first().json;\nconst b64 = resp && resp.data && resp.data[0] && resp.data[0].b64_json;\nif (!b64) {\n  const err = (resp && resp.error && (resp.error.message || resp.error.description || resp.error.code)) ||\n    (resp && resp.message) || JSON.stringify(resp || {}).slice(0, 300);\n  return [{ json: { ...meta, failed: true, error_message: String(err) } }];\n}\nconst binary = await this.helpers.prepareBinaryData(Buffer.from(b64, 'base64'), meta.filename, 'image/jpeg');\nreturn [{ json: { ...meta, failed: false }, binary: { data: binary } }];"
       }
     },
     {
-      "id": "cbf-21-code",
+      "id": "cbf-15-code",
       "name": "Collect Pages",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        820,
+        480,
         280
       ],
       "parameters": {
-        "jsCode": "// รวมภาพทุกหน้าหลังจบ Loop แล้วเรียงลำดับ: ปก(0) -> หน้า 1..4\nreturn $input.all().sort((a, b) => a.json.index - b.json.index);"
+        "jsCode": "// รวมภาพทุกหน้าหลังจบ Loop แล้วเรียงลำดับ: ปก(0) -> หน้า 1..N\nreturn $input.all().sort((a, b) => a.json.index - b.json.index);"
       }
     },
     {
-      "id": "cbf-22-folder",
-      "name": "Create Folder",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
-      "position": [
-        1060,
-        280
-      ],
-      "parameters": {
-        "resource": "folder",
-        "name": "={{ $json.folder_name }}",
-        "driveId": {
-          "__rl": true,
-          "mode": "list",
-          "value": "My Drive",
-          "cachedResultName": "My Drive"
-        },
-        "folderId": {
-          "__rl": true,
-          "mode": "list",
-          "value": "root",
-          "cachedResultName": "/ (Root folder)"
-        },
-        "options": {}
-      },
-      "executeOnce": true
-    },
-    {
-      "id": "cbf-23-code",
-      "name": "Restore Items",
+      "id": "cbf-16-code",
+      "name": "Build PDF + Email Pack",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1300,
+        720,
         280
       ],
       "parameters": {
-        "jsCode": "// หลังสร้างโฟลเดอร์ (ได้ 1 item) ดึงรายการภาพทั้ง 5 กลับมาเพื่ออัปโหลด\nreturn $('Collect Pages').all();"
+        "jsCode": "// รวมเล่ม PDF (A4 แนวนอน, JavaScript ล้วน) + เตรียมไฟล์แนบและข้อความอีเมลแบบ KIT\nfunction jpegInfo(buf) {\n  let i = 2;\n  while (i < buf.length - 8) {\n    if (buf[i] !== 0xff) { i++; continue; }\n    const marker = buf[i + 1];\n    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {\n      return { height: buf.readUInt16BE(i + 5), width: buf.readUInt16BE(i + 7), components: buf[i + 9] };\n    }\n    const len = buf.readUInt16BE(i + 2);\n    i += 2 + len;\n  }\n  return { width: 1536, height: 1024, components: 3 };\n}\n\nfunction buildPdf(images) {\n  const W = 841.89, H = 595.28, M = 18; // A4 landscape (points) + ขอบขาวรอบภาพ\n  const nObjs = 2 + images.length * 3;\n  const chunks = [];\n  let offset = 0;\n  const offsets = new Array(nObjs + 1).fill(0);\n  const push = (strOrBuf) => {\n    const b = Buffer.isBuffer(strOrBuf) ? strOrBuf : Buffer.from(strOrBuf, 'latin1');\n    chunks.push(b);\n    offset += b.length;\n  };\n  const beginObj = (n) => { offsets[n] = offset; push(n + ' 0 obj\\n'); };\n\n  push('%PDF-1.4\\n%\\xE2\\xE3\\xCF\\xD3\\n');\n  const pageObjNums = images.map((_, k) => 5 + k * 3);\n  beginObj(1);\n  push('<< /Type /Catalog /Pages 2 0 R >>\\nendobj\\n');\n  beginObj(2);\n  push('<< /Type /Pages /Kids [' + pageObjNums.map((n) => n + ' 0 R').join(' ') + '] /Count ' + images.length + ' >>\\nendobj\\n');\n\n  images.forEach((img, k) => {\n    const info = jpegInfo(img.buf);\n    const cs = info.components === 1 ? '/DeviceGray' : '/DeviceRGB';\n    const maxW = W - 2 * M, maxH = H - 2 * M;\n    const scale = Math.min(maxW / info.width, maxH / info.height);\n    const dw = info.width * scale, dh = info.height * scale;\n    const x = (W - dw) / 2, y = (H - dh) / 2;\n    const imgObj = 3 + k * 3, contObj = 4 + k * 3, pageObj = 5 + k * 3;\n\n    beginObj(imgObj);\n    push('<< /Type /XObject /Subtype /Image /Width ' + info.width + ' /Height ' + info.height +\n      ' /ColorSpace ' + cs + ' /BitsPerComponent 8 /Filter /DCTDecode /Length ' + img.buf.length + ' >>\\nstream\\n');\n    push(img.buf);\n    push('\\nendstream\\nendobj\\n');\n\n    const content = 'q ' + dw.toFixed(2) + ' 0 0 ' + dh.toFixed(2) + ' ' + x.toFixed(2) + ' ' + y.toFixed(2) + ' cm /Im0 Do Q';\n    beginObj(contObj);\n    push('<< /Length ' + content.length + ' >>\\nstream\\n' + content + '\\nendstream\\nendobj\\n');\n\n    beginObj(pageObj);\n    push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + W + ' ' + H + '] /Resources << /XObject << /Im0 ' +\n      imgObj + ' 0 R >> >> /Contents ' + contObj + ' 0 R >>\\nendobj\\n');\n  });\n\n  const xrefStart = offset;\n  push('xref\\n0 ' + (nObjs + 1) + '\\n0000000000 65535 f \\n');\n  for (let n = 1; n <= nObjs; n++) push(String(offsets[n]).padStart(10, '0') + ' 00000 n \\n');\n  push('trailer\\n<< /Size ' + (nObjs + 1) + ' /Root 1 0 R >>\\nstartxref\\n' + xrefStart + '\\n%%EOF\\n');\n  return Buffer.concat(chunks);\n}\n\nconst onePx = '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';\n\nconst entries = $input.all().map((item, idx) => ({ item, idx }));\nentries.sort((a, b) => a.item.json.index - b.item.json.index);\nconst meta = entries[0].item.json;\n\nconst good = [];\nconst failed = [];\nfor (const e of entries) {\n  if (e.item.json.failed || !e.item.binary || !e.item.binary.data) { failed.push(e.item.json); continue; }\n  let buf;\n  try { buf = await this.helpers.getBinaryDataBuffer(e.idx, 'data'); }\n  catch (err) { buf = Buffer.from(e.item.binary.data.data, 'base64'); }\n  good.push({ buf, json: e.item.json });\n}\nif (good.length === 0) {\n  throw new Error('ไม่มีภาพที่สร้างสำเร็จเลยสักภาพ — สาเหตุแรก: ' + ((failed[0] && failed[0].error_message) || 'unknown'));\n}\n\nconst pdfBuf = buildPdf(good.map(g => ({ buf: g.buf })));\nconst binary = {};\nbinary.data = await this.helpers.prepareBinaryData(pdfBuf, meta.pdf_name, 'application/pdf');\nconst coverEntry = good.find(g => g.json.kind === 'cover');\nbinary.cover = await this.helpers.prepareBinaryData(coverEntry ? coverEntry.buf : Buffer.from(onePx, 'base64'), 'cover.jpg', 'image/jpeg');\n\nlet warnBlock = '';\nif (failed.length) {\n  warnBlock = '\\n⚠️ ภาพเจนไม่สำเร็จ ' + failed.length + ' รูป: ' + failed.map(f => f.filename).join(', ');\n  const fe = failed[0].error_message || '';\n  if (fe) {\n    warnBlock += '\\nสาเหตุจาก OpenAI: ' + fe;\n    if (/quota|billing|insufficient/i.test(fe)) warnBlock += '\\n→ เครดิต OpenAI หมด! เติมเงินที่ platform.openai.com → Billing แล้วรันใหม่';\n    if (/must be verified|verification/i.test(fe)) warnBlock += '\\n→ บัญชี OpenAI ยังไม่ Verify Organization — ไปที่ platform.openai.com → Settings → Organization → Verify';\n  }\n  warnBlock += '\\n→ PDF ชุดนี้มีเฉพาะหน้าที่สำเร็จ (' + good.length + ' หน้า) ควรรันใหม่ก่อนนำไปขาย\\n';\n}\n\nconst pageCount = good.filter(g => g.json.kind === 'page').length;\nconst kit = [\n  '====== 🎨 COLORING BOOK KIT (พร้อมใช้/พร้อมขาย) ======',\n  warnBlock,\n  '',\n  '[TITLE]',\n  meta.book_title,\n  '',\n  '[THEME]  ' + meta.theme,\n  '[MAIN CHARACTER]  ' + (meta.main_character || '-'),\n  '[PAGES]  ปกสี 1 หน้า + หน้าระบายสีขาวดำ ' + pageCount + ' หน้า (A4 แนวนอน มีกรอบเว้นขอบกระดาษ)',\n  '',\n  '[FILE]  แนบไฟล์ PDF รวมเล่มในอีเมลนี้: ' + meta.pdf_name,\n  '[PREVIEW/COVER]  ใช้ไฟล์ cover.jpg ในอีเมลนี้เป็นภาพปก/ภาพพรีวิวตอนลงขาย',\n  '',\n  '[PRICE แนะนำ]  $2.50 - $5.00 ต่อชุด (Etsy / TPT / Amazon KDP)',\n  '===============================================',\n].join('\\n');\n\nreturn [{\n  json: {\n    book_title: meta.book_title,\n    theme: meta.theme,\n    main_character: meta.main_character || '',\n    pdf_name: meta.pdf_name,\n    total_pages: good.length,\n    has_failures: failed.length > 0,\n    kit: kit,\n  },\n  binary,\n}];"
       }
     },
     {
-      "id": "cbf-24-upimg",
-      "name": "Upload Image",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
+      "id": "cbf-17-gmail",
+      "name": "Send Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
       "position": [
-        1540,
-        180
+        980,
+        280
       ],
       "parameters": {
-        "operation": "upload",
-        "inputDataFieldName": "data",
-        "name": "={{ $json.filename }}",
-        "driveId": {
-          "__rl": true,
-          "mode": "list",
-          "value": "My Drive",
-          "cachedResultName": "My Drive"
-        },
-        "folderId": {
-          "__rl": true,
-          "mode": "id",
-          "value": "={{ $('Create Folder').first().json.id }}"
-        },
-        "options": {}
-      }
-    },
-    {
-      "id": "cbf-25-code",
-      "name": "Build PDF",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1540,
-        400
-      ],
-      "parameters": {
-        "jsCode": "// รวมภาพทุกหน้าเป็น PDF เล่มเดียว (A4 แนวนอน) ด้วย JavaScript ล้วน ไม่ใช้ library ภายนอก\n// ภาพเป็น JPEG จึงฝังลง PDF ตรงๆ ผ่าน /DCTDecode ได้\n\nfunction jpegInfo(buf) {\n  let i = 2;\n  while (i < buf.length - 8) {\n    if (buf[i] !== 0xff) { i++; continue; }\n    const marker = buf[i + 1];\n    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {\n      return { height: buf.readUInt16BE(i + 5), width: buf.readUInt16BE(i + 7), components: buf[i + 9] };\n    }\n    const len = buf.readUInt16BE(i + 2);\n    i += 2 + len;\n  }\n  return { width: 1536, height: 1024, components: 3 };\n}\n\nfunction buildPdf(images) {\n  const W = 841.89, H = 595.28, M = 18; // A4 landscape (points) + ขอบขาวรอบภาพ\n  const nObjs = 2 + images.length * 3;\n  const chunks = [];\n  let offset = 0;\n  const offsets = new Array(nObjs + 1).fill(0);\n  const push = (strOrBuf) => {\n    const b = Buffer.isBuffer(strOrBuf) ? strOrBuf : Buffer.from(strOrBuf, 'latin1');\n    chunks.push(b);\n    offset += b.length;\n  };\n  const beginObj = (n) => { offsets[n] = offset; push(n + ' 0 obj\\n'); };\n\n  push('%PDF-1.4\\n%\\xE2\\xE3\\xCF\\xD3\\n');\n  const pageObjNums = images.map((_, k) => 5 + k * 3);\n  beginObj(1);\n  push('<< /Type /Catalog /Pages 2 0 R >>\\nendobj\\n');\n  beginObj(2);\n  push('<< /Type /Pages /Kids [' + pageObjNums.map((n) => n + ' 0 R').join(' ') + '] /Count ' + images.length + ' >>\\nendobj\\n');\n\n  images.forEach((img, k) => {\n    const info = jpegInfo(img.buf);\n    const cs = info.components === 1 ? '/DeviceGray' : '/DeviceRGB';\n    const maxW = W - 2 * M, maxH = H - 2 * M;\n    const scale = Math.min(maxW / info.width, maxH / info.height);\n    const dw = info.width * scale, dh = info.height * scale;\n    const x = (W - dw) / 2, y = (H - dh) / 2;\n    const imgObj = 3 + k * 3, contObj = 4 + k * 3, pageObj = 5 + k * 3;\n\n    beginObj(imgObj);\n    push('<< /Type /XObject /Subtype /Image /Width ' + info.width + ' /Height ' + info.height +\n      ' /ColorSpace ' + cs + ' /BitsPerComponent 8 /Filter /DCTDecode /Length ' + img.buf.length + ' >>\\nstream\\n');\n    push(img.buf);\n    push('\\nendstream\\nendobj\\n');\n\n    const content = 'q ' + dw.toFixed(2) + ' 0 0 ' + dh.toFixed(2) + ' ' + x.toFixed(2) + ' ' + y.toFixed(2) + ' cm /Im0 Do Q';\n    beginObj(contObj);\n    push('<< /Length ' + content.length + ' >>\\nstream\\n' + content + '\\nendstream\\nendobj\\n');\n\n    beginObj(pageObj);\n    push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + W + ' ' + H + '] /Resources << /XObject << /Im0 ' +\n      imgObj + ' 0 R >> >> /Contents ' + contObj + ' 0 R >>\\nendobj\\n');\n  });\n\n  const xrefStart = offset;\n  push('xref\\n0 ' + (nObjs + 1) + '\\n0000000000 65535 f \\n');\n  for (let n = 1; n <= nObjs; n++) push(String(offsets[n]).padStart(10, '0') + ' 00000 n \\n');\n  push('trailer\\n<< /Size ' + (nObjs + 1) + ' /Root 1 0 R >>\\nstartxref\\n' + xrefStart + '\\n%%EOF\\n');\n  return Buffer.concat(chunks);\n}\n\nconst items = $input.all().sort((a, b) => a.json.index - b.json.index);\nconst images = [];\nfor (let i = 0; i < items.length; i++) {\n  let buf;\n  try {\n    buf = await this.helpers.getBinaryDataBuffer(i, 'data');\n  } catch (e) {\n    buf = Buffer.from(items[i].binary.data.data, 'base64');\n  }\n  images.push({ buf });\n}\n\nconst meta = items[0].json;\nconst pdfBuf = buildPdf(images);\nconst binary = await this.helpers.prepareBinaryData(pdfBuf, meta.pdf_name, 'application/pdf');\nreturn [{\n  json: { folder_name: meta.folder_name, book_title: meta.book_title, total_pages: images.length, file_name: meta.pdf_name },\n  binary: { data: binary },\n}];"
-      }
-    },
-    {
-      "id": "cbf-26-uppdf",
-      "name": "Upload PDF",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
-      "position": [
-        1780,
-        400
-      ],
-      "parameters": {
-        "operation": "upload",
-        "inputDataFieldName": "data",
-        "name": "={{ $json.file_name }}",
-        "driveId": {
-          "__rl": true,
-          "mode": "list",
-          "value": "My Drive",
-          "cachedResultName": "My Drive"
-        },
-        "folderId": {
-          "__rl": true,
-          "mode": "id",
-          "value": "={{ $('Create Folder').first().json.id }}"
-        },
-        "options": {}
+        "sendTo": "metasitwute021@gmail.com",
+        "subject": "={{ ($json.has_failures ? '⚠️ ' : '') + '🎨 Coloring Book: ' + $json.book_title + ' (' + $json.theme + ')' }}",
+        "emailType": "text",
+        "message": "={{ $json.kit }}",
+        "options": {
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "data"
+              },
+              {
+                "property": "cover"
+              }
+            ]
+          }
+        }
       }
     }
   ],
@@ -501,36 +402,36 @@
       "main": [
         [
           {
-            "node": "Creative Director",
+            "node": "Agent 1 - Creative Director",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Creative Director": {
+    "Agent 1 - Creative Director": {
       "main": [
         [
           {
-            "node": "Prompt Artist",
+            "node": "Agent 2 - Prompt Artist",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Prompt Artist": {
+    "Agent 2 - Prompt Artist": {
       "main": [
         [
           {
-            "node": "Art Director QA",
+            "node": "Agent 3 - Art Director QA",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Art Director QA": {
+    "Agent 3 - Art Director QA": {
       "main": [
         [
           {
@@ -596,112 +497,19 @@
       "main": [
         [
           {
-            "node": "Create Folder",
+            "node": "Build PDF + Email Pack",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Create Folder": {
+    "Build PDF + Email Pack": {
       "main": [
         [
           {
-            "node": "Restore Items",
+            "node": "Send Gmail",
             "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Restore Items": {
-      "main": [
-        [
-          {
-            "node": "Upload Image",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Build PDF",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build PDF": {
-      "main": [
-        [
-          {
-            "node": "Upload PDF",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Model - Creative Director": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Creative Director",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Parser - Creative Director": {
-      "ai_outputParser": [
-        [
-          {
-            "node": "Creative Director",
-            "type": "ai_outputParser",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Model - Prompt Artist": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Prompt Artist",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Parser - Prompt Artist": {
-      "ai_outputParser": [
-        [
-          {
-            "node": "Prompt Artist",
-            "type": "ai_outputParser",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Model - Art Director QA": {
-      "ai_languageModel": [
-        [
-          {
-            "node": "Art Director QA",
-            "type": "ai_languageModel",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Parser - Art Director QA": {
-      "ai_outputParser": [
-        [
-          {
-            "node": "Art Director QA",
-            "type": "ai_outputParser",
             "index": 0
           }
         ]

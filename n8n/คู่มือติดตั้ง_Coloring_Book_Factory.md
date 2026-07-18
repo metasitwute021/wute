@@ -1,104 +1,97 @@
-# 🎨 คู่มือติดตั้ง — AI Coloring Book Factory (n8n)
+# 🎨 คู่มือติดตั้ง — AI Coloring Book Factory (n8n, ส่งเข้า Gmail)
 
-ระบบสร้าง "หนังสือภาพระบายสี" อัตโนมัติด้วย AI Agents 3 ตัว
+ระบบสร้าง "หนังสือภาพระบายสี" อัตโนมัติด้วย AI Agents 3 ตัว แล้ว**ส่งผลงานเข้าอีเมล** `metasitwute021@gmail.com`
 
 **ผลงานต่อ 1 ชุด (5 หน้ารวมปก, กระดาษ A4 แนวนอน):**
 
-| หน้า | ไฟล์ | ลักษณะ |
-|---|---|---|
-| ปก | `cover.jpg` | **ภาพสีสดใส** มีชื่อเล่มบนปก + กรอบตกแต่งเว้นขอบกระดาษ |
-| หน้า 1–4 | `page_1.jpg` … `page_4.jpg` | ภาพระบายสี **ขาว-ดำ เส้นหนา** สไตล์โมเดลห้อง isometric มีสวน/ต้นไม้นอกห้อง องค์ประกอบเต็มหน้า + กรอบเว้นขอบ |
-| รวมเล่ม | `ชื่อเล่ม.pdf` | PDF 5 หน้า A4 แนวนอน พร้อมพิมพ์/ขาย |
+| สิ่งที่ได้ในอีเมล | ลักษณะ |
+|---|---|
+| ข้อความ KIT ในตัวอีเมล | สรุปชื่อเล่ม, ธีม, ตัวละคร, ราคาแนะนำ — พร้อมคำเตือน ⚠️ อัตโนมัติถ้ามีภาพเจนไม่สำเร็จ (บอกสาเหตุ เช่น เครดิตหมด) |
+| `ชื่อเล่ม.pdf` (ไฟล์แนบ) | รวมเล่ม 5 หน้า: **ปกสี 1 + หน้าระบายสีขาวดำ 4** A4 แนวนอน มีกรอบเว้นขอบกระดาษ พร้อมพิมพ์/ขาย |
+| `cover.jpg` (ไฟล์แนบ) | ภาพปกสี ใช้เป็นภาพพรีวิวตอนลงขายได้เลย |
 
 ทุกครั้งที่รัน AI จะ**สุ่มธีมใหม่เอง**จากคลัง 22 ธีม (อวกาศ, พ่อมดแม่มด, สัตว์ป่า, มุมเมือง, ใต้ทะเล, ไดโนเสาร์, สวนแฟรี่, ฟาร์ม, ร้านขนมหวาน, ฮาโลวีนน่ารัก, หมู่บ้านคริสต์มาส, โรงงานหุ่นยนต์, คาเฟ่ชาญี่ปุ่น, อ่าวโจรสลัด, ซาฟารี, เบเกอรี่, แคมป์ปิ้งในป่า, เพื่อนหิมะขั้วโลก, ร้านดอกไม้, วงดนตรีจิ๋ว, ทะเลวันหยุด, ห้องสมุดเวทมนตร์) พร้อมคิดตัวละคร ชื่อเล่ม และฉากเองทั้งหมด
 
 ---
 
-## 🤖 AI Agents 3 ตัวในระบบ
+## 🗂️ ไฟล์มี 2 เวอร์ชัน
 
-```
-Trigger → Config → [1] Creative Director → [2] Prompt Artist → [3] Art Director QA
-                                                                      ↓
-        Google Drive ← รวมเล่ม PDF ← Loop สร้างภาพทีละหน้า (gpt-image-1) ←┘
-```
+| ไฟล์ | ใช้เมื่อไหร่ |
+|---|---|
+| `AI_Coloring_Book_Factory_WITH_KEYS.json` (ได้รับทางแชท) | **ใช้ตัวนี้ import** — OpenAI API key ฝังไว้ครบทุกโหนดแล้ว ⚠️ ห้ามแชร์/อัปโหลดไฟล์นี้ที่สาธารณะเด็ดขาด |
+| `AI_Coloring_Book_Factory.json` (ในโฟลเดอร์นี้/GitHub) | เวอร์ชันปลอดภัยสำหรับเก็บใน GitHub — key ถูกแทนด้วย `YOUR_OPENAI_API_KEY` (ถ้าใช้ตัวนี้ต้องแทนที่ key เอง 4 จุด: โหนด Agent 1-3 + Generate Image ในช่อง Header `Authorization`) |
 
-1. **Creative Director** — สุ่มธีม เลือกตัวละครสัตว์น่ารัก ตั้งชื่อเล่ม คิดฉาก 4 หน้า (แต่ละหน้าต้องเป็นกิจกรรมต่างกัน)
-2. **Prompt Artist** — เขียน prompt ภาพแบบมืออาชีพ ล็อกสไตล์ตายตัว: โมเดลห้อง isometric + สวนนอกห้อง + กรอบเว้นขอบ + เส้นดำหนา ขาว-ดำล้วน (ปกเป็นเวอร์ชันภาพสี)
-3. **Art Director QA** — ตรวจทุก prompt ก่อนจ่ายเงินสร้างภาพ: หน้าระบายสีต้องไม่มีคำที่ทำให้เกิดสี/เงา, ปกต้องมีชื่อเล่มตรงตัว, ฉากไม่ซ้ำกัน — เจอปัญหาแก้ให้อัตโนมัติ
+> ทำไมไม่เก็บ key จริงบน GitHub: ระบบสแกนของ GitHub/OpenAI ตรวจเจอ key ในโค้ดจะ**ระงับ key อัตโนมัติ**ทันที
 
 ---
 
-## 📋 สิ่งที่ต้องมีก่อนติดตั้ง
+## 🤖 การทำงานของระบบ
 
-1. **n8n** (n8n Cloud หรือ self-hosted ก็ได้) เวอร์ชัน 1.30 ขึ้นไป
-2. **OpenAI API key** จาก https://platform.openai.com/api-keys
-   - ⚠️ โมเดล `gpt-image-1` ต้องผ่านการยืนยันตัวตนองค์กร (Organization Verification) ก่อน — ไปที่ platform.openai.com → Settings → Organization → **Verify Organization** (ใช้บัตรประชาชน/พาสปอร์ตถ่ายรูป ใช้เวลาไม่กี่นาที)
-   - เติมเครดิตในบัญชีอย่างน้อย $5
-3. **บัญชี Google** (สำหรับ Google Drive)
+```
+Trigger → Config → Agent 1 Creative Director → Agent 2 Prompt Artist → Agent 3 Art Director QA
+→ แตกรายการภาพ → Loop สร้างภาพทีละหน้า (gpt-image-1) → รวมเล่ม PDF (โค้ดล้วน ไม่ใช้บริการเสริม)
+→ ส่ง Gmail (ข้อความ KIT + แนบ PDF + cover.jpg)
+```
 
-## 💰 ค่าใช้จ่ายโดยประมาณต่อ 1 ชุด
+1. **Agent 1 — Creative Director**: สุ่มธีม เลือกตัวละครสัตว์น่ารัก ตั้งชื่อเล่ม คิดฉาก 4 หน้า (ทุกฉากเป็นโมเดลห้อง isometric + มีสวน/ของนอกห้อง)
+2. **Agent 2 — Prompt Artist**: เขียน prompt ภาพ ล็อกสไตล์ตายตัว (เส้นดำหนา ขาวดำล้วน กรอบเว้นขอบ องค์ประกอบเต็มหน้า / ปกเป็นภาพสี+ชื่อเล่ม)
+3. **Agent 3 — Art Director QA**: ตรวจแก้ทุก prompt ก่อนจ่ายเงินสร้างภาพ (กันคำสี กันฉากซ้ำ กันของไม่เหมาะกับเด็ก)
+- Agents ทั้ง 3 เรียก OpenAI (gpt-4.1-mini) ตรงผ่าน HTTP โดย**ฝัง key ไว้แล้ว** — ไม่ต้องตั้ง credential OpenAI
+- ภาพไหนเจนไม่สำเร็จ ระบบไม่ล้มทั้งชุด: ทำต่อจนจบ แล้วรายงานในอีเมลว่าหน้าไหนหาย เพราะอะไร
+
+---
+
+## 📋 สิ่งที่ต้องมี
+
+1. **n8n** (Cloud หรือ self-hosted) เวอร์ชัน 1.30 ขึ้นไป
+2. **OpenAI** — key ฝังในไฟล์ WITH_KEYS แล้ว แต่บัญชีต้อง:
+   - ✅ **Verify Organization แล้ว** (จำเป็นสำหรับ gpt-image-1): platform.openai.com → Settings → Organization → Verify Organization
+   - ✅ มีเครดิตเหลือ (เติมที่ Billing)
+3. **บัญชี Gmail** `metasitwute021@gmail.com` — ต้องกดเชื่อม (OAuth) ใน n8n เองครั้งเดียว **อันนี้ฝังในไฟล์ไม่ได้** เพราะ Google ใช้ระบบล็อกอินยืนยันตัวตน ไม่ใช่ API key (ไฟล์ตัวอย่าง TPT ของคุณก็ต้องเชื่อมแบบเดียวกัน)
+
+## 💰 ค่าใช้จ่ายต่อ 1 ชุด
 
 | รายการ | ราคา |
 |---|---|
 | gpt-image-1 ขนาด 1536x1024 quality `medium` × 5 ภาพ | ~$0.35 (~13 บาท) |
 | gpt-4.1-mini (agents 3 ตัว) | ~$0.01 |
-| **รวม** | **~$0.36/ชุด** |
+| **รวม** | **~$0.36/ชุด** — รันทุกวันทั้งเดือน ~$11 |
 
-ถ้าอยากประหยัด: เปลี่ยน `image_quality` ในโหนด **Config** เป็น `low` (~$0.09/ชุด แต่รายละเอียดลดลง) หรืออยากสวยสุดใช้ `high` (~$0.90/ชุด)
+ประหยัดขึ้น: เปลี่ยน `image_quality` ในโหนด **Config** เป็น `low` (~$0.09/ชุด) / สวยสุด `high` (~$0.90/ชุด)
 
 ---
 
-## 🛠️ ขั้นตอนติดตั้ง
+## 🛠️ ขั้นตอนติดตั้ง (มีขั้นเดียวที่ต้องตั้งค่า!)
 
-### ขั้นที่ 1: Import workflow
+### ขั้นที่ 1: Import
+n8n → Workflows → ปุ่ม ⋯ → **Import from File** → เลือก `AI_Coloring_Book_Factory_WITH_KEYS.json`
 
-1. เปิด n8n → เมนูซ้าย **Workflows** → ปุ่ม **สามจุด (⋯)** มุมขวาบน → **Import from File**
-2. เลือกไฟล์ `AI_Coloring_Book_Factory.json`
-3. จะเห็น workflow พร้อมโน้ตอธิบายสีต่างๆ ครบทุกส่วน
+### ขั้นที่ 2: เชื่อม Gmail (ครั้งเดียวจบ)
+1. ดับเบิลคลิกโหนด **Send Gmail**
+2. ช่อง Credential → **Create new credential** → เลือก **Gmail OAuth2**
+3. n8n Cloud: กด **Sign in with Google** → เลือกบัญชี `metasitwute021@gmail.com` → อนุญาต
+   (Self-hosted: ต้องสร้าง OAuth Client ใน Google Cloud Console ก่อน — ดู docs n8n เรื่อง Google OAuth2)
 
-### ขั้นที่ 2: ตั้งค่า OpenAI credential (ใช้ 4 โหนด)
+### ขั้นที่ 3: ทดสอบรัน
+กด **Test workflow** → รอ 3–6 นาที → เช็คกล่องอีเมล จะได้เมลหัวข้อ `🎨 Coloring Book: ชื่อเล่ม (ธีม)` พร้อมไฟล์แนบ 2 ไฟล์
 
-1. ดับเบิลคลิกโหนด **Model - Creative Director**
-2. ช่อง Credential → **Create new credential** → วาง API key ของ OpenAI → Save
-3. เปิดโหนด **Model - Prompt Artist**, **Model - Art Director QA** และ **Generate Image** แล้วเลือก credential ตัวเดียวกันที่เพิ่งสร้าง
-   - โหนด **Generate Image** เป็น HTTP Request ที่ใช้ credential ชนิด "OpenAI API" เหมือนกัน เลือกจาก dropdown ได้เลย
-
-### ขั้นที่ 3: ตั้งค่า Google Drive credential (ใช้ 3 โหนด)
-
-1. ดับเบิลคลิกโหนด **Create Folder** → Credential → **Create new credential** → เลือก **Google Drive OAuth2 API**
-2. n8n Cloud: กด **Sign in with Google** ได้เลย / Self-hosted: ต้องสร้าง OAuth Client ID ใน Google Cloud Console ก่อน (ดู docs ของ n8n: Google OAuth2 generic setup)
-3. เปิดโหนด **Upload Image** และ **Upload PDF** เลือก credential เดียวกัน
-
-### ขั้นที่ 4: ทดสอบรัน
-
-1. กดปุ่ม **Test workflow** (หรือ Execute workflow) มุมล่าง
-2. รอประมาณ 3–6 นาที (สร้างภาพ 5 ภาพ ภาพละ ~30–60 วินาที)
-3. เสร็จแล้วเข้า Google Drive จะเห็นโฟลเดอร์ใหม่ชื่อ `ColoringBook_ธีม_วันที่เวลา` ข้างในมี `cover.jpg`, `page_1.jpg` … `page_4.jpg` และไฟล์ PDF รวมเล่ม
-
-### ขั้นที่ 5: เปิดระบบอัตโนมัติรายวัน
-
-- Workflow มี **Schedule Trigger** ตั้งไว้ **ทุกวัน 09:00** อยู่แล้ว
-- แค่เปิดสวิตช์ **Active** มุมขวาบนของ workflow → ระบบจะสร้างชุดใหม่ (ธีมสุ่มใหม่) ให้ทุกเช้าโดยอัตโนมัติ
-- อยากเปลี่ยนเวลา: ดับเบิลคลิกโหนด **Schedule Trigger** แล้วแก้ Trigger at Hour
+### ขั้นที่ 4: เปิดอัตโนมัติรายวัน
+เปิดสวิตช์ **Active** มุมขวาบน → ระบบสร้างชุดใหม่ (ธีมสุ่มใหม่) ส่งเข้าเมลทุกเช้า **09:00** เอง
+(เปลี่ยนเวลาได้ที่โหนด **Schedule Trigger**)
 
 ---
 
 ## 🎛️ การปรับแต่ง
 
-### เปลี่ยนจำนวนหน้า
-ดับเบิลคลิกโหนด **Config** → แก้ `num_pages` (เช่น 6 หรือ 10) — ทุกอย่างปรับตามอัตโนมัติทั้งจำนวนภาพและ PDF
-
-### เพิ่ม/แก้ธีม
-ดับเบิลคลิกโหนด **Creative Director** → Options → **System Message** → แก้รายการธีมในบรรทัด theme pool ได้เลย (เพิ่มธีมไทยๆ ก็ได้ เช่น Thai Temple Fair, Floating Market)
-
-### บังคับธีมที่ต้องการ (ไม่สุ่ม)
-พิมพ์เพิ่มท้ายข้อความในช่อง Prompt ของโหนด **Creative Director**: `Use this theme: Under the Sea`
-
-### เปลี่ยนคุณภาพ/ขนาดภาพ
-โหนด **Config** → `image_quality`: `low` / `medium` / `high`, `image_size`: `1536x1024` (แนวนอน — แนะนำ), `1024x1536` (แนวตั้ง), `1024x1024` (จัตุรัส)
-
-### เปลี่ยนสไตล์ภาพ
-แก้ System Message ของโหนด **Prompt Artist** — บล็อกสไตล์ล็อก (locked style block) คือหัวใจของหน้าตาภาพ อยากได้ลายเส้นแนวอื่น (เช่น mandala, ลายไทย) แก้ตรงนั้น
+| อยากทำอะไร | แก้ตรงไหน |
+|---|---|
+| เปลี่ยนจำนวนหน้า | โหนด **Config** → `num_pages` (PDF/อีเมลปรับตามอัตโนมัติ) |
+| เปลี่ยนคุณภาพ/ขนาดภาพ | โหนด **Config** → `image_quality` (low/medium/high), `image_size` |
+| เพิ่ม/แก้ธีม (ใส่ธีมไทยได้) | โหนด **Agent 1 - Creative Director** → JSON Body → แก้รายการธีมใน system message |
+| บังคับธีม ไม่สุ่ม | โหนด **Agent 1** → เพิ่มท้ายข้อความ user: `Use this theme: Under the Sea` |
+| เปลี่ยนลายเส้น/สไตล์ภาพ | โหนด **Agent 2 - Prompt Artist** → แก้บล็อกสไตล์ล็อกใน system message |
+| เปลี่ยนอีเมลผู้รับ | โหนด **Send Gmail** → ช่อง To |
+| เปลี่ยน API key (กรณี key ถูกระงับ/หมุนใหม่) | แทนที่ค่าใน Header `Authorization` ทั้ง 4 โหนด: Agent 1, Agent 2, Agent 3, Generate Image |
 
 ---
 
@@ -106,17 +99,18 @@ Trigger → Config → [1] Creative Director → [2] Prompt Artist → [3] Art D
 
 | อาการ | สาเหตุ / วิธีแก้ |
 |---|---|
-| Generate Image ขึ้น error 403 `organization must be verified` | ยังไม่ได้ Verify Organization กับ OpenAI (ดูขั้นตอนในหัวข้อ "สิ่งที่ต้องมี") |
-| Error 429 rate limit | บัญชี OpenAI เพิ่งเติมเงินครั้งแรก limit ต่ำ — โหนดตั้ง retry อัตโนมัติ 3 ครั้งแล้ว ถ้ายังติดให้รอ 1–2 นาทีแล้วรันใหม่ |
-| Generate Image timeout | ภาพ quality `high` ใช้เวลานาน — โหนดตั้ง timeout ไว้ 5 นาทีแล้ว ปกติไม่ควรเกิน ถ้าเกินให้ลด quality |
-| Agent ตอบไม่เป็น JSON / workflow หยุดที่ agent | เปิดโหนด Parser ที่คู่กัน → เปิด option **Auto-fix format** หรือรันใหม่อีกครั้ง (นานๆ เกิดที) |
-| ภาพหน้าระบายสีมีสีเทา/เงาปน | Art Director QA ช่วยกรองอยู่แล้ว แต่ถ้ายังเจอ เพิ่มคำว่า `absolutely no gray tones, no gradients` ในบล็อกสไตล์ของ Prompt Artist |
-| อัปโหลด Drive ไม่ได้ | Credential Google หมดอายุ → เปิด credential แล้วกด Reconnect |
-| อยากได้ไฟล์ PNG แทน JPEG | แก้ `output_format` ในโหนด Generate Image เป็น `png` ได้ แต่ PDF รวมเล่มจะไม่รองรับ (Code node ฝัง JPEG เท่านั้น) — แนะนำใช้ JPEG ตามเดิม |
+| อีเมลแจ้ง `⚠️ ภาพเจนไม่สำเร็จ ... insufficient_quota` | เครดิต OpenAI หมด → เติมเงิน แล้วรันใหม่ (อีเมลจะบอกให้เองด้วย) |
+| อีเมลแจ้ง `organization must be verified` | ยังไม่ Verify Organization กับ OpenAI (ดูหัวข้อ "สิ่งที่ต้องมี") |
+| Error 401 Unauthorized ที่โหนด Agent/Generate Image | key ถูกระงับหรือหมดอายุ → สร้าง key ใหม่ที่ platform.openai.com แล้วแทนที่ 4 จุดตามตารางด้านบน |
+| 429 rate limit | บัญชีใหม่ limit ต่ำ — ระบบ retry อัตโนมัติ 3 ครั้งแล้ว ถ้ายังติดรอ 1–2 นาทีแล้วรันใหม่ |
+| Agent ตอบ JSON เพี้ยน / Build Page List error | นานๆ เกิดที — รันใหม่อีกครั้ง (โค้ดกันรั้ว ```json ให้แล้ว) |
+| หน้าระบายสีมีสีเทา/เงาปน | Agent 3 กรองอยู่แล้ว ถ้ายังเจอ เพิ่ม `absolutely no gray tones, no gradients` ในบล็อกสไตล์ Agent 2 |
+| อีเมลไม่มา แต่ workflow เขียว | เช็คโฟลเดอร์ Spam / เช็คว่า credential Gmail ยังเชื่อมอยู่ (เปิด credential กด Reconnect) |
 
 ---
 
 ## 📁 ไฟล์ในโฟลเดอร์นี้
 
-- `AI_Coloring_Book_Factory.json` — workflow สำหรับ import เข้า n8n
+- `AI_Coloring_Book_Factory.json` — workflow เวอร์ชันปลอดภัย (key เป็น placeholder)
 - `คู่มือติดตั้ง_Coloring_Book_Factory.md` — ไฟล์นี้
+- เวอร์ชัน `_WITH_KEYS` ที่ key ฝังครบ: ส่งให้ทางแชท ไม่เก็บบน GitHub
