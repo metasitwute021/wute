@@ -42,9 +42,9 @@
         60
       ],
       "parameters": {
-        "content": "## 🖼️ สร้างภาพทีละหน้า\ngpt-image-1 ขนาด 1536x1024 (แนวนอน) → ปกภาพสี / หน้าในเล่มขาวดำ\n~$0.07/ภาพ (quality: medium) = ~$0.42/ชุด (6 ภาพ) — ภาพที่พลาดจะถูกรายงานในอีเมลพร้อมสาเหตุ",
+        "content": "## 🖼️ สร้างภาพทีละหน้า\ngpt-image-1 ขนาด 1536x1024 (แนวนอน) quality **high** (คมชัดสุด) → ปกภาพสี / หน้าในเล่มขาวดำ\n~$0.25/ภาพ = ~$1.50/ชุด (6 ภาพ) — ประหยัดลง: เปลี่ยน image_quality ใน Config เป็น medium (~$0.42/ชุด)\nภาพที่พลาดจะถูกรายงานในอีเมลพร้อมสาเหตุ",
         "width": 560,
-        "height": 180,
+        "height": 200,
         "color": 5
       }
     },
@@ -138,7 +138,7 @@
             {
               "id": "cfg-image-quality",
               "name": "image_quality",
-              "value": "medium",
+              "value": "high",
               "type": "string"
             }
           ]
@@ -313,7 +313,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: 'gpt-image-1', prompt: $json.prompt, size: $('Config').first().json.image_size, quality: $('Config').first().json.image_quality, output_format: 'jpeg', output_compression: 85 }) }}",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-image-1', prompt: $json.prompt, size: $('Config').first().json.image_size, quality: $('Config').first().json.image_quality, output_format: 'jpeg', output_compression: 95 }) }}",
         "options": {
           "timeout": 300000
         }
