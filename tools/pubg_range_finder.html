@@ -151,8 +151,8 @@
         <path d="M11 15 l5 -3 v6 z M53 15 l-5 -3 v6 z" fill="#5BC8DC"/>
       </svg>
       <span class="st" id="calibSt">📏 คาลิเบรต:</span>
-      <span id="calibMsg">คลิกบน "เส้นตาราง" ของแมพ 2 เส้นที่ติดกัน — ช่องเล็ก 1 ช่องกว้าง 100 ม. เสมอ</span>
-      <span>1 ช่อง =</span>
+      <span id="calibMsg">คลิกเส้นตาราง 2 เส้น — ยิ่งลากข้ามหลายช่องยิ่งแม่น (1 ช่องเล็ก = 100 ม.)</span>
+      <span>ระยะที่ลาก =</span>
       <input type="number" id="calibM" value="100" min="1" step="50"> ม.
     </div>
     <div class="mapbtns">
@@ -256,6 +256,44 @@ function draw(){
     drawCalib();
   }
   drawPath();
+  drawScaleBar();
+  drawLoupe();
+}
+function drawScaleBar(){
+  if(mode!=='shot'||!shot.mPerPx) return;
+  const px=100/shot.mPerPx*scale, w=cvs.clientWidth, h=cvs.clientHeight;
+  if(px<8||px>w*0.8) return;
+  const x=w-px-92, y=h-18;
+  ctx.strokeStyle=css('--me'); ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.moveTo(x,y); ctx.lineTo(x+px,y);
+  ctx.moveTo(x,y-5); ctx.lineTo(x,y+5);
+  ctx.moveTo(x+px,y-5); ctx.lineTo(x+px,y+5);
+  ctx.stroke();
+  ctx.font='bold 11px '+css('--mono'); ctx.fillStyle=css('--me');
+  ctx.fillText('100 ม.', x+px+8, y+4);
+}
+function drawLoupe(){
+  /* pixel-precision magnifier while calibrating or dragging a point */
+  if(mode!=='shot'||!shot.img||!shot.hoverS) return;
+  if(!(shot.calibrating || (drag&&drag.type==='pt'))) return;
+  const {x:sx,y:sy}=shot.hoverS;
+  const R=46, Z=3, w=cvs.clientWidth;
+  const lx=sx+70+R<w ? sx+70 : sx-70;
+  const ly=Math.max(R+6, sy-70);
+  const s2=scale*Z, wx=S2WX(sx), wy=S2WY(sy);
+  ctx.save();
+  ctx.beginPath(); ctx.arc(lx,ly,R,0,7); ctx.clip();
+  ctx.fillStyle='#000'; ctx.fillRect(lx-R,ly-R,R*2,R*2);
+  ctx.drawImage(shot.img, lx-wx*s2, ly-wy*s2, shot.img.width*s2, shot.img.height*s2);
+  ctx.strokeStyle=css('--accent'); ctx.lineWidth=1;
+  ctx.beginPath();
+  ctx.moveTo(lx-R,ly); ctx.lineTo(lx+R,ly);
+  ctx.moveTo(lx,ly-R); ctx.lineTo(lx,ly+R);
+  ctx.stroke();
+  ctx.restore();
+  ctx.strokeStyle=css('--me'); ctx.lineWidth=2;
+  ctx.beginPath(); ctx.arc(lx,ly,R,0,7); ctx.stroke();
 }
 function drawGrid(w,h){
   const bx=W2SX(0), by=W2SY(0), bs=WORLD*scale;
@@ -451,7 +489,8 @@ function updateHelper(){
   } else if(!shot.mPerPx){
     h.innerHTML='กดปุ่ม <b>📏</b> ขวาบน แล้วคลิกเส้นตารางของแมพ 2 เส้นที่ติดกัน (1 ช่อง = 100 ม.) เพื่อตั้งสเกล';
   } else {
-    h.innerHTML='สเกล: 1 px ≈ <b>'+shot.mPerPx.toFixed(2)+' ม.</b> · คลิกจุดเรา → จุดที่มาร์ค · 📏 คาลิเบรตใหม่ได้';
+    h.innerHTML=(shot.autoCal?'🪄 สเกลอัตโนมัติจากกริด':'สเกล')
+      +': 1 px ≈ <b>'+shot.mPerPx.toFixed(2)+' ม.</b> · เช็คแถบ <b style="color:var(--me)">100 ม.</b> ขวาล่างว่ายาวเท่า 1 ช่องกริดในรูปไหม — ไม่ตรงเมื่อไหร่กด 📏 วัดเอง';
   }
 }
 
@@ -487,6 +526,7 @@ function move(e){
   const sp=evPos(e);
   if(drag.type==='pt'){
     drag.moved=true;
+    if(mode==='shot') shot.hoverS=sp;
     st().pts[drag.idx]=clampPt({x:S2WX(sp.x),y:S2WY(sp.y)});
     refresh();
   } else {
@@ -514,23 +554,94 @@ function up(e){
   }
   drag=null;
 }
+/* ---- auto scale detection: find dominant grid-line spacing ---- */
+function domSpacing(prof){
+  const n=prof.length, win=6;
+  const dt=new Float64Array(n);
+  for(let i=0;i<n;i++){
+    let s=0,c=0;
+    for(let j=Math.max(0,i-win);j<=Math.min(n-1,i+win);j++){s+=prof[j];c++;}
+    dt[i]=prof[i]-s/c;
+  }
+  let c0=0; for(let i=0;i<n;i++) c0+=dt[i]*dt[i];
+  if(!c0) return null;
+  const minLag=14, maxLag=Math.min(420,Math.floor(n/2));
+  if(maxLag<=minLag) return null;
+  const ac=new Float64Array(maxLag+1);
+  for(let lag=minLag;lag<=maxLag;lag++){
+    let s=0;
+    for(let i=0;i+lag<n;i++) s+=dt[i]*dt[i+lag];
+    ac[lag]=s/(n-lag);
+  }
+  let bestLag=0,best=-1;
+  for(let lag=minLag;lag<=maxLag;lag++) if(ac[lag]>best){best=ac[lag];bestLag=lag;}
+  if(bestLag<=0||best<=0) return null;
+  /* the top peak is often a multiple of the true spacing —
+     take the smallest divisor of it that is also a strong peak */
+  for(let k=12;k>=2;k--){
+    const c=Math.round(bestLag/k);
+    if(c<minLag) continue;
+    let v=0;
+    for(let j=Math.max(minLag,c-2);j<=Math.min(maxLag,c+2);j++) v=Math.max(v,ac[j]);
+    if(v>best*0.55){ bestLag=c; best=v; break; }
+  }
+  let lag=bestLag;
+  if(lag>minLag&&lag<maxLag){
+    const y0=ac[lag-1],y1=ac[lag],y2=ac[lag+1],den=y0-2*y1+y2;
+    if(den!==0) lag+=0.5*(y0-y2)/den;
+  }
+  return {lag, score:best/(c0/n)};
+}
+function tryAutoCalib(){
+  try{
+    const img=shot.img;
+    const f=Math.min(1,1100/img.width);
+    const w=Math.max(60,Math.round(img.width*f)), h=Math.max(60,Math.round(img.height*f));
+    const oc=document.createElement('canvas'); oc.width=w; oc.height=h;
+    const c=oc.getContext('2d',{willReadFrequently:true});
+    c.drawImage(img,0,0,w,h);
+    const d=c.getImageData(0,0,w,h).data;
+    const col=new Float64Array(w), row=new Float64Array(h);
+    for(let y=0;y<h;y++){
+      const base=y*w*4;
+      for(let x=0;x<w;x++){
+        const i=base+x*4;
+        const l=d[i]*0.299+d[i+1]*0.587+d[i+2]*0.114;
+        col[x]+=l; row[y]+=l;
+      }
+    }
+    const sx=domSpacing(col), sy=domSpacing(row);
+    let lag=null;
+    if(sx&&sy&&sx.score>0.08&&sy.score>0.08
+       &&Math.abs(sx.lag-sy.lag)/Math.max(sx.lag,sy.lag)<0.06) lag=(sx.lag+sy.lag)/2;
+    else if(sx&&sx.score>0.2) lag=sx.lag;
+    else if(sy&&sy.score>0.2) lag=sy.lag;
+    if(!lag) return false;
+    shot.mPerPx=100/(lag/f);
+    return true;
+  }catch(e){ return false; }
+}
 function applyCalib(){
   const px=dist(shot.calibPts[0],shot.calibPts[1]);
   const m=+$('calibM').value||100;
   if(px<3){ shot.calibPts=[]; $('calibMsg').textContent='จุดใกล้กันไป ลองใหม่'; draw(); return; }
   shot.mPerPx=m/px;
+  shot.autoCal=false;
   shot.calibrating=false; shot.hover=null;
   $('calibbar').style.display='none';
   $('calibBtn').classList.remove('hot');
   refresh();
 }
 cvs.addEventListener('mousemove',e=>{
-  if(mode==='shot' && shot.calibrating && shot.calibPts.length===1 && !drag){
-    const sp=evPos(e);
-    shot.hover={x:S2WX(sp.x),y:S2WY(sp.y)};
+  if(mode!=='shot'||!shot.img) return;
+  const sp=evPos(e);
+  shot.hoverS=sp;
+  if(shot.calibrating){
+    if(shot.calibPts.length===1) shot.hover={x:S2WX(sp.x),y:S2WY(sp.y)};
     draw();
   }
 });
+cvs.addEventListener('mouseleave',()=>{ if(shot.hoverS){shot.hoverS=null; draw();} });
 cvs.addEventListener('mousedown',down);
 window.addEventListener('mousemove',move);
 window.addEventListener('mouseup',up);
@@ -576,7 +687,7 @@ $('calibBtn').onclick=()=>{
   shot.calibPts=[];
   if(shot.calibrating){
     $('calibbar').style.display='flex';
-    $('calibMsg').textContent='คลิกปลายทั้งสองด้านของ 1 ช่องกริด';
+    $('calibMsg').textContent='คลิกเส้นตาราง 2 เส้น — ข้ามหลายช่องได้ แล้วใส่ระยะรวม (เช่น 5 ช่อง = 500)';
     $('calibBtn').classList.add('hot');
   } else {
     $('calibbar').style.display='none';
@@ -597,12 +708,16 @@ function loadImageFile(file){
     const im=new Image();
     im.onload=()=>{
       shot.img=im; shot.pts=[]; shot.calibPts=[]; shot.mPerPx=null;
-      shot.calibrating=true; shot.view=null;
+      shot.hover=null; shot.view=null;
+      const ok=tryAutoCalib();
+      shot.autoCal=ok;
+      shot.calibrating=!ok;
       setMode('shot');
       fit();
-      $('calibbar').style.display='flex';
-      $('calibMsg').textContent='คลิกปลายทั้งสองด้านของ 1 ช่องกริด';
-      $('calibBtn').classList.add('hot');
+      if(!ok){
+        $('calibMsg').textContent='หากริดอัตโนมัติไม่เจอ — คลิกเส้นตาราง 2 เส้นเอง';
+        $('calibBtn').classList.add('hot');
+      }
       refresh();
     };
     im.src=rd.result;
