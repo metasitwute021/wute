@@ -253,11 +253,38 @@ function draw(){
   else if(shot.img){
     ctx.imageSmoothingEnabled = scale<1;
     ctx.drawImage(shot.img, W2SX(0), W2SY(0), shot.img.width*scale, shot.img.height*scale);
+    drawGridFit();
     drawCalib();
   }
   drawPath();
   drawScaleBar();
   drawLoupe();
+}
+function drawGridFit(){
+  /* overlay the auto-detected grid so the user can verify the scale */
+  if(!shot.autoCal||!shot.gridFit||shot.pts.length) return;
+  const w=cvs.clientWidth, h=cvs.clientHeight, g=shot.gridFit;
+  const y0=Math.max(0,W2SY(0)), y1=Math.min(h,W2SY(shot.img.height));
+  const x0=Math.max(0,W2SX(0)), x1=Math.min(w,W2SX(shot.img.width));
+  ctx.strokeStyle='rgba(91,200,220,.45)'; ctx.lineWidth=1;
+  ctx.setLineDash([6,4]);
+  if(g.x && g.x.sp*scale>12){
+    ctx.beginPath();
+    for(let x=g.x.ph; x<shot.img.width; x+=g.x.sp){
+      const s=W2SX(x);
+      if(s>=0&&s<=w){ ctx.moveTo(s,y0); ctx.lineTo(s,y1); }
+    }
+    ctx.stroke();
+  }
+  if(g.y && g.y.sp*scale>12){
+    ctx.beginPath();
+    for(let y=g.y.ph; y<shot.img.height; y+=g.y.sp){
+      const s=W2SY(y);
+      if(s>=0&&s<=h){ ctx.moveTo(x0,s); ctx.lineTo(x1,s); }
+    }
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
 }
 function drawScaleBar(){
   if(mode!=='shot'||!shot.mPerPx) return;
@@ -488,6 +515,8 @@ function updateHelper(){
     h.innerHTML='📏 คลิกบนเส้นตารางเส้นแรก แล้วคลิกเส้นถัดไปที่ติดกัน (= กว้าง 1 ช่อง = 100 ม.)';
   } else if(!shot.mPerPx){
     h.innerHTML='กดปุ่ม <b>📏</b> ขวาบน แล้วคลิกเส้นตารางของแมพ 2 เส้นที่ติดกัน (1 ช่อง = 100 ม.) เพื่อตั้งสเกล';
+  } else if(shot.autoCal && !shot.pts.length){
+    h.innerHTML='🪄 <b style="color:var(--me)">เส้นประฟ้า</b> คือกริดที่ตรวจเจอ — ถ้าทับเส้นตารางของแมพพอดี = สเกลถูก เริ่มคลิกวัดได้เลย · ถ้าไม่ทับ หรือ<b>ในรูปไม่มีเส้นตาราง</b> อย่าเชื่อค่านี้ กด 📏 หรือแคปใหม่ให้เห็นกริด';
   } else {
     h.innerHTML=(shot.autoCal?'🪄 สเกลอัตโนมัติจากกริด':'สเกล')
       +': 1 px ≈ <b>'+shot.mPerPx.toFixed(2)+' ม.</b> · เช็คแถบ <b style="color:var(--me)">100 ม.</b> ขวาล่างว่ายาวเท่า 1 ช่องกริดในรูปไหม — ไม่ตรงเมื่อไหร่กด 📏 วัดเอง';
@@ -590,7 +619,18 @@ function domSpacing(prof){
     const y0=ac[lag-1],y1=ac[lag],y2=ac[lag+1],den=y0-2*y1+y2;
     if(den!==0) lag+=0.5*(y0-y2)/den;
   }
-  return {lag, score:best/(c0/n)};
+  return {lag, score:best/(c0/n), dt};
+}
+function gridPhase(r){
+  /* offset of the first detected grid line within one period */
+  const L=Math.max(2,Math.round(r.lag));
+  let bo=0,bv=-Infinity;
+  for(let o=0;o<L;o++){
+    let s=0;
+    for(let i=o;i<r.dt.length;i+=L) s+=r.dt[i];
+    if(s>bv){bv=s;bo=o;}
+  }
+  return bo;
 }
 function tryAutoCalib(){
   try{
@@ -618,6 +658,10 @@ function tryAutoCalib(){
     else if(sy&&sy.score>0.2) lag=sy.lag;
     if(!lag) return false;
     shot.mPerPx=100/(lag/f);
+    shot.gridFit={
+      x: sx&&sx.score>0.08 ? {sp:sx.lag/f, ph:gridPhase(sx)/f} : null,
+      y: sy&&sy.score>0.08 ? {sp:sy.lag/f, ph:gridPhase(sy)/f} : null
+    };
     return true;
   }catch(e){ return false; }
 }
@@ -708,7 +752,7 @@ function loadImageFile(file){
     const im=new Image();
     im.onload=()=>{
       shot.img=im; shot.pts=[]; shot.calibPts=[]; shot.mPerPx=null;
-      shot.hover=null; shot.view=null;
+      shot.hover=null; shot.view=null; shot.gridFit=null;
       const ok=tryAutoCalib();
       shot.autoCal=ok;
       shot.calibrating=!ok;
