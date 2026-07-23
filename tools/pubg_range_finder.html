@@ -3,7 +3,7 @@
   :root{
     --bg:#101309; --panel:#171B10; --panel2:#1F2416; --line:#2C3320;
     --accent:#F2A03D; --accent-dim:#8A5F26; --me:#5BC8DC;
-    --text:#E8EADF; --muted:#8C927D; --good:#9BD65B;
+    --text:#E8EADF; --muted:#8C927D; --good:#9BD65B; --warn:#E86A5B;
     --mono:"SF Mono",ui-monospace,"Cascadia Code",Consolas,Menlo,monospace;
     --sans:"Noto Sans Thai",-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;
   }
@@ -14,93 +14,147 @@
     display:flex;flex-direction:column;height:100dvh;overflow:hidden;
   }
   header{
-    display:flex;align-items:center;gap:12px;padding:10px 16px;
+    display:flex;align-items:center;gap:12px;padding:8px 14px;
     background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap;
   }
-  header h1{font-size:15px;font-weight:700;letter-spacing:.02em}
+  header h1{font-size:15px;font-weight:700}
   header h1 b{color:var(--accent)}
+  .tabs{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .tabs button{
+    background:var(--panel2);color:var(--muted);border:0;padding:7px 14px;
+    font-family:var(--sans);font-size:12.5px;font-weight:600;cursor:pointer;
+  }
+  .tabs button.on{background:var(--accent);color:#241605}
   header .note{font-size:11px;color:var(--muted)}
   .main{flex:1;display:flex;min-height:0}
-  .maparea{position:relative;flex:1;min-width:0}
+  .maparea{position:relative;flex:1;min-width:0;background:#0C0F07}
   canvas{display:block;width:100%;height:100%;cursor:crosshair;touch-action:none}
   .mapbtns{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:6px}
   .mapbtns button{
-    width:34px;height:34px;border:1px solid var(--line);border-radius:6px;
-    background:rgba(23,27,16,.9);color:var(--text);font-size:16px;cursor:pointer;
+    width:36px;height:36px;border:1px solid var(--line);border-radius:6px;
+    background:rgba(23,27,16,.92);color:var(--text);font-size:15px;cursor:pointer;
     font-family:var(--mono);
   }
   .mapbtns button:hover{border-color:var(--accent-dim)}
+  .mapbtns button.hot{background:var(--accent);color:#241605;border-color:var(--accent)}
   .helper{
     position:absolute;left:12px;bottom:12px;font-size:11px;color:var(--muted);
-    background:rgba(23,27,16,.85);border:1px solid var(--line);border-radius:6px;
-    padding:6px 10px;pointer-events:none;max-width:75%;
+    background:rgba(23,27,16,.88);border:1px solid var(--line);border-radius:6px;
+    padding:6px 10px;pointer-events:none;max-width:78%;
+  }
+  .calibbar{
+    position:absolute;left:12px;top:12px;display:none;align-items:center;gap:8px;
+    background:rgba(23,27,16,.92);border:1px solid var(--accent-dim);border-radius:6px;
+    padding:7px 10px;font-size:12px;flex-wrap:wrap;max-width:82%;
+  }
+  .calibbar input{
+    width:64px;background:var(--panel2);border:1px solid var(--line);border-radius:4px;
+    color:var(--text);font-family:var(--mono);font-size:13px;padding:4px 6px;text-align:right;
+  }
+  .calibbar .st{color:var(--accent);font-weight:600}
+  .dropzone{
+    position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+    text-align:center;cursor:pointer;
+  }
+  .dropzone.on{display:flex}
+  .dropzone .in{
+    border:2px dashed var(--accent-dim);border-radius:12px;padding:36px 30px;
+    background:rgba(23,27,16,.6);max-width:420px;
+  }
+  .dropzone h2{font-size:17px;margin-bottom:8px}
+  .dropzone p{font-size:12.5px;color:var(--muted);line-height:1.9}
+  .dropzone kbd{font-family:var(--mono);border:1px solid var(--line);border-radius:3px;padding:0 5px;font-size:11px}
+  .dropzone .pick{
+    margin-top:14px;background:var(--accent);color:#241605;border:0;border-radius:6px;
+    font-family:var(--sans);font-size:14px;font-weight:700;padding:10px 26px;cursor:pointer;
   }
   /* -------- sidebar -------- */
   .side{
-    width:280px;background:var(--panel);border-left:1px solid var(--line);
-    display:flex;flex-direction:column;gap:12px;padding:14px;overflow-y:auto;
+    width:282px;background:var(--panel);border-left:1px solid var(--line);
+    display:flex;flex-direction:column;gap:11px;padding:13px;overflow-y:auto;
   }
   .big{
     background:var(--panel2);border:1px solid var(--line);border-radius:8px;
-    padding:14px;text-align:center;
+    padding:13px;text-align:center;
   }
   .big span{display:block;font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
   .big b{
-    font-family:var(--mono);font-size:38px;font-weight:700;color:var(--accent);
+    font-family:var(--mono);font-size:37px;font-weight:700;color:var(--accent);
     font-variant-numeric:tabular-nums;line-height:1.15;
   }
-  .big small{font-size:15px;color:var(--muted);font-family:var(--mono)}
-  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .cell{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  .big small{display:block;font-size:13px;color:var(--muted);font-family:var(--mono)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .cell{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 11px}
   .cell span{display:block;font-size:10.5px;color:var(--muted)}
-  .cell b{font-family:var(--mono);font-size:17px;font-variant-numeric:tabular-nums}
-  .cell b em{font-style:normal;font-size:11px;color:var(--muted)}
+  .cell b{font-family:var(--mono);font-size:16px;font-variant-numeric:tabular-nums}
   .zero b{color:var(--good)}
-  .segs{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12px}
+  .mortar b.ok{color:var(--good)} .mortar b.no{color:var(--warn);font-size:13px}
+  .segs{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:12px}
   .segs h3{font-size:11px;color:var(--muted);font-weight:600;margin-bottom:6px;letter-spacing:.06em}
-  .segs ol{list-style:none;display:flex;flex-direction:column;gap:3px;max-height:110px;overflow-y:auto}
+  .segs ol{list-style:none;display:flex;flex-direction:column;gap:3px;max-height:96px;overflow-y:auto}
   .segs li{display:flex;justify-content:space-between;font-family:var(--mono);font-variant-numeric:tabular-nums}
   .segs li i{font-style:normal;color:var(--muted)}
   .actions{display:flex;gap:8px}
   .actions button{
-    flex:1;padding:10px 0;border-radius:6px;cursor:pointer;font-family:var(--sans);
-    font-size:13px;font-weight:600;border:1px solid var(--line);
+    flex:1;padding:9px 0;border-radius:6px;cursor:pointer;font-family:var(--sans);
+    font-size:12.5px;font-weight:600;border:1px solid var(--line);
     background:var(--panel2);color:var(--text);
   }
   .actions button:hover{border-color:var(--accent-dim)}
   .actions .clear{color:var(--accent)}
-  .ref{font-size:12px;line-height:1.9;color:var(--muted);border-top:1px solid var(--line);padding-top:10px}
+  .ref{font-size:12px;line-height:1.85;color:var(--muted);border-top:1px solid var(--line);padding-top:9px}
   .ref b{color:var(--text);font-family:var(--mono)}
-  .ref h3{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px}
+  .ref h3{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.06em;margin-bottom:3px}
   @media (max-width:760px){
     .main{flex-direction:column}
     .side{width:100%;border-left:0;border-top:1px solid var(--line);
-      flex-direction:row;flex-wrap:wrap;max-height:44%;}
-    .big{flex:1 1 100%}
+      flex-direction:row;flex-wrap:wrap;max-height:46%;}
+    .big{flex:1 1 100%;padding:9px}
+    .big b{font-size:30px}
     .row2{flex:1 1 100%}
     .segs{display:none}
     .actions{flex:1 1 100%}
     .ref{display:none}
     .helper{display:none}
+    header .note{display:none}
   }
 </style>
 
 <header>
   <h1>🎯 PUBG <b>Range Finder</b></h1>
-  <span class="note">เครื่องมือวัดระยะจากกริดแผนที่ — เปิดคู่จอสอง ไม่แตะตัวเกม ไม่เสี่ยงแบน · ช่องเล็ก = 100 ม. · ช่องใหญ่ = 1 กม.</span>
+  <div class="tabs">
+    <button id="tabGrid" class="on">กริดจำลอง</button>
+    <button id="tabShot">📷 สกรีนช็อตแมพ</button>
+  </div>
+  <span class="note">ช่องเล็ก = 100 ม. · ช่องใหญ่ = 1 กม. · เครื่องมือภายนอก ไม่แตะตัวเกม ไม่เสี่ยงแบน</span>
 </header>
 
 <div class="main">
-  <div class="maparea">
+  <div class="maparea" id="maparea">
     <canvas id="map"></canvas>
+    <div class="dropzone" id="drop">
+      <div class="in">
+        <h2>📷 วางสกรีนช็อตแผนที่จากเกม</h2>
+        <p>กด <kbd>M</kbd> ในเกมเปิดแผนที่ → แคปหน้าจอ →<br>
+        วางที่นี่ด้วย <kbd>Ctrl</kbd>+<kbd>V</kbd> หรือลากไฟล์รูปมาวาง</p>
+        <button class="pick" id="pickBtn">เลือกไฟล์รูป…</button>
+        <input type="file" id="fileIn" accept="image/*" hidden>
+      </div>
+    </div>
+    <div class="calibbar" id="calibbar">
+      <span class="st" id="calibSt">📏 คาลิเบรต:</span>
+      <span id="calibMsg">คลิกปลายทั้งสองด้านของ 1 ช่องกริด</span>
+      <span>ระยะจริง</span>
+      <input type="number" id="calibM" value="100" min="1" step="50"> ม.
+    </div>
     <div class="mapbtns">
       <button id="zin" title="ซูมเข้า">+</button>
       <button id="zout" title="ซูมออก">−</button>
       <button id="zfit" title="รีเซ็ตมุมมอง">⌂</button>
+      <button id="calibBtn" title="คาลิเบรตสเกลจากช่องกริด" style="display:none">📏</button>
+      <button id="newShot" title="เปลี่ยนรูป" style="display:none">🖼</button>
     </div>
-    <div class="helper" id="helper">
-      คลิกจุดแรก = <b style="color:var(--me)">ตำแหน่งเรา</b> · คลิกต่อ = จุดที่มาร์ค · ลากจุดเพื่อขยับ · ลากพื้นว่างเพื่อเลื่อนแผนที่ · สกรอลล์เพื่อซูม
-    </div>
+    <div class="helper" id="helper"></div>
   </div>
 
   <div class="side">
@@ -113,7 +167,7 @@
       <div class="cell"><span>🏃 วิ่งถึงใน</span><b id="runT">—</b></div>
       <div class="cell"><span>🚗 ขับรถ ~</span><b id="carT">—</b></div>
       <div class="cell zero"><span>🔭 ตั้ง Zeroing</span><b id="zeroing">—</b></div>
-      <div class="cell"><span>ทิศ (จากเรา)</span><b id="bearing">—</b></div>
+      <div class="cell mortar"><span>🧨 ปืนค. Mortar</span><b id="mortar">—</b></div>
     </div>
     <div class="segs">
       <h3>ช่วงระยะ (คลิกหลายจุดต่อกันได้)</h3>
@@ -124,11 +178,11 @@
       <button id="clear" class="clear">✕ ล้างทั้งหมด</button>
     </div>
     <div class="ref">
-      <h3>กะเร็วในเกมจริง (ไม่ต้องเปิดเครื่องมือ)</h3>
-      1 ช่องเล็ก = <b>100 ม.</b> · ทแยงช่องเล็ก ≈ <b>141 ม.</b><br>
-      1 ช่องใหญ่ = <b>1,000 ม.</b> · ทแยงช่องใหญ่ ≈ <b>1,414 ม.</b><br>
-      Zeroing ปัดขึ้นเป็นช่วง 100: เป้า 380 ม. → ตั้ง <b>400</b><br>
-      วิ่ง ≈ <b>6.3 ม./วิ</b> → 1 ช่องใหญ่ ≈ 2 นาทีครึ่ง
+      <h3>กะเร็วในเกมจริง</h3>
+      1 ช่องเล็ก = <b>100 ม.</b> · ทแยง ≈ <b>141 ม.</b><br>
+      1 ช่องใหญ่ = <b>1,000 ม.</b> · ทแยง ≈ <b>1,414 ม.</b><br>
+      Zeroing ปัดขึ้นช่วง 100: เป้า 380 → ตั้ง <b>400</b><br>
+      Mortar ยิงได้ <b>100–700 ม.</b> ตั้งตามระยะตรง
     </div>
   </div>
 </div>
@@ -138,47 +192,69 @@
 'use strict';
 const cvs = document.getElementById('map'), ctx = cvs.getContext('2d');
 const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
-/* world: meters. map 8km x 8km like Erangel/Miramar/Taego/Deston */
 const WORLD = 8000, MINOR = 100, MAJOR = 1000;
 const RUN_MS = 6.3, CAR_MS = 25;
 
-let scale, ox, oy;            // px per meter, view offset (world meters at top-left)
-let pts = [];                 // {x,y} world meters; pts[0] = player
-let drag = null;              // {type:'pan'|'pt', idx, sx, sy, sox, soy, moved}
-let dpr = 1;
+/* ---------- per-mode state ---------- */
+const grid = { pts:[], view:null };
+const shot = { pts:[], view:null, img:null, mPerPx:null,
+               calibrating:false, calibPts:[] };
+let mode = 'grid';
+const st = () => mode==='grid' ? grid : shot;
 
+let scale=1, ox=0, oy=0, drag=null, dpr=1;
+
+function saveView(){ st().view = {scale,ox,oy}; }
+function loadView(){
+  const v = st().view;
+  if(v){ scale=v.scale; ox=v.ox; oy=v.oy; } else fit();
+}
 function fit(){
-  const w = cvs.clientWidth, h = cvs.clientHeight;
-  scale = Math.min(w, h) / 4200;      // start showing ~4.2 km across
-  ox = (WORLD - w/scale)/2; oy = (WORLD - h/scale)/2;
+  const w=cvs.clientWidth, h=cvs.clientHeight;
+  if(mode==='grid'){
+    scale = Math.min(w,h)/4200;
+    ox=(WORLD-w/scale)/2; oy=(WORLD-h/scale)/2;
+  } else if(shot.img){
+    scale = Math.min(w/shot.img.width, h/shot.img.height)*0.97;
+    ox=(shot.img.width-w/scale)/2; oy=(shot.img.height-h/scale)/2;
+  } else { scale=1; ox=0; oy=0; }
+  saveView();
 }
 function size(){
-  dpr = window.devicePixelRatio || 1;
+  dpr = window.devicePixelRatio||1;
   const r = cvs.getBoundingClientRect();
-  cvs.width = r.width*dpr; cvs.height = r.height*dpr;
+  cvs.width=r.width*dpr; cvs.height=r.height*dpr;
   ctx.setTransform(dpr,0,0,dpr,0,0);
 }
-const W2SX = x => (x-ox)*scale, W2SY = y => (y-oy)*scale;
-const S2WX = x => x/scale+ox,  S2WY = y => y/scale+oy;
+const W2SX=x=>(x-ox)*scale, W2SY=y=>(y-oy)*scale;
+const S2WX=x=>x/scale+ox,  S2WY=y=>y/scale+oy;
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 
-/* ---------------- drawing ---------------- */
+/* world-units -> meters (null = not calibrated yet) */
+function toM(d){ return mode==='grid' ? d : (shot.mPerPx ? d*shot.mPerPx : null); }
+
+/* ---------- drawing ---------- */
 function draw(){
-  const w = cvs.clientWidth, h = cvs.clientHeight;
+  const w=cvs.clientWidth, h=cvs.clientHeight;
   ctx.clearRect(0,0,w,h);
-  ctx.fillStyle = '#141809';
-  ctx.fillRect(0,0,w,h);
+  ctx.fillStyle='#0C0F07'; ctx.fillRect(0,0,w,h);
 
-  /* map bounds shading */
-  const bx = W2SX(0), by = W2SY(0), bs = WORLD*scale;
-  ctx.fillStyle = '#181D0E';
-  ctx.fillRect(bx,by,bs,bs);
-
-  /* minor grid (100 m) — skip when too dense */
-  const minorPx = MINOR*scale;
-  if (minorPx > 7){
-    ctx.strokeStyle = 'rgba(120,130,95,.14)'; ctx.lineWidth = 1;
-    ctx.beginPath();
+  if(mode==='grid') drawGrid(w,h);
+  else if(shot.img){
+    ctx.imageSmoothingEnabled = scale<1;
+    ctx.drawImage(shot.img, W2SX(0), W2SY(0), shot.img.width*scale, shot.img.height*scale);
+    drawCalib();
+  }
+  drawPath();
+}
+function drawGrid(w,h){
+  const bx=W2SX(0), by=W2SY(0), bs=WORLD*scale;
+  ctx.fillStyle='#181D0E'; ctx.fillRect(bx,by,bs,bs);
+  const minorPx=MINOR*scale;
+  if(minorPx>7){
+    ctx.strokeStyle='rgba(120,130,95,.14)'; ctx.lineWidth=1; ctx.beginPath();
     for(let m=0;m<=WORLD;m+=MINOR){
       if(m%MAJOR===0) continue;
       const x=W2SX(m), y=W2SY(m);
@@ -187,50 +263,63 @@ function draw(){
     }
     ctx.stroke();
   }
-  /* major grid (1 km) + labels */
-  ctx.strokeStyle = 'rgba(150,160,120,.32)'; ctx.lineWidth = 1;
-  ctx.beginPath();
+  ctx.strokeStyle='rgba(150,160,120,.32)'; ctx.lineWidth=1; ctx.beginPath();
   for(let m=0;m<=WORLD;m+=MAJOR){
     const x=W2SX(m), y=W2SY(m);
     if(x>=-1&&x<=w+1){ctx.moveTo(x,Math.max(0,by));ctx.lineTo(x,Math.min(h,by+bs));}
     if(y>=-1&&y<=h+1){ctx.moveTo(Math.max(0,bx),y);ctx.lineTo(Math.min(w,bx+bs),y);}
   }
   ctx.stroke();
-  ctx.font = '10px '+css('--mono');
-  ctx.fillStyle = 'rgba(150,160,120,.55)';
+  ctx.font='10px '+css('--mono'); ctx.fillStyle='rgba(150,160,120,.55)';
   for(let m=0;m<WORLD;m+=MAJOR){
     const x=W2SX(m), y=W2SY(m);
-    const col = String.fromCharCode(65+m/MAJOR), row = (m/MAJOR+1);
-    if(x>0&&x<w) ctx.fillText(col, x+4, Math.max(12,by+12));
-    if(y>0&&y<h) ctx.fillText(String(row), Math.max(4,bx+4), y+12);
+    if(x>0&&x<w) ctx.fillText(String.fromCharCode(65+m/MAJOR), x+4, Math.max(12,by+12));
+    if(y>0&&y<h) ctx.fillText(String(m/MAJOR+1), Math.max(4,bx+4), y+12);
   }
-
-  /* path */
-  if (pts.length>1){
-    ctx.strokeStyle = css('--accent'); ctx.lineWidth = 2; ctx.setLineDash([7,5]);
+}
+function drawCalib(){
+  const cp=shot.calibPts;
+  if(!cp.length) return;
+  ctx.strokeStyle=css('--me'); ctx.lineWidth=2;
+  cp.forEach(p=>{
+    const x=W2SX(p.x), y=W2SY(p.y);
+    ctx.beginPath(); ctx.moveTo(x-7,y); ctx.lineTo(x+7,y);
+    ctx.moveTo(x,y-7); ctx.lineTo(x,y+7); ctx.stroke();
+  });
+  if(cp.length===2){
+    ctx.setLineDash([4,4]);
+    ctx.beginPath();
+    ctx.moveTo(W2SX(cp[0].x),W2SY(cp[0].y));
+    ctx.lineTo(W2SX(cp[1].x),W2SY(cp[1].y));
+    ctx.stroke(); ctx.setLineDash([]);
+    if(shot.mPerPx){
+      const mx=(W2SX(cp[0].x)+W2SX(cp[1].x))/2, my=(W2SY(cp[0].y)+W2SY(cp[1].y))/2;
+      tagLabel(mx,my-12, '📏 '+(+$('calibM').value)+' m', css('--me'));
+    }
+  }
+}
+function drawPath(){
+  const pts=st().pts;
+  if(pts.length>1){
+    ctx.strokeStyle=css('--accent'); ctx.lineWidth=2; ctx.setLineDash([7,5]);
     ctx.beginPath();
     pts.forEach((p,i)=> i?ctx.lineTo(W2SX(p.x),W2SY(p.y)):ctx.moveTo(W2SX(p.x),W2SY(p.y)));
     ctx.stroke(); ctx.setLineDash([]);
-    /* per-segment labels */
     for(let i=1;i<pts.length;i++){
-      const a=pts[i-1], b=pts[i];
-      const d=dist(a,b);
+      const a=pts[i-1], b=pts[i], m=toM(dist(a,b));
       const mx=(W2SX(a.x)+W2SX(b.x))/2, my=(W2SY(a.y)+W2SY(b.y))/2;
-      label(mx,my-12, Math.round(d)+' m');
+      tagLabel(mx,my-12, m==null?'? m':Math.round(m)+' m', css('--accent'));
     }
-    /* direct line player -> last, when path has bends */
-    if (pts.length>2){
+    if(pts.length>2){
       const a=pts[0], b=pts[pts.length-1];
       ctx.strokeStyle='rgba(91,200,220,.45)'; ctx.lineWidth=1.5; ctx.setLineDash([3,4]);
       ctx.beginPath(); ctx.moveTo(W2SX(a.x),W2SY(a.y)); ctx.lineTo(W2SX(b.x),W2SY(b.y)); ctx.stroke();
       ctx.setLineDash([]);
     }
   }
-
-  /* points */
   pts.forEach((p,i)=>{
     const x=W2SX(p.x), y=W2SY(p.y);
-    if(i===0){ /* player */
+    if(i===0){
       ctx.fillStyle=css('--me');
       ctx.beginPath(); ctx.arc(x,y,7,0,7); ctx.fill();
       ctx.strokeStyle='#0E1A1D'; ctx.lineWidth=2;
@@ -240,89 +329,112 @@ function draw(){
       ctx.strokeStyle=css('--accent'); ctx.lineWidth=2.5;
       ctx.beginPath();
       ctx.moveTo(x-6,y-6); ctx.lineTo(x+6,y+6);
-      ctx.moveTo(x+6,y-6); ctx.lineTo(x-6,y+6);
-      ctx.stroke();
+      ctx.moveTo(x+6,y-6); ctx.lineTo(x-6,y+6); ctx.stroke();
       if(i===pts.length-1) badge(x,y-16,'เป้า',css('--accent'),'#241605');
     }
   });
-
-  function label(x,y,txt){
-    ctx.font='bold 11px '+css('--mono');
-    const tw=ctx.measureText(txt).width+10;
-    ctx.fillStyle='rgba(16,19,9,.85)';
-    ctx.beginPath(); ctx.roundRect(x-tw/2,y-9,tw,17,3); ctx.fill();
-    ctx.fillStyle=css('--accent'); ctx.textAlign='center';
-    ctx.fillText(txt,x,y+4); ctx.textAlign='left';
-  }
-  function badge(x,y,txt,bg,fg){
-    ctx.font='bold 10px '+css('--sans');
-    const tw=ctx.measureText(txt).width+10;
-    ctx.fillStyle=bg;
-    ctx.beginPath(); ctx.roundRect(x-tw/2,y-9,tw,15,3); ctx.fill();
-    ctx.fillStyle=fg; ctx.textAlign='center';
-    ctx.fillText(txt,x,y+2.5); ctx.textAlign='left';
-  }
 }
-const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-const dist = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
+function tagLabel(x,y,txt,color){
+  ctx.font='bold 11px '+css('--mono');
+  const tw=ctx.measureText(txt).width+10;
+  ctx.fillStyle='rgba(16,19,9,.85)';
+  ctx.beginPath(); ctx.roundRect(x-tw/2,y-9,tw,17,3); ctx.fill();
+  ctx.fillStyle=color; ctx.textAlign='center';
+  ctx.fillText(txt,x,y+4); ctx.textAlign='left';
+}
+function badge(x,y,txt,bg,fg){
+  ctx.font='bold 10px '+css('--sans');
+  const tw=ctx.measureText(txt).width+10;
+  ctx.fillStyle=bg;
+  ctx.beginPath(); ctx.roundRect(x-tw/2,y-9,tw,15,3); ctx.fill();
+  ctx.fillStyle=fg; ctx.textAlign='center';
+  ctx.fillText(txt,x,y+2.5); ctx.textAlign='left';
+}
 
-/* ---------------- readouts ---------------- */
+/* ---------- readouts ---------- */
 function fmtTime(s){
   s=Math.round(s);
   return s<60 ? s+' วิ' : (s/60|0)+':'+String(s%60).padStart(2,'0')+' นาที';
 }
 function refresh(){
-  const segList=$('segList');
+  const pts=st().pts, segList=$('segList');
+  const needCal = mode==='shot' && !shot.mPerPx;
+  updateHelper();
   if(pts.length<2){
-    $('total').textContent='—'; $('direct').textContent='';
+    $('total').textContent='—'; $('direct').textContent = needCal&&shot.img?'ยังไม่ได้คาลิเบรต 📏':'';
     $('runT').textContent='—'; $('carT').textContent='—';
-    $('zeroing').textContent='—'; $('bearing').textContent='—';
+    $('zeroing').textContent='—'; $('mortar').textContent='—'; $('mortar').className='';
     segList.innerHTML = pts.length===1
       ? '<li><i>ปักตำแหน่งเราแล้ว — คลิกจุดที่มาร์คต่อ</i></li>'
       : '<li><i>ยังไม่มีจุด</i></li>';
     draw(); return;
   }
+  if(needCal){
+    $('total').textContent='? m';
+    $('direct').textContent='กด 📏 คาลิเบรตสเกลก่อน';
+    $('runT').textContent='—'; $('carT').textContent='—';
+    $('zeroing').textContent='—'; $('mortar').textContent='—'; $('mortar').className='';
+    segList.innerHTML='<li><i>คาลิเบรตก่อนจึงจะเป็นเมตร</i></li>';
+    draw(); return;
+  }
   let total=0; const rows=[];
   for(let i=1;i<pts.length;i++){
-    const d=dist(pts[i-1],pts[i]); total+=d;
+    const d=toM(dist(pts[i-1],pts[i])); total+=d;
     rows.push('<li><i>ช่วง '+i+'</i><span>'+Math.round(d).toLocaleString()+' m</span></li>');
   }
   rows.push('<li style="border-top:1px solid var(--line);margin-top:3px;padding-top:3px"><i>รวม</i><b>'+Math.round(total).toLocaleString()+' m</b></li>');
   segList.innerHTML=rows.join('');
 
-  const direct = dist(pts[0], pts[pts.length-1]);
-  $('total').textContent = Math.round(total).toLocaleString()+' m';
+  const direct=toM(dist(pts[0],pts[pts.length-1]));
+  $('total').textContent=Math.round(total).toLocaleString()+' m';
   $('direct').textContent = pts.length>2 ? 'ยิงตรง '+Math.round(direct).toLocaleString()+' m' : '';
-  $('runT').textContent = fmtTime(total/RUN_MS);
-  $('carT').textContent = fmtTime(total/CAR_MS);
-
-  const z = Math.min(1000, Math.max(100, Math.ceil(direct/100)*100));
-  $('zeroing').textContent = direct<=25 ? 'ชิดมาก' : z+' m';
-
-  /* bearing: 0 = N (up) */
-  const dx = pts[pts.length-1].x - pts[0].x;
-  const dy = pts[pts.length-1].y - pts[0].y;
-  const deg = (Math.atan2(dx,-dy)*180/Math.PI+360)%360;
-  const names=['เหนือ','ตอ.เฉียงเหนือ','ตะวันออก','ตอ.เฉียงใต้','ใต้','ตต.เฉียงใต้','ตะวันตก','ตต.เฉียงเหนือ'];
-  $('bearing').textContent = Math.round(deg)+'° '+names[Math.round(deg/45)%8];
+  $('runT').textContent=fmtTime(total/RUN_MS);
+  $('carT').textContent=fmtTime(total/CAR_MS);
+  const z=Math.min(1000,Math.max(100,Math.ceil(direct/100)*100));
+  $('zeroing').textContent = direct<=25?'ชิดมาก':z+' m';
+  const mo=$('mortar');
+  if(direct<100){ mo.textContent='ใกล้เกิน (<100)'; mo.className='no'; }
+  else if(direct>700){ mo.textContent='ไกลเกิน (>700)'; mo.className='no'; }
+  else { mo.textContent='ตั้ง '+Math.round(direct)+' m'; mo.className='ok'; }
   draw();
 }
+function updateHelper(){
+  const h=$('helper');
+  if(mode==='grid'){
+    h.innerHTML='คลิกจุดแรก = <b style="color:var(--me)">ตำแหน่งเรา</b> · คลิกต่อ = จุดที่มาร์ค · ลากจุดเพื่อขยับ · ลากพื้นว่างเพื่อเลื่อน · สกรอลล์ซูม';
+  } else if(!shot.img){
+    h.innerHTML='วางรูปด้วย Ctrl+V หรือลากไฟล์มาวาง';
+  } else if(shot.calibrating){
+    h.innerHTML='📏 กำลังคาลิเบรต — คลิกปลาย 2 จุดของระยะที่รู้ (เช่น เส้นกริดถึงเส้นกริด = 100 ม.)';
+  } else if(!shot.mPerPx){
+    h.innerHTML='กดปุ่ม <b>📏</b> ขวาบน แล้วคลิกปลาย 2 จุดของ 1 ช่องกริด (100 ม.) เพื่อตั้งสเกล';
+  } else {
+    h.innerHTML='สเกล: 1 px ≈ <b>'+shot.mPerPx.toFixed(2)+' ม.</b> · คลิกจุดเรา → จุดที่มาร์ค · 📏 คาลิเบรตใหม่ได้';
+  }
+}
 
-/* ---------------- input ---------------- */
+/* ---------- input ---------- */
 function evPos(e){
   const r=cvs.getBoundingClientRect();
-  const t=e.touches?e.touches[0]:e;
+  const t=e.touches?e.touches[0]:(e.changedTouches?e.changedTouches[0]:e);
   return {x:t.clientX-r.left, y:t.clientY-r.top};
 }
 function hit(sp){
+  const pts=st().pts;
   for(let i=pts.length-1;i>=0;i--){
     if(Math.hypot(W2SX(pts[i].x)-sp.x, W2SY(pts[i].y)-sp.y)<14) return i;
   }
   return -1;
 }
+function clampPt(p){
+  if(mode==='grid') return {x:Math.max(0,Math.min(WORLD,p.x)), y:Math.max(0,Math.min(WORLD,p.y))};
+  if(shot.img) return {x:Math.max(0,Math.min(shot.img.width,p.x)), y:Math.max(0,Math.min(shot.img.height,p.y))};
+  return p;
+}
 function down(e){
+  if(mode==='shot' && !shot.img) return;
   const sp=evPos(e);
-  const i=hit(sp);
+  const i=(mode==='shot'&&shot.calibrating)?-1:hit(sp);
   drag = i>=0
     ? {type:'pt', idx:i, moved:false}
     : {type:'pan', sx:sp.x, sy:sp.y, sox:ox, soy:oy, moved:false};
@@ -333,30 +445,43 @@ function move(e){
   const sp=evPos(e);
   if(drag.type==='pt'){
     drag.moved=true;
-    pts[drag.idx]={x:clampW(S2WX(sp.x)), y:clampW(S2WY(sp.y))};
+    st().pts[drag.idx]=clampPt({x:S2WX(sp.x),y:S2WY(sp.y)});
     refresh();
   } else {
     const dx=sp.x-drag.sx, dy=sp.y-drag.sy;
     if(Math.abs(dx)+Math.abs(dy)>4) drag.moved=true;
     ox=drag.sox-dx/scale; oy=drag.soy-dy/scale;
-    draw();
+    saveView(); draw();
   }
   e.preventDefault();
 }
 function up(e){
   if(!drag) return;
   if(!drag.moved && drag.type==='pan'){
-    const sp = e.changedTouches
-      ? {x:e.changedTouches[0].clientX-cvs.getBoundingClientRect().left,
-         y:e.changedTouches[0].clientY-cvs.getBoundingClientRect().top}
-      : evPos(e);
-    pts.push({x:clampW(S2WX(sp.x)), y:clampW(S2WY(sp.y))});
-    refresh();
+    const sp=evPos(e);
+    const wp=clampPt({x:S2WX(sp.x),y:S2WY(sp.y)});
+    if(mode==='shot' && shot.calibrating){
+      shot.calibPts.push(wp);
+      if(shot.calibPts.length===2){
+        applyCalib();
+      } else { $('calibMsg').textContent='ดี! คลิกปลายอีกด้าน'; draw(); }
+    } else {
+      st().pts.push(wp);
+      refresh();
+    }
   }
   drag=null;
 }
-const clampW = v => Math.max(0, Math.min(WORLD, v));
-
+function applyCalib(){
+  const px=dist(shot.calibPts[0],shot.calibPts[1]);
+  const m=+$('calibM').value||100;
+  if(px<3){ shot.calibPts=[]; $('calibMsg').textContent='จุดใกล้กันไป ลองใหม่'; draw(); return; }
+  shot.mPerPx=m/px;
+  shot.calibrating=false;
+  $('calibbar').style.display='none';
+  $('calibBtn').classList.remove('hot');
+  refresh();
+}
 cvs.addEventListener('mousedown',down);
 window.addEventListener('mousemove',move);
 window.addEventListener('mouseup',up);
@@ -364,22 +489,89 @@ cvs.addEventListener('touchstart',down,{passive:false});
 cvs.addEventListener('touchmove',move,{passive:false});
 cvs.addEventListener('touchend',up);
 
-function zoom(f, cx, cy){
+function zoom(f,cx,cy){
   const wx=S2WX(cx), wy=S2WY(cy);
-  scale=Math.max(0.02, Math.min(2, scale*f));
+  scale=Math.max(0.02,Math.min(12,scale*f));
   ox=wx-cx/scale; oy=wy-cy/scale;
-  draw();
+  saveView(); draw();
 }
 cvs.addEventListener('wheel',e=>{
   e.preventDefault();
   const sp=evPos(e);
-  zoom(e.deltaY<0?1.18:1/1.18, sp.x, sp.y);
+  zoom(e.deltaY<0?1.18:1/1.18,sp.x,sp.y);
 },{passive:false});
-$('zin').onclick =()=>zoom(1.3, cvs.clientWidth/2, cvs.clientHeight/2);
-$('zout').onclick=()=>zoom(1/1.3, cvs.clientWidth/2, cvs.clientHeight/2);
+$('zin').onclick =()=>zoom(1.3,cvs.clientWidth/2,cvs.clientHeight/2);
+$('zout').onclick=()=>zoom(1/1.3,cvs.clientWidth/2,cvs.clientHeight/2);
 $('zfit').onclick=()=>{fit();draw();};
-$('undo').onclick=()=>{pts.pop();refresh();};
-$('clear').onclick=()=>{pts=[];refresh();};
+$('undo').onclick=()=>{st().pts.pop();refresh();};
+$('clear').onclick=()=>{st().pts=[];refresh();};
+
+/* ---------- modes ---------- */
+function setMode(m){
+  saveView();
+  mode=m;
+  $('tabGrid').classList.toggle('on',m==='grid');
+  $('tabShot').classList.toggle('on',m==='shot');
+  const isShot=m==='shot';
+  $('calibBtn').style.display = isShot&&shot.img?'block':'none';
+  $('newShot').style.display  = isShot&&shot.img?'block':'none';
+  $('drop').classList.toggle('on', isShot&&!shot.img);
+  $('calibbar').style.display = isShot&&shot.calibrating?'flex':'none';
+  loadView(); refresh();
+}
+$('tabGrid').onclick=()=>setMode('grid');
+$('tabShot').onclick=()=>setMode('shot');
+
+$('calibBtn').onclick=()=>{
+  shot.calibrating=!shot.calibrating;
+  shot.calibPts=[];
+  if(shot.calibrating){
+    $('calibbar').style.display='flex';
+    $('calibMsg').textContent='คลิกปลายทั้งสองด้านของ 1 ช่องกริด';
+    $('calibBtn').classList.add('hot');
+  } else {
+    $('calibbar').style.display='none';
+    $('calibBtn').classList.remove('hot');
+  }
+  refresh();
+};
+$('newShot').onclick=()=>{ $('fileIn').value=''; $('fileIn').click(); };
+$('pickBtn').onclick=e=>{ e.stopPropagation(); $('fileIn').click(); };
+$('drop').onclick=()=>$('fileIn').click();
+$('fileIn').addEventListener('change',e=>{
+  if(e.target.files[0]) loadImageFile(e.target.files[0]);
+});
+function loadImageFile(file){
+  if(!file.type.startsWith('image/')) return;
+  const rd=new FileReader();
+  rd.onload=()=>{
+    const im=new Image();
+    im.onload=()=>{
+      shot.img=im; shot.pts=[]; shot.calibPts=[]; shot.mPerPx=null;
+      shot.calibrating=true; shot.view=null;
+      setMode('shot');
+      fit();
+      $('calibbar').style.display='flex';
+      $('calibMsg').textContent='คลิกปลายทั้งสองด้านของ 1 ช่องกริด';
+      $('calibBtn').classList.add('hot');
+      refresh();
+    };
+    im.src=rd.result;
+  };
+  rd.readAsDataURL(file);
+}
+window.addEventListener('paste',e=>{
+  const items=e.clipboardData&&e.clipboardData.items;
+  if(!items) return;
+  for(const it of items){
+    if(it.type.startsWith('image/')){ loadImageFile(it.getAsFile()); e.preventDefault(); break; }
+  }
+});
+window.addEventListener('dragover',e=>e.preventDefault());
+window.addEventListener('drop',e=>{
+  e.preventDefault();
+  if(e.dataTransfer.files[0]) loadImageFile(e.dataTransfer.files[0]);
+});
 
 window.addEventListener('resize',()=>{size();draw();});
 
