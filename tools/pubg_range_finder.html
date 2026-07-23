@@ -14,20 +14,14 @@
     display:flex;flex-direction:column;height:100dvh;overflow:hidden;
   }
   header{
-    display:flex;align-items:center;gap:12px;padding:8px 14px;
+    display:flex;align-items:center;gap:12px;padding:9px 14px;
     background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap;
   }
   header h1{font-size:15px;font-weight:700}
   header h1 b{color:var(--accent)}
-  .tabs{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
-  .tabs button{
-    background:var(--panel2);color:var(--muted);border:0;padding:7px 14px;
-    font-family:var(--sans);font-size:12.5px;font-weight:600;cursor:pointer;
-  }
-  .tabs button.on{background:var(--accent);color:#241605}
   header .note{font-size:11px;color:var(--muted)}
   .main{flex:1;display:flex;min-height:0}
-  .maparea{position:relative;flex:1;min-width:0;background:#0C0F07}
+  .maparea{position:relative;flex:1;min-width:0}
   canvas{display:block;width:100%;height:100%;cursor:crosshair;touch-action:none}
   .mapbtns{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:6px}
   .mapbtns button{
@@ -37,36 +31,16 @@
   }
   .mapbtns button:hover{border-color:var(--accent-dim)}
   .mapbtns button.hot{background:var(--accent);color:#241605;border-color:var(--accent)}
+  .cellchip{
+    position:absolute;left:12px;top:12px;font-family:var(--mono);font-size:12px;
+    background:rgba(23,27,16,.88);border:1px solid var(--line);border-radius:6px;
+    padding:5px 10px;color:var(--muted);pointer-events:none;
+  }
+  .cellchip b{color:var(--text)}
   .helper{
     position:absolute;left:12px;bottom:12px;font-size:11px;color:var(--muted);
     background:rgba(23,27,16,.88);border:1px solid var(--line);border-radius:6px;
     padding:6px 10px;pointer-events:none;max-width:78%;
-  }
-  .calibbar{
-    position:absolute;left:12px;top:12px;display:none;align-items:center;gap:8px;
-    background:rgba(23,27,16,.92);border:1px solid var(--accent-dim);border-radius:6px;
-    padding:7px 10px;font-size:12px;flex-wrap:wrap;max-width:82%;
-  }
-  .calibbar input{
-    width:64px;background:var(--panel2);border:1px solid var(--line);border-radius:4px;
-    color:var(--text);font-family:var(--mono);font-size:13px;padding:4px 6px;text-align:right;
-  }
-  .calibbar .st{color:var(--accent);font-weight:600}
-  .dropzone{
-    position:absolute;inset:0;display:none;align-items:center;justify-content:center;
-    text-align:center;cursor:pointer;
-  }
-  .dropzone.on{display:flex}
-  .dropzone .in{
-    border:2px dashed var(--accent-dim);border-radius:12px;padding:36px 30px;
-    background:rgba(23,27,16,.6);max-width:420px;
-  }
-  .dropzone h2{font-size:17px;margin-bottom:8px}
-  .dropzone p{font-size:12.5px;color:var(--muted);line-height:1.9}
-  .dropzone kbd{font-family:var(--mono);border:1px solid var(--line);border-radius:3px;padding:0 5px;font-size:11px}
-  .dropzone .pick{
-    margin-top:14px;background:var(--accent);color:#241605;border:0;border-radius:6px;
-    font-family:var(--sans);font-size:14px;font-weight:700;padding:10px 26px;cursor:pointer;
   }
   /* -------- sidebar -------- */
   .side{
@@ -105,6 +79,7 @@
   .ref{font-size:12px;line-height:1.85;color:var(--muted);border-top:1px solid var(--line);padding-top:9px}
   .ref b{color:var(--text);font-family:var(--mono)}
   .ref h3{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.06em;margin-bottom:3px}
+  kbd{font-family:var(--mono);border:1px solid var(--line);border-radius:3px;padding:0 4px;font-size:10px}
   @media (max-width:760px){
     .main{flex-direction:column}
     .side{width:100%;border-left:0;border-top:1px solid var(--line);
@@ -116,53 +91,29 @@
     .actions{flex:1 1 100%}
     .ref{display:none}
     .helper{display:none}
+    .cellchip{display:none}
     header .note{display:none}
   }
 </style>
 
 <header>
   <h1>🎯 PUBG <b>Range Finder</b></h1>
-  <div class="tabs">
-    <button id="tabGrid" class="on">กริดจำลอง</button>
-    <button id="tabShot">📷 สกรีนช็อตแมพ</button>
-  </div>
-  <span class="note">ช่องเล็ก = 100 ม. · ช่องใหญ่ = 1 กม. · เครื่องมือภายนอก ไม่แตะตัวเกม ไม่เสี่ยงแบน</span>
+  <span class="note">กริดจำลองแมพ — ช่องเล็ก = 100 ม. · ช่องใหญ่ = 1 กม. · เครื่องมือภายนอก ไม่แตะตัวเกม ไม่เสี่ยงแบน</span>
 </header>
 
 <div class="main">
-  <div class="maparea" id="maparea">
+  <div class="maparea">
     <canvas id="map"></canvas>
-    <div class="dropzone" id="drop">
-      <div class="in">
-        <h2>📷 วางสกรีนช็อตแผนที่จากเกม</h2>
-        <p>กด <kbd>M</kbd> ในเกมเปิดแผนที่ → แคปหน้าจอ →<br>
-        วางที่นี่ด้วย <kbd>Ctrl</kbd>+<kbd>V</kbd> หรือลากไฟล์รูปมาวาง<br>
-        <span style="color:var(--accent)">เคล็ดลับ:</span> ซูมแมพให้เห็น "เส้นตาราง" ก่อนแคป<br>
-        เส้นตารางคือไม้บรรทัดในตัว — ช่องเล็ก 1 ช่อง = 100 ม. เสมอ</p>
-        <button class="pick" id="pickBtn">เลือกไฟล์รูป…</button>
-        <input type="file" id="fileIn" accept="image/*" hidden>
-      </div>
-    </div>
-    <div class="calibbar" id="calibbar">
-      <svg width="64" height="30" viewBox="0 0 64 30" style="flex:none">
-        <line x1="8" y1="2" x2="8" y2="28" stroke="#8C927D" stroke-width="1.5"/>
-        <line x1="56" y1="2" x2="56" y2="28" stroke="#8C927D" stroke-width="1.5"/>
-        <line x1="11" y1="15" x2="53" y2="15" stroke="#5BC8DC" stroke-width="1.5"/>
-        <path d="M11 15 l5 -3 v6 z M53 15 l-5 -3 v6 z" fill="#5BC8DC"/>
-      </svg>
-      <span class="st" id="calibSt">📏 คาลิเบรต:</span>
-      <span id="calibMsg">คลิกเส้นตาราง 2 เส้น — ยิ่งลากข้ามหลายช่องยิ่งแม่น (1 ช่องเล็ก = 100 ม.)</span>
-      <span>ระยะที่ลาก =</span>
-      <input type="number" id="calibM" value="100" min="1" step="50"> ม.
-    </div>
+    <div class="cellchip" id="cellchip">พิกัด: <b>—</b></div>
     <div class="mapbtns">
       <button id="zin" title="ซูมเข้า">+</button>
       <button id="zout" title="ซูมออก">−</button>
       <button id="zfit" title="รีเซ็ตมุมมอง">⌂</button>
-      <button id="calibBtn" title="คาลิเบรตสเกลจากช่องกริด" style="display:none">📏</button>
-      <button id="newShot" title="เปลี่ยนรูป" style="display:none">🖼</button>
+      <button id="ringBtn" class="hot" title="วงแหวนระยะ mortar 100–700 ม.">🧨</button>
     </div>
-    <div class="helper" id="helper"></div>
+    <div class="helper">
+      คลิกจุดแรก = <b style="color:var(--me)">ตำแหน่งเรา</b> · เลื่อนเมาส์เห็นระยะสด คลิกเพื่อปัก · ลากจุดขยับ · <b>คลิกขวาลบจุด</b> · ลากพื้นว่างเลื่อนแมพ · สกรอลล์ซูม
+    </div>
   </div>
 
   <div class="side">
@@ -190,7 +141,8 @@
       1 ช่องเล็ก = <b>100 ม.</b> · ทแยง ≈ <b>141 ม.</b><br>
       1 ช่องใหญ่ = <b>1,000 ม.</b> · ทแยง ≈ <b>1,414 ม.</b><br>
       Zeroing ปัดขึ้นช่วง 100: เป้า 380 → ตั้ง <b>400</b><br>
-      Mortar ยิงได้ <b>100–700 ม.</b> ตั้งตามระยะตรง
+      Mortar ยิงได้ <b>100–700 ม.</b> ตั้งตามระยะตรง<br>
+      วงฟ้า = ใกล้สุด 100 · วงส้ม = ไกลสุด 700
     </div>
   </div>
 </div>
@@ -204,31 +156,17 @@ const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).
 
 const WORLD = 8000, MINOR = 100, MAJOR = 1000;
 const RUN_MS = 6.3, CAR_MS = 25;
+const MORTAR_MIN = 100, MORTAR_MAX = 700;
 
-/* ---------- per-mode state ---------- */
-const grid = { pts:[], view:null };
-const shot = { pts:[], view:null, img:null, mPerPx:null,
-               calibrating:false, calibPts:[] };
-let mode = 'grid';
-const st = () => mode==='grid' ? grid : shot;
-
+let pts = [];                 // world meters; pts[0] = player
 let scale=1, ox=0, oy=0, drag=null, dpr=1;
+let hoverW = null;            // live preview point (world m)
+let showRings = true;
 
-function saveView(){ st().view = {scale,ox,oy}; }
-function loadView(){
-  const v = st().view;
-  if(v){ scale=v.scale; ox=v.ox; oy=v.oy; } else fit();
-}
 function fit(){
   const w=cvs.clientWidth, h=cvs.clientHeight;
-  if(mode==='grid'){
-    scale = Math.min(w,h)/4200;
-    ox=(WORLD-w/scale)/2; oy=(WORLD-h/scale)/2;
-  } else if(shot.img){
-    scale = Math.min(w/shot.img.width, h/shot.img.height)*0.97;
-    ox=(shot.img.width-w/scale)/2; oy=(shot.img.height-h/scale)/2;
-  } else { scale=1; ox=0; oy=0; }
-  saveView();
+  scale = Math.min(w,h)/4200;
+  ox=(WORLD-w/scale)/2; oy=(WORLD-h/scale)/2;
 }
 function size(){
   dpr = window.devicePixelRatio||1;
@@ -239,88 +177,17 @@ function size(){
 const W2SX=x=>(x-ox)*scale, W2SY=y=>(y-oy)*scale;
 const S2WX=x=>x/scale+ox,  S2WY=y=>y/scale+oy;
 const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
-
-/* world-units -> meters (null = not calibrated yet) */
-function toM(d){ return mode==='grid' ? d : (shot.mPerPx ? d*shot.mPerPx : null); }
+const clampPt=p=>({x:Math.max(0,Math.min(WORLD,p.x)), y:Math.max(0,Math.min(WORLD,p.y))});
 
 /* ---------- drawing ---------- */
 function draw(){
   const w=cvs.clientWidth, h=cvs.clientHeight;
   ctx.clearRect(0,0,w,h);
   ctx.fillStyle='#0C0F07'; ctx.fillRect(0,0,w,h);
-
-  if(mode==='grid') drawGrid(w,h);
-  else if(shot.img){
-    ctx.imageSmoothingEnabled = scale<1;
-    ctx.drawImage(shot.img, W2SX(0), W2SY(0), shot.img.width*scale, shot.img.height*scale);
-    drawGridFit();
-    drawCalib();
-  }
+  drawGrid(w,h);
+  drawRings();
+  drawPreview();
   drawPath();
-  drawScaleBar();
-  drawLoupe();
-}
-function drawGridFit(){
-  /* overlay the auto-detected grid so the user can verify the scale */
-  if(!shot.autoCal||!shot.gridFit||shot.pts.length) return;
-  const w=cvs.clientWidth, h=cvs.clientHeight, g=shot.gridFit;
-  const y0=Math.max(0,W2SY(0)), y1=Math.min(h,W2SY(shot.img.height));
-  const x0=Math.max(0,W2SX(0)), x1=Math.min(w,W2SX(shot.img.width));
-  ctx.strokeStyle='rgba(91,200,220,.45)'; ctx.lineWidth=1;
-  ctx.setLineDash([6,4]);
-  if(g.x && g.x.sp*scale>12){
-    ctx.beginPath();
-    for(let x=g.x.ph; x<shot.img.width; x+=g.x.sp){
-      const s=W2SX(x);
-      if(s>=0&&s<=w){ ctx.moveTo(s,y0); ctx.lineTo(s,y1); }
-    }
-    ctx.stroke();
-  }
-  if(g.y && g.y.sp*scale>12){
-    ctx.beginPath();
-    for(let y=g.y.ph; y<shot.img.height; y+=g.y.sp){
-      const s=W2SY(y);
-      if(s>=0&&s<=h){ ctx.moveTo(x0,s); ctx.lineTo(x1,s); }
-    }
-    ctx.stroke();
-  }
-  ctx.setLineDash([]);
-}
-function drawScaleBar(){
-  if(mode!=='shot'||!shot.mPerPx) return;
-  const px=100/shot.mPerPx*scale, w=cvs.clientWidth, h=cvs.clientHeight;
-  if(px<8||px>w*0.8) return;
-  const x=w-px-92, y=h-18;
-  ctx.strokeStyle=css('--me'); ctx.lineWidth=2;
-  ctx.beginPath();
-  ctx.moveTo(x,y); ctx.lineTo(x+px,y);
-  ctx.moveTo(x,y-5); ctx.lineTo(x,y+5);
-  ctx.moveTo(x+px,y-5); ctx.lineTo(x+px,y+5);
-  ctx.stroke();
-  ctx.font='bold 11px '+css('--mono'); ctx.fillStyle=css('--me');
-  ctx.fillText('100 ม.', x+px+8, y+4);
-}
-function drawLoupe(){
-  /* pixel-precision magnifier while calibrating or dragging a point */
-  if(mode!=='shot'||!shot.img||!shot.hoverS) return;
-  if(!(shot.calibrating || (drag&&drag.type==='pt'))) return;
-  const {x:sx,y:sy}=shot.hoverS;
-  const R=46, Z=3, w=cvs.clientWidth;
-  const lx=sx+70+R<w ? sx+70 : sx-70;
-  const ly=Math.max(R+6, sy-70);
-  const s2=scale*Z, wx=S2WX(sx), wy=S2WY(sy);
-  ctx.save();
-  ctx.beginPath(); ctx.arc(lx,ly,R,0,7); ctx.clip();
-  ctx.fillStyle='#000'; ctx.fillRect(lx-R,ly-R,R*2,R*2);
-  ctx.drawImage(shot.img, lx-wx*s2, ly-wy*s2, shot.img.width*s2, shot.img.height*s2);
-  ctx.strokeStyle=css('--accent'); ctx.lineWidth=1;
-  ctx.beginPath();
-  ctx.moveTo(lx-R,ly); ctx.lineTo(lx+R,ly);
-  ctx.moveTo(lx,ly-R); ctx.lineTo(lx,ly+R);
-  ctx.stroke();
-  ctx.restore();
-  ctx.strokeStyle=css('--me'); ctx.lineWidth=2;
-  ctx.beginPath(); ctx.arc(lx,ly,R,0,7); ctx.stroke();
 }
 function drawGrid(w,h){
   const bx=W2SX(0), by=W2SY(0), bs=WORLD*scale;
@@ -350,44 +217,47 @@ function drawGrid(w,h){
     if(y>0&&y<h) ctx.fillText(String(m/MAJOR+1), Math.max(4,bx+4), y+12);
   }
 }
-function drawCalib(){
-  const cp=shot.calibPts;
-  if(!cp.length) return;
-  if(shot.calibrating && cp.length===1 && shot.hover){
-    ctx.strokeStyle='rgba(91,200,220,.7)'; ctx.lineWidth=1.5; ctx.setLineDash([4,4]);
-    ctx.beginPath();
-    ctx.moveTo(W2SX(cp[0].x),W2SY(cp[0].y));
-    ctx.lineTo(W2SX(shot.hover.x),W2SY(shot.hover.y));
-    ctx.stroke(); ctx.setLineDash([]);
-  }
-  ctx.strokeStyle=css('--me'); ctx.lineWidth=2;
-  cp.forEach(p=>{
-    const x=W2SX(p.x), y=W2SY(p.y);
-    ctx.beginPath(); ctx.moveTo(x-7,y); ctx.lineTo(x+7,y);
-    ctx.moveTo(x,y-7); ctx.lineTo(x,y+7); ctx.stroke();
-  });
-  if(cp.length===2){
-    ctx.setLineDash([4,4]);
-    ctx.beginPath();
-    ctx.moveTo(W2SX(cp[0].x),W2SY(cp[0].y));
-    ctx.lineTo(W2SX(cp[1].x),W2SY(cp[1].y));
-    ctx.stroke(); ctx.setLineDash([]);
-    if(shot.mPerPx){
-      const mx=(W2SX(cp[0].x)+W2SX(cp[1].x))/2, my=(W2SY(cp[0].y)+W2SY(cp[1].y))/2;
-      tagLabel(mx,my-12, '📏 '+(+$('calibM').value)+' m', css('--me'));
-    }
-  }
+function drawRings(){
+  /* mortar envelope around the player: 100 m min, 700 m max */
+  if(!showRings || !pts.length) return;
+  const p=pts[0], x=W2SX(p.x), y=W2SY(p.y);
+  const rMin=MORTAR_MIN*scale, rMax=MORTAR_MAX*scale;
+  ctx.fillStyle='rgba(242,160,61,.06)';
+  ctx.beginPath();
+  ctx.arc(x,y,rMax,0,7);
+  ctx.arc(x,y,rMin,0,7,true);
+  ctx.fill('evenodd');
+  ctx.strokeStyle='rgba(91,200,220,.55)'; ctx.lineWidth=1; ctx.setLineDash([4,5]);
+  ctx.beginPath(); ctx.arc(x,y,rMin,0,7); ctx.stroke();
+  ctx.strokeStyle='rgba(242,160,61,.6)';
+  ctx.beginPath(); ctx.arc(x,y,rMax,0,7); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.font='bold 10px '+css('--mono');
+  ctx.fillStyle='rgba(91,200,220,.8)';
+  ctx.fillText('100', x+rMin*0.71+4, y-rMin*0.71-4);
+  ctx.fillStyle='rgba(242,160,61,.85)';
+  ctx.fillText('700', x+rMax*0.71+4, y-rMax*0.71-4);
+}
+function drawPreview(){
+  /* live dashed line from the last point to the cursor */
+  if(!hoverW || !pts.length || drag) return;
+  const a=pts[pts.length-1];
+  const ax=W2SX(a.x), ay=W2SY(a.y), hx=W2SX(hoverW.x), hy=W2SY(hoverW.y);
+  ctx.strokeStyle='rgba(242,160,61,.5)'; ctx.lineWidth=1.5; ctx.setLineDash([4,5]);
+  ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(hx,hy); ctx.stroke();
+  ctx.setLineDash([]);
+  const d=Math.round(dist(a,hoverW));
+  tagLabel(hx, hy-18, d+' m', css('--accent'));
 }
 function drawTicks(a,b){
-  /* ruler-style tick marks along a segment, like a tape measure */
-  const mSeg=toM(dist(a,b));
-  if(mSeg==null || mSeg<1) return;
+  const mSeg=dist(a,b);
+  if(mSeg<1) return;
   const ax=W2SX(a.x), ay=W2SY(a.y), bx=W2SX(b.x), by=W2SY(b.y);
   const L=Math.hypot(bx-ax,by-ay);
   if(L<20) return;
   const pxPerM=L/mSeg;
   const steps=[100,200,500,1000,2000,5000];
-  let step=steps.find(s=>s*pxPerM>=9);
+  const step=steps.find(s=>s*pxPerM>=9);
   if(!step) return;
   const labStep = step<500 ? 500 : step;
   const canLabel = labStep*pxPerM>=40;
@@ -405,17 +275,16 @@ function drawTicks(a,b){
   ctx.stroke(); ctx.textAlign='left';
 }
 function drawPath(){
-  const pts=st().pts;
   if(pts.length>1){
     ctx.strokeStyle=css('--accent'); ctx.lineWidth=2; ctx.setLineDash([7,5]);
     ctx.beginPath();
     pts.forEach((p,i)=> i?ctx.lineTo(W2SX(p.x),W2SY(p.y)):ctx.moveTo(W2SX(p.x),W2SY(p.y)));
     ctx.stroke(); ctx.setLineDash([]);
     for(let i=1;i<pts.length;i++){
-      const a=pts[i-1], b=pts[i], m=toM(dist(a,b));
+      const a=pts[i-1], b=pts[i];
       drawTicks(a,b);
       const mx=(W2SX(a.x)+W2SX(b.x))/2, my=(W2SY(a.y)+W2SY(b.y))/2;
-      tagLabel(mx,my-12, m==null?'? m':Math.round(m)+' m', css('--accent'));
+      tagLabel(mx,my-12, Math.round(dist(a,b))+' m', css('--accent'));
     }
     if(pts.length>2){
       const a=pts[0], b=pts[pts.length-1];
@@ -463,12 +332,15 @@ function fmtTime(s){
   s=Math.round(s);
   return s<60 ? s+' วิ' : (s/60|0)+':'+String(s%60).padStart(2,'0')+' นาที';
 }
+const DIRS=['เหนือ','ตอ.เฉียงเหนือ','ตะวันออก','ตอ.เฉียงใต้','ใต้','ตต.เฉียงใต้','ตะวันตก','ตต.เฉียงเหนือ'];
+function bearingOf(a,b){
+  const deg=(Math.atan2(b.x-a.x,-(b.y-a.y))*180/Math.PI+360)%360;
+  return Math.round(deg)+'° '+DIRS[Math.round(deg/45)%8];
+}
 function refresh(){
-  const pts=st().pts, segList=$('segList');
-  const needCal = mode==='shot' && !shot.mPerPx;
-  updateHelper();
+  const segList=$('segList');
   if(pts.length<2){
-    $('total').textContent='—'; $('direct').textContent = needCal&&shot.img?'ยังไม่ได้คาลิเบรต 📏':'';
+    $('total').textContent='—'; $('direct').textContent='';
     $('runT').textContent='—'; $('carT').textContent='—';
     $('zeroing').textContent='—'; $('mortar').textContent='—'; $('mortar').className='';
     segList.innerHTML = pts.length===1
@@ -476,51 +348,41 @@ function refresh(){
       : '<li><i>ยังไม่มีจุด</i></li>';
     draw(); return;
   }
-  if(needCal){
-    $('total').textContent='? m';
-    $('direct').textContent='กด 📏 คาลิเบรตสเกลก่อน';
-    $('runT').textContent='—'; $('carT').textContent='—';
-    $('zeroing').textContent='—'; $('mortar').textContent='—'; $('mortar').className='';
-    segList.innerHTML='<li><i>คาลิเบรตก่อนจึงจะเป็นเมตร</i></li>';
-    draw(); return;
-  }
   let total=0; const rows=[];
   for(let i=1;i<pts.length;i++){
-    const d=toM(dist(pts[i-1],pts[i])); total+=d;
+    const d=dist(pts[i-1],pts[i]); total+=d;
     rows.push('<li><i>ช่วง '+i+'</i><span>'+Math.round(d).toLocaleString()+' m</span></li>');
   }
   rows.push('<li style="border-top:1px solid var(--line);margin-top:3px;padding-top:3px"><i>รวม</i><b>'+Math.round(total).toLocaleString()+' m</b></li>');
   segList.innerHTML=rows.join('');
 
-  const direct=toM(dist(pts[0],pts[pts.length-1]));
+  const direct=dist(pts[0],pts[pts.length-1]);
   $('total').textContent=Math.round(total).toLocaleString()+' m';
-  $('direct').textContent = pts.length>2 ? 'ยิงตรง '+Math.round(direct).toLocaleString()+' m' : '';
+  $('direct').textContent=(pts.length>2?'ยิงตรง '+Math.round(direct).toLocaleString()+' m · ':'ทิศ ')
+    + bearingOf(pts[0],pts[pts.length-1]);
   $('runT').textContent=fmtTime(total/RUN_MS);
   $('carT').textContent=fmtTime(total/CAR_MS);
   const z=Math.min(1000,Math.max(100,Math.ceil(direct/100)*100));
   $('zeroing').textContent = direct<=25?'ชิดมาก':z+' m';
   const mo=$('mortar');
-  if(direct<100){ mo.textContent='ใกล้เกิน (<100)'; mo.className='no'; }
-  else if(direct>700){ mo.textContent='ไกลเกิน (>700)'; mo.className='no'; }
+  if(direct<MORTAR_MIN){ mo.textContent='ใกล้เกิน (<100)'; mo.className='no'; }
+  else if(direct>MORTAR_MAX){ mo.textContent='ไกลเกิน (>700)'; mo.className='no'; }
   else { mo.textContent='ตั้ง '+Math.round(direct)+' m'; mo.className='ok'; }
   draw();
 }
-function updateHelper(){
-  const h=$('helper');
-  if(mode==='grid'){
-    h.innerHTML='คลิกจุดแรก = <b style="color:var(--me)">ตำแหน่งเรา</b> · คลิกต่อ = จุดที่มาร์ค · ลากจุดเพื่อขยับ · ลากพื้นว่างเพื่อเลื่อน · สกรอลล์ซูม';
-  } else if(!shot.img){
-    h.innerHTML='วางรูปด้วย Ctrl+V หรือลากไฟล์มาวาง';
-  } else if(shot.calibrating){
-    h.innerHTML='📏 คลิกบนเส้นตารางเส้นแรก แล้วคลิกเส้นถัดไปที่ติดกัน (= กว้าง 1 ช่อง = 100 ม.)';
-  } else if(!shot.mPerPx){
-    h.innerHTML='กดปุ่ม <b>📏</b> ขวาบน แล้วคลิกเส้นตารางของแมพ 2 เส้นที่ติดกัน (1 ช่อง = 100 ม.) เพื่อตั้งสเกล';
-  } else if(shot.autoCal && !shot.pts.length){
-    h.innerHTML='🪄 <b style="color:var(--me)">เส้นประฟ้า</b> คือกริดที่ตรวจเจอ — ถ้าทับเส้นตารางของแมพพอดี = สเกลถูก เริ่มคลิกวัดได้เลย · ถ้าไม่ทับ หรือ<b>ในรูปไม่มีเส้นตาราง</b> อย่าเชื่อค่านี้ กด 📏 หรือแคปใหม่ให้เห็นกริด';
-  } else {
-    h.innerHTML=(shot.autoCal?'🪄 สเกลอัตโนมัติจากกริด':'สเกล')
-      +': 1 px ≈ <b>'+shot.mPerPx.toFixed(2)+' ม.</b> · เช็คแถบ <b style="color:var(--me)">100 ม.</b> ขวาล่างว่ายาวเท่า 1 ช่องกริดในรูปไหม — ไม่ตรงเมื่อไหร่กด 📏 วัดเอง';
-  }
+function cellName(p){
+  if(p.x<0||p.x>WORLD||p.y<0||p.y>WORLD) return null;
+  const col=String.fromCharCode(65+Math.min(7,p.x/MAJOR|0));
+  const row=Math.min(8,(p.y/MAJOR|0)+1);
+  return col+row;
+}
+function updateCellChip(){
+  const c=$('cellchip');
+  if(hoverW){
+    const cell=cellName(hoverW);
+    c.innerHTML='พิกัด: <b>'+(cell||'นอกแมพ')+'</b>'
+      +(cell?' · '+Math.round(hoverW.x)+', '+Math.round(hoverW.y)+' ม.':'');
+  } else c.innerHTML='พิกัด: <b>—</b>';
 }
 
 /* ---------- input ---------- */
@@ -530,21 +392,15 @@ function evPos(e){
   return {x:t.clientX-r.left, y:t.clientY-r.top};
 }
 function hit(sp){
-  const pts=st().pts;
   for(let i=pts.length-1;i>=0;i--){
     if(Math.hypot(W2SX(pts[i].x)-sp.x, W2SY(pts[i].y)-sp.y)<14) return i;
   }
   return -1;
 }
-function clampPt(p){
-  if(mode==='grid') return {x:Math.max(0,Math.min(WORLD,p.x)), y:Math.max(0,Math.min(WORLD,p.y))};
-  if(shot.img) return {x:Math.max(0,Math.min(shot.img.width,p.x)), y:Math.max(0,Math.min(shot.img.height,p.y))};
-  return p;
-}
 function down(e){
-  if(mode==='shot' && !shot.img) return;
+  if(e.button===2) return;
   const sp=evPos(e);
-  const i=(mode==='shot'&&shot.calibrating)?-1:hit(sp);
+  const i=hit(sp);
   drag = i>=0
     ? {type:'pt', idx:i, moved:false}
     : {type:'pan', sx:sp.x, sy:sp.y, sox:ox, soy:oy, moved:false};
@@ -555,14 +411,13 @@ function move(e){
   const sp=evPos(e);
   if(drag.type==='pt'){
     drag.moved=true;
-    if(mode==='shot') shot.hoverS=sp;
-    st().pts[drag.idx]=clampPt({x:S2WX(sp.x),y:S2WY(sp.y)});
+    pts[drag.idx]=clampPt({x:S2WX(sp.x),y:S2WY(sp.y)});
     refresh();
   } else {
     const dx=sp.x-drag.sx, dy=sp.y-drag.sy;
     if(Math.abs(dx)+Math.abs(dy)>4) drag.moved=true;
     ox=drag.sox-dx/scale; oy=drag.soy-dy/scale;
-    saveView(); draw();
+    draw();
   }
   e.preventDefault();
 }
@@ -570,122 +425,11 @@ function up(e){
   if(!drag) return;
   if(!drag.moved && drag.type==='pan'){
     const sp=evPos(e);
-    const wp=clampPt({x:S2WX(sp.x),y:S2WY(sp.y)});
-    if(mode==='shot' && shot.calibrating){
-      shot.calibPts.push(wp);
-      if(shot.calibPts.length===2){
-        applyCalib();
-      } else { $('calibMsg').textContent='ดี! ทีนี้คลิกเส้นตารางเส้นถัดไปที่ติดกัน'; draw(); }
-    } else {
-      st().pts.push(wp);
-      refresh();
-    }
+    pts.push(clampPt({x:S2WX(sp.x),y:S2WY(sp.y)}));
+    refresh();
   }
   drag=null;
 }
-/* ---- auto scale detection: find dominant grid-line spacing ---- */
-function domSpacing(prof){
-  const n=prof.length, win=6;
-  const dt=new Float64Array(n);
-  for(let i=0;i<n;i++){
-    let s=0,c=0;
-    for(let j=Math.max(0,i-win);j<=Math.min(n-1,i+win);j++){s+=prof[j];c++;}
-    dt[i]=prof[i]-s/c;
-  }
-  let c0=0; for(let i=0;i<n;i++) c0+=dt[i]*dt[i];
-  if(!c0) return null;
-  const minLag=14, maxLag=Math.min(420,Math.floor(n/2));
-  if(maxLag<=minLag) return null;
-  const ac=new Float64Array(maxLag+1);
-  for(let lag=minLag;lag<=maxLag;lag++){
-    let s=0;
-    for(let i=0;i+lag<n;i++) s+=dt[i]*dt[i+lag];
-    ac[lag]=s/(n-lag);
-  }
-  let bestLag=0,best=-1;
-  for(let lag=minLag;lag<=maxLag;lag++) if(ac[lag]>best){best=ac[lag];bestLag=lag;}
-  if(bestLag<=0||best<=0) return null;
-  /* the top peak is often a multiple of the true spacing —
-     take the smallest divisor of it that is also a strong peak */
-  for(let k=12;k>=2;k--){
-    const c=Math.round(bestLag/k);
-    if(c<minLag) continue;
-    let v=0;
-    for(let j=Math.max(minLag,c-2);j<=Math.min(maxLag,c+2);j++) v=Math.max(v,ac[j]);
-    if(v>best*0.55){ bestLag=c; best=v; break; }
-  }
-  let lag=bestLag;
-  if(lag>minLag&&lag<maxLag){
-    const y0=ac[lag-1],y1=ac[lag],y2=ac[lag+1],den=y0-2*y1+y2;
-    if(den!==0) lag+=0.5*(y0-y2)/den;
-  }
-  return {lag, score:best/(c0/n), dt};
-}
-function gridPhase(r){
-  /* offset of the first detected grid line within one period */
-  const L=Math.max(2,Math.round(r.lag));
-  let bo=0,bv=-Infinity;
-  for(let o=0;o<L;o++){
-    let s=0;
-    for(let i=o;i<r.dt.length;i+=L) s+=r.dt[i];
-    if(s>bv){bv=s;bo=o;}
-  }
-  return bo;
-}
-function tryAutoCalib(){
-  try{
-    const img=shot.img;
-    const f=Math.min(1,1100/img.width);
-    const w=Math.max(60,Math.round(img.width*f)), h=Math.max(60,Math.round(img.height*f));
-    const oc=document.createElement('canvas'); oc.width=w; oc.height=h;
-    const c=oc.getContext('2d',{willReadFrequently:true});
-    c.drawImage(img,0,0,w,h);
-    const d=c.getImageData(0,0,w,h).data;
-    const col=new Float64Array(w), row=new Float64Array(h);
-    for(let y=0;y<h;y++){
-      const base=y*w*4;
-      for(let x=0;x<w;x++){
-        const i=base+x*4;
-        const l=d[i]*0.299+d[i+1]*0.587+d[i+2]*0.114;
-        col[x]+=l; row[y]+=l;
-      }
-    }
-    const sx=domSpacing(col), sy=domSpacing(row);
-    let lag=null;
-    if(sx&&sy&&sx.score>0.08&&sy.score>0.08
-       &&Math.abs(sx.lag-sy.lag)/Math.max(sx.lag,sy.lag)<0.06) lag=(sx.lag+sy.lag)/2;
-    else if(sx&&sx.score>0.2) lag=sx.lag;
-    else if(sy&&sy.score>0.2) lag=sy.lag;
-    if(!lag) return false;
-    shot.mPerPx=100/(lag/f);
-    shot.gridFit={
-      x: sx&&sx.score>0.08 ? {sp:sx.lag/f, ph:gridPhase(sx)/f} : null,
-      y: sy&&sy.score>0.08 ? {sp:sy.lag/f, ph:gridPhase(sy)/f} : null
-    };
-    return true;
-  }catch(e){ return false; }
-}
-function applyCalib(){
-  const px=dist(shot.calibPts[0],shot.calibPts[1]);
-  const m=+$('calibM').value||100;
-  if(px<3){ shot.calibPts=[]; $('calibMsg').textContent='จุดใกล้กันไป ลองใหม่'; draw(); return; }
-  shot.mPerPx=m/px;
-  shot.autoCal=false;
-  shot.calibrating=false; shot.hover=null;
-  $('calibbar').style.display='none';
-  $('calibBtn').classList.remove('hot');
-  refresh();
-}
-cvs.addEventListener('mousemove',e=>{
-  if(mode!=='shot'||!shot.img) return;
-  const sp=evPos(e);
-  shot.hoverS=sp;
-  if(shot.calibrating){
-    if(shot.calibPts.length===1) shot.hover={x:S2WX(sp.x),y:S2WY(sp.y)};
-    draw();
-  }
-});
-cvs.addEventListener('mouseleave',()=>{ if(shot.hoverS){shot.hoverS=null; draw();} });
 cvs.addEventListener('mousedown',down);
 window.addEventListener('mousemove',move);
 window.addEventListener('mouseup',up);
@@ -693,11 +437,26 @@ cvs.addEventListener('touchstart',down,{passive:false});
 cvs.addEventListener('touchmove',move,{passive:false});
 cvs.addEventListener('touchend',up);
 
+cvs.addEventListener('mousemove',e=>{
+  const sp=evPos(e);
+  hoverW={x:S2WX(sp.x),y:S2WY(sp.y)};
+  updateCellChip();
+  if(pts.length&&!drag) draw();
+});
+cvs.addEventListener('mouseleave',()=>{
+  hoverW=null; updateCellChip(); draw();
+});
+cvs.addEventListener('contextmenu',e=>{
+  e.preventDefault();
+  const i=hit(evPos(e));
+  if(i>=0){ pts.splice(i,1); refresh(); }
+});
+
 function zoom(f,cx,cy){
   const wx=S2WX(cx), wy=S2WY(cy);
-  scale=Math.max(0.02,Math.min(12,scale*f));
+  scale=Math.max(0.02,Math.min(2,scale*f));
   ox=wx-cx/scale; oy=wy-cy/scale;
-  saveView(); draw();
+  draw();
 }
 cvs.addEventListener('wheel',e=>{
   e.preventDefault();
@@ -707,79 +466,13 @@ cvs.addEventListener('wheel',e=>{
 $('zin').onclick =()=>zoom(1.3,cvs.clientWidth/2,cvs.clientHeight/2);
 $('zout').onclick=()=>zoom(1/1.3,cvs.clientWidth/2,cvs.clientHeight/2);
 $('zfit').onclick=()=>{fit();draw();};
-$('undo').onclick=()=>{st().pts.pop();refresh();};
-$('clear').onclick=()=>{st().pts=[];refresh();};
-
-/* ---------- modes ---------- */
-function setMode(m){
-  saveView();
-  mode=m;
-  $('tabGrid').classList.toggle('on',m==='grid');
-  $('tabShot').classList.toggle('on',m==='shot');
-  const isShot=m==='shot';
-  $('calibBtn').style.display = isShot&&shot.img?'block':'none';
-  $('newShot').style.display  = isShot&&shot.img?'block':'none';
-  $('drop').classList.toggle('on', isShot&&!shot.img);
-  $('calibbar').style.display = isShot&&shot.calibrating?'flex':'none';
-  loadView(); refresh();
-}
-$('tabGrid').onclick=()=>setMode('grid');
-$('tabShot').onclick=()=>setMode('shot');
-
-$('calibBtn').onclick=()=>{
-  shot.calibrating=!shot.calibrating;
-  shot.calibPts=[];
-  if(shot.calibrating){
-    $('calibbar').style.display='flex';
-    $('calibMsg').textContent='คลิกเส้นตาราง 2 เส้น — ข้ามหลายช่องได้ แล้วใส่ระยะรวม (เช่น 5 ช่อง = 500)';
-    $('calibBtn').classList.add('hot');
-  } else {
-    $('calibbar').style.display='none';
-    $('calibBtn').classList.remove('hot');
-  }
-  refresh();
+$('undo').onclick=()=>{pts.pop();refresh();};
+$('clear').onclick=()=>{pts=[];refresh();};
+$('ringBtn').onclick=()=>{
+  showRings=!showRings;
+  $('ringBtn').classList.toggle('hot',showRings);
+  draw();
 };
-$('newShot').onclick=()=>{ $('fileIn').value=''; $('fileIn').click(); };
-$('pickBtn').onclick=e=>{ e.stopPropagation(); $('fileIn').click(); };
-$('drop').onclick=()=>$('fileIn').click();
-$('fileIn').addEventListener('change',e=>{
-  if(e.target.files[0]) loadImageFile(e.target.files[0]);
-});
-function loadImageFile(file){
-  if(!file.type.startsWith('image/')) return;
-  const rd=new FileReader();
-  rd.onload=()=>{
-    const im=new Image();
-    im.onload=()=>{
-      shot.img=im; shot.pts=[]; shot.calibPts=[]; shot.mPerPx=null;
-      shot.hover=null; shot.view=null; shot.gridFit=null;
-      const ok=tryAutoCalib();
-      shot.autoCal=ok;
-      shot.calibrating=!ok;
-      setMode('shot');
-      fit();
-      if(!ok){
-        $('calibMsg').textContent='หากริดอัตโนมัติไม่เจอ — คลิกเส้นตาราง 2 เส้นเอง';
-        $('calibBtn').classList.add('hot');
-      }
-      refresh();
-    };
-    im.src=rd.result;
-  };
-  rd.readAsDataURL(file);
-}
-window.addEventListener('paste',e=>{
-  const items=e.clipboardData&&e.clipboardData.items;
-  if(!items) return;
-  for(const it of items){
-    if(it.type.startsWith('image/')){ loadImageFile(it.getAsFile()); e.preventDefault(); break; }
-  }
-});
-window.addEventListener('dragover',e=>e.preventDefault());
-window.addEventListener('drop',e=>{
-  e.preventDefault();
-  if(e.dataTransfer.files[0]) loadImageFile(e.dataTransfer.files[0]);
-});
 
 window.addEventListener('resize',()=>{size();draw();});
 
