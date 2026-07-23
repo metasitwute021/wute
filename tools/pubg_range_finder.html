@@ -298,6 +298,32 @@ function drawCalib(){
     }
   }
 }
+function drawTicks(a,b){
+  /* ruler-style tick marks along a segment, like a tape measure */
+  const mSeg=toM(dist(a,b));
+  if(mSeg==null || mSeg<1) return;
+  const ax=W2SX(a.x), ay=W2SY(a.y), bx=W2SX(b.x), by=W2SY(b.y);
+  const L=Math.hypot(bx-ax,by-ay);
+  if(L<20) return;
+  const pxPerM=L/mSeg;
+  const steps=[100,200,500,1000,2000,5000];
+  let step=steps.find(s=>s*pxPerM>=9);
+  if(!step) return;
+  const labStep = step<500 ? 500 : step;
+  const canLabel = labStep*pxPerM>=40;
+  const ux=(bx-ax)/L, uy=(by-ay)/L, px=-uy, py=ux;
+  ctx.strokeStyle=css('--accent'); ctx.lineWidth=1;
+  ctx.font='9px '+css('--mono'); ctx.fillStyle='rgba(242,160,61,.85)';
+  ctx.textAlign='center';
+  ctx.beginPath();
+  for(let m=step;m<mSeg;m+=step){
+    const t=m*pxPerM, x=ax+ux*t, y=ay+uy*t;
+    const big=m%labStep===0, len=big?7:4;
+    ctx.moveTo(x-px*len,y-py*len); ctx.lineTo(x+px*len,y+py*len);
+    if(big&&canLabel) ctx.fillText(String(m), x+px*15, y+py*15+3);
+  }
+  ctx.stroke(); ctx.textAlign='left';
+}
 function drawPath(){
   const pts=st().pts;
   if(pts.length>1){
@@ -307,6 +333,7 @@ function drawPath(){
     ctx.stroke(); ctx.setLineDash([]);
     for(let i=1;i<pts.length;i++){
       const a=pts[i-1], b=pts[i], m=toM(dist(a,b));
+      drawTicks(a,b);
       const mx=(W2SX(a.x)+W2SX(b.x))/2, my=(W2SY(a.y)+W2SY(b.y))/2;
       tagLabel(mx,my-12, m==null?'? m':Math.round(m)+' m', css('--accent'));
     }
