@@ -136,15 +136,23 @@
       <div class="in">
         <h2>📷 วางสกรีนช็อตแผนที่จากเกม</h2>
         <p>กด <kbd>M</kbd> ในเกมเปิดแผนที่ → แคปหน้าจอ →<br>
-        วางที่นี่ด้วย <kbd>Ctrl</kbd>+<kbd>V</kbd> หรือลากไฟล์รูปมาวาง</p>
+        วางที่นี่ด้วย <kbd>Ctrl</kbd>+<kbd>V</kbd> หรือลากไฟล์รูปมาวาง<br>
+        <span style="color:var(--accent)">เคล็ดลับ:</span> ซูมแมพให้เห็น "เส้นตาราง" ก่อนแคป<br>
+        เส้นตารางคือไม้บรรทัดในตัว — ช่องเล็ก 1 ช่อง = 100 ม. เสมอ</p>
         <button class="pick" id="pickBtn">เลือกไฟล์รูป…</button>
         <input type="file" id="fileIn" accept="image/*" hidden>
       </div>
     </div>
     <div class="calibbar" id="calibbar">
+      <svg width="64" height="30" viewBox="0 0 64 30" style="flex:none">
+        <line x1="8" y1="2" x2="8" y2="28" stroke="#8C927D" stroke-width="1.5"/>
+        <line x1="56" y1="2" x2="56" y2="28" stroke="#8C927D" stroke-width="1.5"/>
+        <line x1="11" y1="15" x2="53" y2="15" stroke="#5BC8DC" stroke-width="1.5"/>
+        <path d="M11 15 l5 -3 v6 z M53 15 l-5 -3 v6 z" fill="#5BC8DC"/>
+      </svg>
       <span class="st" id="calibSt">📏 คาลิเบรต:</span>
-      <span id="calibMsg">คลิกปลายทั้งสองด้านของ 1 ช่องกริด</span>
-      <span>ระยะจริง</span>
+      <span id="calibMsg">คลิกบน "เส้นตาราง" ของแมพ 2 เส้นที่ติดกัน — ช่องเล็ก 1 ช่องกว้าง 100 ม. เสมอ</span>
+      <span>1 ช่อง =</span>
       <input type="number" id="calibM" value="100" min="1" step="50"> ม.
     </div>
     <div class="mapbtns">
@@ -280,6 +288,13 @@ function drawGrid(w,h){
 function drawCalib(){
   const cp=shot.calibPts;
   if(!cp.length) return;
+  if(shot.calibrating && cp.length===1 && shot.hover){
+    ctx.strokeStyle='rgba(91,200,220,.7)'; ctx.lineWidth=1.5; ctx.setLineDash([4,4]);
+    ctx.beginPath();
+    ctx.moveTo(W2SX(cp[0].x),W2SY(cp[0].y));
+    ctx.lineTo(W2SX(shot.hover.x),W2SY(shot.hover.y));
+    ctx.stroke(); ctx.setLineDash([]);
+  }
   ctx.strokeStyle=css('--me'); ctx.lineWidth=2;
   cp.forEach(p=>{
     const x=W2SX(p.x), y=W2SY(p.y);
@@ -432,9 +447,9 @@ function updateHelper(){
   } else if(!shot.img){
     h.innerHTML='วางรูปด้วย Ctrl+V หรือลากไฟล์มาวาง';
   } else if(shot.calibrating){
-    h.innerHTML='📏 กำลังคาลิเบรต — คลิกปลาย 2 จุดของระยะที่รู้ (เช่น เส้นกริดถึงเส้นกริด = 100 ม.)';
+    h.innerHTML='📏 คลิกบนเส้นตารางเส้นแรก แล้วคลิกเส้นถัดไปที่ติดกัน (= กว้าง 1 ช่อง = 100 ม.)';
   } else if(!shot.mPerPx){
-    h.innerHTML='กดปุ่ม <b>📏</b> ขวาบน แล้วคลิกปลาย 2 จุดของ 1 ช่องกริด (100 ม.) เพื่อตั้งสเกล';
+    h.innerHTML='กดปุ่ม <b>📏</b> ขวาบน แล้วคลิกเส้นตารางของแมพ 2 เส้นที่ติดกัน (1 ช่อง = 100 ม.) เพื่อตั้งสเกล';
   } else {
     h.innerHTML='สเกล: 1 px ≈ <b>'+shot.mPerPx.toFixed(2)+' ม.</b> · คลิกจุดเรา → จุดที่มาร์ค · 📏 คาลิเบรตใหม่ได้';
   }
@@ -491,7 +506,7 @@ function up(e){
       shot.calibPts.push(wp);
       if(shot.calibPts.length===2){
         applyCalib();
-      } else { $('calibMsg').textContent='ดี! คลิกปลายอีกด้าน'; draw(); }
+      } else { $('calibMsg').textContent='ดี! ทีนี้คลิกเส้นตารางเส้นถัดไปที่ติดกัน'; draw(); }
     } else {
       st().pts.push(wp);
       refresh();
@@ -504,11 +519,18 @@ function applyCalib(){
   const m=+$('calibM').value||100;
   if(px<3){ shot.calibPts=[]; $('calibMsg').textContent='จุดใกล้กันไป ลองใหม่'; draw(); return; }
   shot.mPerPx=m/px;
-  shot.calibrating=false;
+  shot.calibrating=false; shot.hover=null;
   $('calibbar').style.display='none';
   $('calibBtn').classList.remove('hot');
   refresh();
 }
+cvs.addEventListener('mousemove',e=>{
+  if(mode==='shot' && shot.calibrating && shot.calibPts.length===1 && !drag){
+    const sp=evPos(e);
+    shot.hover={x:S2WX(sp.x),y:S2WY(sp.y)};
+    draw();
+  }
+});
 cvs.addEventListener('mousedown',down);
 window.addEventListener('mousemove',move);
 window.addEventListener('mouseup',up);
