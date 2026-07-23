@@ -1,0 +1,389 @@
+<title>PUBG Range Finder — วัดระยะบนแผนที่</title>
+<style>
+  :root{
+    --bg:#101309; --panel:#171B10; --panel2:#1F2416; --line:#2C3320;
+    --accent:#F2A03D; --accent-dim:#8A5F26; --me:#5BC8DC;
+    --text:#E8EADF; --muted:#8C927D; --good:#9BD65B;
+    --mono:"SF Mono",ui-monospace,"Cascadia Code",Consolas,Menlo,monospace;
+    --sans:"Noto Sans Thai",-apple-system,"Segoe UI",Roboto,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg);color:var(--text);font-family:var(--sans);
+    display:flex;flex-direction:column;height:100dvh;overflow:hidden;
+  }
+  header{
+    display:flex;align-items:center;gap:12px;padding:10px 16px;
+    background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap;
+  }
+  header h1{font-size:15px;font-weight:700;letter-spacing:.02em}
+  header h1 b{color:var(--accent)}
+  header .note{font-size:11px;color:var(--muted)}
+  .main{flex:1;display:flex;min-height:0}
+  .maparea{position:relative;flex:1;min-width:0}
+  canvas{display:block;width:100%;height:100%;cursor:crosshair;touch-action:none}
+  .mapbtns{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:6px}
+  .mapbtns button{
+    width:34px;height:34px;border:1px solid var(--line);border-radius:6px;
+    background:rgba(23,27,16,.9);color:var(--text);font-size:16px;cursor:pointer;
+    font-family:var(--mono);
+  }
+  .mapbtns button:hover{border-color:var(--accent-dim)}
+  .helper{
+    position:absolute;left:12px;bottom:12px;font-size:11px;color:var(--muted);
+    background:rgba(23,27,16,.85);border:1px solid var(--line);border-radius:6px;
+    padding:6px 10px;pointer-events:none;max-width:75%;
+  }
+  /* -------- sidebar -------- */
+  .side{
+    width:280px;background:var(--panel);border-left:1px solid var(--line);
+    display:flex;flex-direction:column;gap:12px;padding:14px;overflow-y:auto;
+  }
+  .big{
+    background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+    padding:14px;text-align:center;
+  }
+  .big span{display:block;font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+  .big b{
+    font-family:var(--mono);font-size:38px;font-weight:700;color:var(--accent);
+    font-variant-numeric:tabular-nums;line-height:1.15;
+  }
+  .big small{font-size:15px;color:var(--muted);font-family:var(--mono)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .cell{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+  .cell span{display:block;font-size:10.5px;color:var(--muted)}
+  .cell b{font-family:var(--mono);font-size:17px;font-variant-numeric:tabular-nums}
+  .cell b em{font-style:normal;font-size:11px;color:var(--muted)}
+  .zero b{color:var(--good)}
+  .segs{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12px}
+  .segs h3{font-size:11px;color:var(--muted);font-weight:600;margin-bottom:6px;letter-spacing:.06em}
+  .segs ol{list-style:none;display:flex;flex-direction:column;gap:3px;max-height:110px;overflow-y:auto}
+  .segs li{display:flex;justify-content:space-between;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .segs li i{font-style:normal;color:var(--muted)}
+  .actions{display:flex;gap:8px}
+  .actions button{
+    flex:1;padding:10px 0;border-radius:6px;cursor:pointer;font-family:var(--sans);
+    font-size:13px;font-weight:600;border:1px solid var(--line);
+    background:var(--panel2);color:var(--text);
+  }
+  .actions button:hover{border-color:var(--accent-dim)}
+  .actions .clear{color:var(--accent)}
+  .ref{font-size:12px;line-height:1.9;color:var(--muted);border-top:1px solid var(--line);padding-top:10px}
+  .ref b{color:var(--text);font-family:var(--mono)}
+  .ref h3{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.06em;margin-bottom:4px}
+  @media (max-width:760px){
+    .main{flex-direction:column}
+    .side{width:100%;border-left:0;border-top:1px solid var(--line);
+      flex-direction:row;flex-wrap:wrap;max-height:44%;}
+    .big{flex:1 1 100%}
+    .row2{flex:1 1 100%}
+    .segs{display:none}
+    .actions{flex:1 1 100%}
+    .ref{display:none}
+    .helper{display:none}
+  }
+</style>
+
+<header>
+  <h1>🎯 PUBG <b>Range Finder</b></h1>
+  <span class="note">เครื่องมือวัดระยะจากกริดแผนที่ — เปิดคู่จอสอง ไม่แตะตัวเกม ไม่เสี่ยงแบน · ช่องเล็ก = 100 ม. · ช่องใหญ่ = 1 กม.</span>
+</header>
+
+<div class="main">
+  <div class="maparea">
+    <canvas id="map"></canvas>
+    <div class="mapbtns">
+      <button id="zin" title="ซูมเข้า">+</button>
+      <button id="zout" title="ซูมออก">−</button>
+      <button id="zfit" title="รีเซ็ตมุมมอง">⌂</button>
+    </div>
+    <div class="helper" id="helper">
+      คลิกจุดแรก = <b style="color:var(--me)">ตำแหน่งเรา</b> · คลิกต่อ = จุดที่มาร์ค · ลากจุดเพื่อขยับ · ลากพื้นว่างเพื่อเลื่อนแผนที่ · สกรอลล์เพื่อซูม
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="big">
+      <span>ระยะรวมจากเรา</span>
+      <b id="total">—</b>
+      <small id="direct"></small>
+    </div>
+    <div class="row2">
+      <div class="cell"><span>🏃 วิ่งถึงใน</span><b id="runT">—</b></div>
+      <div class="cell"><span>🚗 ขับรถ ~</span><b id="carT">—</b></div>
+      <div class="cell zero"><span>🔭 ตั้ง Zeroing</span><b id="zeroing">—</b></div>
+      <div class="cell"><span>ทิศ (จากเรา)</span><b id="bearing">—</b></div>
+    </div>
+    <div class="segs">
+      <h3>ช่วงระยะ (คลิกหลายจุดต่อกันได้)</h3>
+      <ol id="segList"><li><i>ยังไม่มีจุด</i></li></ol>
+    </div>
+    <div class="actions">
+      <button id="undo">↩ ลบจุดล่าสุด</button>
+      <button id="clear" class="clear">✕ ล้างทั้งหมด</button>
+    </div>
+    <div class="ref">
+      <h3>กะเร็วในเกมจริง (ไม่ต้องเปิดเครื่องมือ)</h3>
+      1 ช่องเล็ก = <b>100 ม.</b> · ทแยงช่องเล็ก ≈ <b>141 ม.</b><br>
+      1 ช่องใหญ่ = <b>1,000 ม.</b> · ทแยงช่องใหญ่ ≈ <b>1,414 ม.</b><br>
+      Zeroing ปัดขึ้นเป็นช่วง 100: เป้า 380 ม. → ตั้ง <b>400</b><br>
+      วิ่ง ≈ <b>6.3 ม./วิ</b> → 1 ช่องใหญ่ ≈ 2 นาทีครึ่ง
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const cvs = document.getElementById('map'), ctx = cvs.getContext('2d');
+const $ = id => document.getElementById(id);
+
+/* world: meters. map 8km x 8km like Erangel/Miramar/Taego/Deston */
+const WORLD = 8000, MINOR = 100, MAJOR = 1000;
+const RUN_MS = 6.3, CAR_MS = 25;
+
+let scale, ox, oy;            // px per meter, view offset (world meters at top-left)
+let pts = [];                 // {x,y} world meters; pts[0] = player
+let drag = null;              // {type:'pan'|'pt', idx, sx, sy, sox, soy, moved}
+let dpr = 1;
+
+function fit(){
+  const w = cvs.clientWidth, h = cvs.clientHeight;
+  scale = Math.min(w, h) / 4200;      // start showing ~4.2 km across
+  ox = (WORLD - w/scale)/2; oy = (WORLD - h/scale)/2;
+}
+function size(){
+  dpr = window.devicePixelRatio || 1;
+  const r = cvs.getBoundingClientRect();
+  cvs.width = r.width*dpr; cvs.height = r.height*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+const W2SX = x => (x-ox)*scale, W2SY = y => (y-oy)*scale;
+const S2WX = x => x/scale+ox,  S2WY = y => y/scale+oy;
+
+/* ---------------- drawing ---------------- */
+function draw(){
+  const w = cvs.clientWidth, h = cvs.clientHeight;
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = '#141809';
+  ctx.fillRect(0,0,w,h);
+
+  /* map bounds shading */
+  const bx = W2SX(0), by = W2SY(0), bs = WORLD*scale;
+  ctx.fillStyle = '#181D0E';
+  ctx.fillRect(bx,by,bs,bs);
+
+  /* minor grid (100 m) — skip when too dense */
+  const minorPx = MINOR*scale;
+  if (minorPx > 7){
+    ctx.strokeStyle = 'rgba(120,130,95,.14)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for(let m=0;m<=WORLD;m+=MINOR){
+      if(m%MAJOR===0) continue;
+      const x=W2SX(m), y=W2SY(m);
+      if(x>=-1&&x<=w+1){ctx.moveTo(x,Math.max(0,by));ctx.lineTo(x,Math.min(h,by+bs));}
+      if(y>=-1&&y<=h+1){ctx.moveTo(Math.max(0,bx),y);ctx.lineTo(Math.min(w,bx+bs),y);}
+    }
+    ctx.stroke();
+  }
+  /* major grid (1 km) + labels */
+  ctx.strokeStyle = 'rgba(150,160,120,.32)'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for(let m=0;m<=WORLD;m+=MAJOR){
+    const x=W2SX(m), y=W2SY(m);
+    if(x>=-1&&x<=w+1){ctx.moveTo(x,Math.max(0,by));ctx.lineTo(x,Math.min(h,by+bs));}
+    if(y>=-1&&y<=h+1){ctx.moveTo(Math.max(0,bx),y);ctx.lineTo(Math.min(w,bx+bs),y);}
+  }
+  ctx.stroke();
+  ctx.font = '10px '+css('--mono');
+  ctx.fillStyle = 'rgba(150,160,120,.55)';
+  for(let m=0;m<WORLD;m+=MAJOR){
+    const x=W2SX(m), y=W2SY(m);
+    const col = String.fromCharCode(65+m/MAJOR), row = (m/MAJOR+1);
+    if(x>0&&x<w) ctx.fillText(col, x+4, Math.max(12,by+12));
+    if(y>0&&y<h) ctx.fillText(String(row), Math.max(4,bx+4), y+12);
+  }
+
+  /* path */
+  if (pts.length>1){
+    ctx.strokeStyle = css('--accent'); ctx.lineWidth = 2; ctx.setLineDash([7,5]);
+    ctx.beginPath();
+    pts.forEach((p,i)=> i?ctx.lineTo(W2SX(p.x),W2SY(p.y)):ctx.moveTo(W2SX(p.x),W2SY(p.y)));
+    ctx.stroke(); ctx.setLineDash([]);
+    /* per-segment labels */
+    for(let i=1;i<pts.length;i++){
+      const a=pts[i-1], b=pts[i];
+      const d=dist(a,b);
+      const mx=(W2SX(a.x)+W2SX(b.x))/2, my=(W2SY(a.y)+W2SY(b.y))/2;
+      label(mx,my-12, Math.round(d)+' m');
+    }
+    /* direct line player -> last, when path has bends */
+    if (pts.length>2){
+      const a=pts[0], b=pts[pts.length-1];
+      ctx.strokeStyle='rgba(91,200,220,.45)'; ctx.lineWidth=1.5; ctx.setLineDash([3,4]);
+      ctx.beginPath(); ctx.moveTo(W2SX(a.x),W2SY(a.y)); ctx.lineTo(W2SX(b.x),W2SY(b.y)); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  /* points */
+  pts.forEach((p,i)=>{
+    const x=W2SX(p.x), y=W2SY(p.y);
+    if(i===0){ /* player */
+      ctx.fillStyle=css('--me');
+      ctx.beginPath(); ctx.arc(x,y,7,0,7); ctx.fill();
+      ctx.strokeStyle='#0E1A1D'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(x,y,7,0,7); ctx.stroke();
+      badge(x,y-16,'เรา',css('--me'),'#092025');
+    } else {
+      ctx.strokeStyle=css('--accent'); ctx.lineWidth=2.5;
+      ctx.beginPath();
+      ctx.moveTo(x-6,y-6); ctx.lineTo(x+6,y+6);
+      ctx.moveTo(x+6,y-6); ctx.lineTo(x-6,y+6);
+      ctx.stroke();
+      if(i===pts.length-1) badge(x,y-16,'เป้า',css('--accent'),'#241605');
+    }
+  });
+
+  function label(x,y,txt){
+    ctx.font='bold 11px '+css('--mono');
+    const tw=ctx.measureText(txt).width+10;
+    ctx.fillStyle='rgba(16,19,9,.85)';
+    ctx.beginPath(); ctx.roundRect(x-tw/2,y-9,tw,17,3); ctx.fill();
+    ctx.fillStyle=css('--accent'); ctx.textAlign='center';
+    ctx.fillText(txt,x,y+4); ctx.textAlign='left';
+  }
+  function badge(x,y,txt,bg,fg){
+    ctx.font='bold 10px '+css('--sans');
+    const tw=ctx.measureText(txt).width+10;
+    ctx.fillStyle=bg;
+    ctx.beginPath(); ctx.roundRect(x-tw/2,y-9,tw,15,3); ctx.fill();
+    ctx.fillStyle=fg; ctx.textAlign='center';
+    ctx.fillText(txt,x,y+2.5); ctx.textAlign='left';
+  }
+}
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const dist = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
+
+/* ---------------- readouts ---------------- */
+function fmtTime(s){
+  s=Math.round(s);
+  return s<60 ? s+' วิ' : (s/60|0)+':'+String(s%60).padStart(2,'0')+' นาที';
+}
+function refresh(){
+  const segList=$('segList');
+  if(pts.length<2){
+    $('total').textContent='—'; $('direct').textContent='';
+    $('runT').textContent='—'; $('carT').textContent='—';
+    $('zeroing').textContent='—'; $('bearing').textContent='—';
+    segList.innerHTML = pts.length===1
+      ? '<li><i>ปักตำแหน่งเราแล้ว — คลิกจุดที่มาร์คต่อ</i></li>'
+      : '<li><i>ยังไม่มีจุด</i></li>';
+    draw(); return;
+  }
+  let total=0; const rows=[];
+  for(let i=1;i<pts.length;i++){
+    const d=dist(pts[i-1],pts[i]); total+=d;
+    rows.push('<li><i>ช่วง '+i+'</i><span>'+Math.round(d).toLocaleString()+' m</span></li>');
+  }
+  rows.push('<li style="border-top:1px solid var(--line);margin-top:3px;padding-top:3px"><i>รวม</i><b>'+Math.round(total).toLocaleString()+' m</b></li>');
+  segList.innerHTML=rows.join('');
+
+  const direct = dist(pts[0], pts[pts.length-1]);
+  $('total').textContent = Math.round(total).toLocaleString()+' m';
+  $('direct').textContent = pts.length>2 ? 'ยิงตรง '+Math.round(direct).toLocaleString()+' m' : '';
+  $('runT').textContent = fmtTime(total/RUN_MS);
+  $('carT').textContent = fmtTime(total/CAR_MS);
+
+  const z = Math.min(1000, Math.max(100, Math.ceil(direct/100)*100));
+  $('zeroing').textContent = direct<=25 ? 'ชิดมาก' : z+' m';
+
+  /* bearing: 0 = N (up) */
+  const dx = pts[pts.length-1].x - pts[0].x;
+  const dy = pts[pts.length-1].y - pts[0].y;
+  const deg = (Math.atan2(dx,-dy)*180/Math.PI+360)%360;
+  const names=['เหนือ','ตอ.เฉียงเหนือ','ตะวันออก','ตอ.เฉียงใต้','ใต้','ตต.เฉียงใต้','ตะวันตก','ตต.เฉียงเหนือ'];
+  $('bearing').textContent = Math.round(deg)+'° '+names[Math.round(deg/45)%8];
+  draw();
+}
+
+/* ---------------- input ---------------- */
+function evPos(e){
+  const r=cvs.getBoundingClientRect();
+  const t=e.touches?e.touches[0]:e;
+  return {x:t.clientX-r.left, y:t.clientY-r.top};
+}
+function hit(sp){
+  for(let i=pts.length-1;i>=0;i--){
+    if(Math.hypot(W2SX(pts[i].x)-sp.x, W2SY(pts[i].y)-sp.y)<14) return i;
+  }
+  return -1;
+}
+function down(e){
+  const sp=evPos(e);
+  const i=hit(sp);
+  drag = i>=0
+    ? {type:'pt', idx:i, moved:false}
+    : {type:'pan', sx:sp.x, sy:sp.y, sox:ox, soy:oy, moved:false};
+  e.preventDefault();
+}
+function move(e){
+  if(!drag) return;
+  const sp=evPos(e);
+  if(drag.type==='pt'){
+    drag.moved=true;
+    pts[drag.idx]={x:clampW(S2WX(sp.x)), y:clampW(S2WY(sp.y))};
+    refresh();
+  } else {
+    const dx=sp.x-drag.sx, dy=sp.y-drag.sy;
+    if(Math.abs(dx)+Math.abs(dy)>4) drag.moved=true;
+    ox=drag.sox-dx/scale; oy=drag.soy-dy/scale;
+    draw();
+  }
+  e.preventDefault();
+}
+function up(e){
+  if(!drag) return;
+  if(!drag.moved && drag.type==='pan'){
+    const sp = e.changedTouches
+      ? {x:e.changedTouches[0].clientX-cvs.getBoundingClientRect().left,
+         y:e.changedTouches[0].clientY-cvs.getBoundingClientRect().top}
+      : evPos(e);
+    pts.push({x:clampW(S2WX(sp.x)), y:clampW(S2WY(sp.y))});
+    refresh();
+  }
+  drag=null;
+}
+const clampW = v => Math.max(0, Math.min(WORLD, v));
+
+cvs.addEventListener('mousedown',down);
+window.addEventListener('mousemove',move);
+window.addEventListener('mouseup',up);
+cvs.addEventListener('touchstart',down,{passive:false});
+cvs.addEventListener('touchmove',move,{passive:false});
+cvs.addEventListener('touchend',up);
+
+function zoom(f, cx, cy){
+  const wx=S2WX(cx), wy=S2WY(cy);
+  scale=Math.max(0.02, Math.min(2, scale*f));
+  ox=wx-cx/scale; oy=wy-cy/scale;
+  draw();
+}
+cvs.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const sp=evPos(e);
+  zoom(e.deltaY<0?1.18:1/1.18, sp.x, sp.y);
+},{passive:false});
+$('zin').onclick =()=>zoom(1.3, cvs.clientWidth/2, cvs.clientHeight/2);
+$('zout').onclick=()=>zoom(1/1.3, cvs.clientWidth/2, cvs.clientHeight/2);
+$('zfit').onclick=()=>{fit();draw();};
+$('undo').onclick=()=>{pts.pop();refresh();};
+$('clear').onclick=()=>{pts=[];refresh();};
+
+window.addEventListener('resize',()=>{size();draw();});
+
+/* boot */
+size(); fit(); refresh();
+})();
+</script>
