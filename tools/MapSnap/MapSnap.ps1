@@ -51,6 +51,21 @@ namespace MapSnap.Native
             DestroyHandle();
         }
     }
+
+    // Double-buffered, focusable drawing surface so zoom/pan repaints don't
+    // flicker and the mouse wheel reaches it for zooming.
+    public sealed class CanvasPanel : Panel
+    {
+        public CanvasPanel()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint
+                | ControlStyles.OptimizedDoubleBuffer
+                | ControlStyles.UserPaint
+                | ControlStyles.Selectable
+                | ControlStyles.ResizeRedraw, true);
+            this.TabStop = true;
+        }
+    }
 }
 '@ -ReferencedAssemblies System.Windows.Forms
 }
@@ -64,6 +79,17 @@ $script:calibrating = $false
 $script:mPerPx = $null       # meters per image pixel, set by calibration
 $script:hotkey = $null
 
+# view transform: image pixel p -> screen (vOx + p.X * vScale, vOy + p.Y * vScale)
+$script:vScale = 1.0
+$script:vOx = 0.0
+$script:vOy = 0.0
+$script:fitScale = 1.0
+$script:dragMode = ''        # '', 'pan', 'point'
+$script:dragIndex = -1
+$script:dragMoved = $false
+$script:dragStart = $null
+$script:dragOrigin = $null
+
 $MORTAR_MIN = 100.0
 $MORTAR_MAX = 700.0
 $RUN_MS = 6.3
@@ -71,13 +97,12 @@ $RUN_MS = 6.3
 $colOrange = [System.Drawing.Color]::FromArgb(255, 242, 160, 61)
 $colCyan   = [System.Drawing.Color]::FromArgb(255, 40, 210, 255)
 $colGood   = [System.Drawing.Color]::FromArgb(255, 155, 214, 91)
-$colWarn   = [System.Drawing.Color]::FromArgb(255, 232, 106, 91)
 
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'MapSnap — F8 จับภาพแผนที่ + วัดระยะ'
 $form.StartPosition = 'CenterScreen'
 $form.Size = New-Object System.Drawing.Size(1100, 760)
-$form.MinimumSize = New-Object System.Drawing.Size(760, 520)
+$form.MinimumSize = New-Object System.Drawing.Size(780, 540)
 $form.KeyPreview = $true
 $form.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 30)
 
@@ -94,6 +119,21 @@ $btnCapture.AutoSize = $true
 $btnMinimize = New-Object System.Windows.Forms.Button
 $btnMinimize.Text = 'ย่อไปที่เกม'
 $btnMinimize.AutoSize = $true
+
+$btnZoomIn = New-Object System.Windows.Forms.Button
+$btnZoomIn.Text = 'ซูม +'
+$btnZoomIn.AutoSize = $true
+$btnZoomIn.Enabled = $false
+
+$btnZoomOut = New-Object System.Windows.Forms.Button
+$btnZoomOut.Text = 'ซูม −'
+$btnZoomOut.AutoSize = $true
+$btnZoomOut.Enabled = $false
+
+$btnFit = New-Object System.Windows.Forms.Button
+$btnFit.Text = 'เต็มจอ'
+$btnFit.AutoSize = $true
+$btnFit.Enabled = $false
 
 $btnCalib = New-Object System.Windows.Forms.Button
 $btnCalib.Text = 'คาลิเบรต (K)'
@@ -129,7 +169,7 @@ $btnSave.Text = 'บันทึก PNG'
 $btnSave.AutoSize = $true
 $btnSave.Enabled = $false
 
-$toolbar.Controls.AddRange(@($btnCapture, $btnMinimize, $btnCalib, $lblMeters, $numMeters, $lblMeters2, $btnClear, $btnSave))
+$toolbar.Controls.AddRange(@($btnCapture, $btnMinimize, $btnZoomIn, $btnZoomOut, $btnFit, $btnCalib, $lblMeters, $numMeters, $lblMeters2, $btnClear, $btnSave))
 
 $status = New-Object System.Windows.Forms.Label
 $status.Dock = 'Bottom'
@@ -139,35 +179,14 @@ $status.ForeColor = [System.Drawing.Color]::Gainsboro
 $status.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 48)
 $status.Text = 'ย่อหน้าต่างนี้ไว้ แล้วกด F8 ขณะเปิดแผนที่ใน PUBG (ซูมแมพให้เห็นเส้นตารางอย่างน้อย 2-3 ช่อง)'
 
-$picture = New-Object System.Windows.Forms.PictureBox
+$picture = New-Object MapSnap.Native.CanvasPanel
 $picture.Dock = 'Fill'
 $picture.BackColor = [System.Drawing.Color]::Black
-$picture.SizeMode = 'Zoom'
 $picture.Cursor = [System.Windows.Forms.Cursors]::Cross
 
 $form.Controls.Add($picture)
 $form.Controls.Add($toolbar)
 $form.Controls.Add($status)
-
-function Get-ImageView {
-    if ($null -eq $script:shot -or $picture.ClientSize.Width -le 0 -or $picture.ClientSize.Height -le 0) {
-        return $null
-    }
-
-    $scaleX = $picture.ClientSize.Width / [double]$script:shot.Width
-    $scaleY = $picture.ClientSize.Height / [double]$script:shot.Height
-    $scale = [Math]::Min($scaleX, $scaleY)
-    $drawWidth = $script:shot.Width * $scale
-    $drawHeight = $script:shot.Height * $scale
-
-    return [PSCustomObject]@{
-        Scale = $scale
-        Left = ($picture.ClientSize.Width - $drawWidth) / 2
-        Top = ($picture.ClientSize.Height - $drawHeight) / 2
-        Right = ($picture.ClientSize.Width + $drawWidth) / 2
-        Bottom = ($picture.ClientSize.Height + $drawHeight) / 2
-    }
-}
 
 function Get-PxDistance {
     param($A, $B)
@@ -179,8 +198,43 @@ function Format-Meters {
     return ('{0:N0} ม.' -f [Math]::Round($M))
 }
 
+function Set-FitView {
+    if ($null -eq $script:shot -or $picture.ClientSize.Width -le 0 -or $picture.ClientSize.Height -le 0) { return }
+    $scaleX = $picture.ClientSize.Width / [double]$script:shot.Width
+    $scaleY = $picture.ClientSize.Height / [double]$script:shot.Height
+    $script:fitScale = [Math]::Min($scaleX, $scaleY)
+    $script:vScale = $script:fitScale
+    $script:vOx = ($picture.ClientSize.Width - $script:shot.Width * $script:vScale) / 2
+    $script:vOy = ($picture.ClientSize.Height - $script:shot.Height * $script:vScale) / 2
+}
+
+function Limit-View {
+    # keep at least 120 px of the image on screen in each axis
+    if ($null -eq $script:shot) { return }
+    $w = $picture.ClientSize.Width; $h = $picture.ClientSize.Height
+    $imgW = $script:shot.Width * $script:vScale
+    $imgH = $script:shot.Height * $script:vScale
+    $script:vOx = [Math]::Max([Math]::Min($script:vOx, $w - 120), 120 - $imgW)
+    $script:vOy = [Math]::Max([Math]::Min($script:vOy, $h - 120), 120 - $imgH)
+}
+
+function Zoom-View {
+    param([double]$Factor, [double]$CenterX, [double]$CenterY)
+    if ($null -eq $script:shot) { return }
+    $old = $script:vScale
+    $new = [Math]::Max($script:fitScale * 0.5, [Math]::Min(8.0, $old * $Factor))
+    if ($new -eq $old) { return }
+    # keep the image point under the cursor fixed while scaling
+    $imgX = ($CenterX - $script:vOx) / $old
+    $imgY = ($CenterY - $script:vOy) / $old
+    $script:vScale = $new
+    $script:vOx = $CenterX - $imgX * $new
+    $script:vOy = $CenterY - $imgY * $new
+    Limit-View
+    $picture.Invalidate()
+}
+
 function Get-Summary {
-    # returns lines of text describing total / direct / zeroing / mortar, or $null
     if ($script:markers.Count -lt 2 -or $null -eq $script:mPerPx) { return $null }
 
     $total = 0.0
@@ -207,6 +261,9 @@ function Get-Summary {
 function Update-Controls {
     $hasShot = $null -ne $script:shot
     $btnCalib.Enabled = $hasShot
+    $btnZoomIn.Enabled = $hasShot
+    $btnZoomOut.Enabled = $hasShot
+    $btnFit.Enabled = $hasShot
     $btnClear.Enabled = $hasShot -and ($script:markers.Count -gt 0 -or $script:calibPts.Count -gt 0)
     $btnSave.Enabled = $hasShot
 }
@@ -218,7 +275,7 @@ function Update-Status {
     }
     if ($script:calibrating) {
         if ($script:calibPts.Count -eq 0) {
-            $status.Text = 'คาลิเบรต: คลิกบน "เส้นตาราง" ของแมพเส้นแรก (ช่องเล็ก 1 ช่อง = 100 ม. — ลากข้ามหลายช่องแล้วตั้งตัวเลขเป็นระยะรวมจะแม่นขึ้น)'
+            $status.Text = 'คาลิเบรต: ซูมเข้าใกล้ๆ (ลูกกลิ้งเมาส์) แล้วคลิกบน "เส้นตาราง" ของแมพเส้นแรก — ลากข้ามหลายช่องแล้วตั้งตัวเลขเป็นระยะรวมจะแม่นขึ้น'
         } else {
             $status.Text = 'คาลิเบรต: คลิกเส้นตารางอีกเส้น แล้วระยะระหว่างสองคลิก = ' + $numMeters.Value + ' ม. ตามช่องขวาบน'
         }
@@ -230,7 +287,7 @@ function Update-Status {
     }
     $summary = Get-Summary
     if ($null -eq $summary) {
-        $status.Text = ('สเกลพร้อม (1 px = {0:N2} ม.) — คลิกซ้ายจุดแรก = ตำแหน่งเรา, คลิกต่อ = จุดที่มาร์ค | คลิกขวา: ลบจุด | K: คาลิเบรตใหม่' -f $script:mPerPx)
+        $status.Text = ('สเกลพร้อม (1 px = {0:N2} ม.) — คลิกจุดแรก = เรา, คลิกต่อ = จุดที่มาร์ค | ลากจุดเพื่อขยับ | ลากพื้นว่างเลื่อนภาพ | ลูกกลิ้ง = ซูม' -f $script:mPerPx)
     } else {
         $status.Text = ($summary -join '   ||   ')
     }
@@ -243,9 +300,9 @@ function Draw-Tag {
         [double]$Y,
         [string]$Text,
         [System.Drawing.Color]$Color,
-        [double]$Scale = 1
+        [double]$FontScale = 1
     )
-    $font = New-Object System.Drawing.Font('Segoe UI', [Math]::Max(8, 10 * $Scale), [System.Drawing.FontStyle]::Bold)
+    $font = New-Object System.Drawing.Font('Segoe UI', [Math]::Max(8, 10 * $FontScale), [System.Drawing.FontStyle]::Bold)
     $bg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(205, 20, 20, 20))
     $fg = New-Object System.Drawing.SolidBrush($Color)
     try {
@@ -259,19 +316,20 @@ function Draw-Tag {
 }
 
 function Draw-Annotations {
-    # Draws calibration line, measurement path and points.
-    # Image pixel (px,py) maps to screen (OffsetX + px*Scale, OffsetY + py*Scale).
+    # Image pixel (px,py) maps to (OffsetX + px*Scale, OffsetY + py*Scale).
+    # FontScale keeps labels readable: on screen it stays ~1, on PNG export it follows resolution.
     param(
         [System.Drawing.Graphics]$Graphics,
         [double]$OffsetX,
         [double]$OffsetY,
-        [double]$Scale
+        [double]$Scale,
+        [double]$FontScale
     )
     $Graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
 
     # calibration
     if ($script:calibPts.Count -gt 0) {
-        $pen = New-Object System.Drawing.Pen($colCyan, [Math]::Max(1.5, 1.5 * $Scale))
+        $pen = New-Object System.Drawing.Pen($colCyan, [Math]::Max(1.5, 1.5 * $FontScale))
         try {
             foreach ($p in $script:calibPts) {
                 $x = $OffsetX + $p.X * $Scale; $y = $OffsetY + $p.Y * $Scale
@@ -286,8 +344,8 @@ function Draw-Annotations {
                     [single]($OffsetX + $b.X * $Scale), [single]($OffsetY + $b.Y * $Scale))
                 if ($null -ne $script:mPerPx) {
                     $mx = $OffsetX + (($a.X + $b.X) / 2) * $Scale
-                    $my = $OffsetY + (($a.Y + $b.Y) / 2) * $Scale - 14 * $Scale
-                    Draw-Tag -Graphics $Graphics -X $mx -Y $my -Text ('สเกล ' + $numMeters.Value + ' ม.') -Color $colCyan -Scale $Scale
+                    $my = $OffsetY + (($a.Y + $b.Y) / 2) * $Scale - 14 * $FontScale
+                    Draw-Tag -Graphics $Graphics -X $mx -Y $my -Text ('สเกล ' + $numMeters.Value + ' ม.') -Color $colCyan -FontScale $FontScale
                 }
             }
         }
@@ -296,7 +354,7 @@ function Draw-Annotations {
 
     # measurement path with distance labels
     if ($script:markers.Count -gt 1) {
-        $pen = New-Object System.Drawing.Pen($colOrange, [Math]::Max(2, 2 * $Scale))
+        $pen = New-Object System.Drawing.Pen($colOrange, [Math]::Max(2, 2 * $FontScale))
         $pen.DashStyle = [System.Drawing.Drawing2D.DashStyle]::Dash
         try {
             for ($i = 1; $i -lt $script:markers.Count; $i++) {
@@ -310,8 +368,8 @@ function Draw-Annotations {
                     $label = '? ม.'
                 }
                 $mx = $OffsetX + (($a.X + $b.X) / 2) * $Scale
-                $my = $OffsetY + (($a.Y + $b.Y) / 2) * $Scale - 13 * $Scale
-                Draw-Tag -Graphics $Graphics -X $mx -Y $my -Text $label -Color $colOrange -Scale $Scale
+                $my = $OffsetY + (($a.Y + $b.Y) / 2) * $Scale - 13 * $FontScale
+                Draw-Tag -Graphics $Graphics -X $mx -Y $my -Text $label -Color $colOrange -FontScale $FontScale
             }
         }
         finally { $pen.Dispose() }
@@ -323,32 +381,32 @@ function Draw-Annotations {
         $x = $OffsetX + $p.X * $Scale; $y = $OffsetY + $p.Y * $Scale
         if ($i -eq 0) {
             $fill = New-Object System.Drawing.SolidBrush($colCyan)
-            $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 14, 26, 29), [Math]::Max(2, 2 * $Scale))
+            $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(255, 14, 26, 29), [Math]::Max(2, 2 * $FontScale))
             try {
-                $r = 8 * [Math]::Max(0.7, $Scale)
+                $r = 8 * $FontScale
                 $Graphics.FillEllipse($fill, [single]($x - $r), [single]($y - $r), [single](2 * $r), [single](2 * $r))
                 $Graphics.DrawEllipse($pen, [single]($x - $r), [single]($y - $r), [single](2 * $r), [single](2 * $r))
-                Draw-Tag -Graphics $Graphics -X $x -Y ($y - 20 * [Math]::Max(0.7, $Scale)) -Text 'เรา' -Color $colCyan -Scale $Scale
+                Draw-Tag -Graphics $Graphics -X $x -Y ($y - 20 * $FontScale) -Text 'เรา' -Color $colCyan -FontScale $FontScale
             }
             finally { $fill.Dispose(); $pen.Dispose() }
         } else {
-            $pen = New-Object System.Drawing.Pen($colOrange, [Math]::Max(2.5, 2.5 * $Scale))
+            $pen = New-Object System.Drawing.Pen($colOrange, [Math]::Max(2.5, 2.5 * $FontScale))
             try {
-                $r = 7 * [Math]::Max(0.7, $Scale)
+                $r = 7 * $FontScale
                 $Graphics.DrawLine($pen, [single]($x - $r), [single]($y - $r), [single]($x + $r), [single]($y + $r))
                 $Graphics.DrawLine($pen, [single]($x + $r), [single]($y - $r), [single]($x - $r), [single]($y + $r))
                 if ($i -eq $script:markers.Count - 1) {
-                    Draw-Tag -Graphics $Graphics -X $x -Y ($y - 20 * [Math]::Max(0.7, $Scale)) -Text 'เป้า' -Color $colOrange -Scale $Scale
+                    Draw-Tag -Graphics $Graphics -X $x -Y ($y - 20 * $FontScale) -Text 'เป้า' -Color $colOrange -FontScale $FontScale
                 }
             }
             finally { $pen.Dispose() }
         }
     }
 
-    # summary box (top-left corner of the image)
+    # summary box (top-left corner)
     $summary = Get-Summary
     if ($null -ne $summary) {
-        $font = New-Object System.Drawing.Font('Segoe UI', [Math]::Max(9, 11 * $Scale), [System.Drawing.FontStyle]::Bold)
+        $font = New-Object System.Drawing.Font('Segoe UI', [Math]::Max(9, 11 * $FontScale), [System.Drawing.FontStyle]::Bold)
         $bg = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(215, 20, 20, 20))
         $fg1 = New-Object System.Drawing.SolidBrush($colOrange)
         $fg2 = New-Object System.Drawing.SolidBrush($colGood)
@@ -357,9 +415,9 @@ function Draw-Annotations {
             $s2 = $Graphics.MeasureString($summary[1], $font)
             $w = [Math]::Max($s1.Width, $s2.Width) + 16
             $h = $s1.Height + $s2.Height + 12
-            $Graphics.FillRectangle($bg, [single]($OffsetX + 8), [single]($OffsetY + 8), [single]$w, [single]$h)
-            $Graphics.DrawString($summary[0], $font, $fg1, [single]($OffsetX + 16), [single]($OffsetY + 13))
-            $Graphics.DrawString($summary[1], $font, $fg2, [single]($OffsetX + 16), [single]($OffsetY + 13 + $s1.Height + 2))
+            $Graphics.FillRectangle($bg, 8, 8, [single]$w, [single]$h)
+            $Graphics.DrawString($summary[0], $font, $fg1, 16, 13)
+            $Graphics.DrawString($summary[1], $font, $fg2, 16, [single](13 + $s1.Height + 2))
         }
         finally { $font.Dispose(); $bg.Dispose(); $fg1.Dispose(); $fg2.Dispose() }
     }
@@ -396,10 +454,10 @@ function Capture-Desktop {
     if ($null -ne $script:shot) { $script:shot.Dispose() }
     $script:shot = $bitmap
     $script:markers = @()
-    $picture.Image = $script:shot
     $form.Show()
     $form.WindowState = [System.Windows.Forms.FormWindowState]::Normal
     $form.Activate()
+    Set-FitView
     # keep the previous scale: same game zoom level means the old calibration still holds.
     if ($null -eq $script:mPerPx) { Start-Calibration } else { Update-Controls; Update-Status }
     $picture.Invalidate()
@@ -407,21 +465,84 @@ function Capture-Desktop {
 
 $picture.add_Paint({
     param($sender, $eventArgs)
-    $view = Get-ImageView
-    if ($null -eq $view) { return }
-    Draw-Annotations -Graphics $eventArgs.Graphics -OffsetX $view.Left -OffsetY $view.Top -Scale $view.Scale
+    if ($null -eq $script:shot) { return }
+    $g = $eventArgs.Graphics
+    if ($script:vScale -ge 1) {
+        $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
+        $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
+    } else {
+        $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBilinear
+    }
+    $dest = New-Object System.Drawing.RectangleF(
+        [single]$script:vOx, [single]$script:vOy,
+        [single]($script:shot.Width * $script:vScale), [single]($script:shot.Height * $script:vScale))
+    $g.DrawImage($script:shot, $dest)
+    Draw-Annotations -Graphics $g -OffsetX $script:vOx -OffsetY $script:vOy -Scale $script:vScale -FontScale 1
 })
 
-$picture.add_MouseClick({
+$picture.add_MouseDown({
     param($sender, $eventArgs)
-    $view = Get-ImageView
-    if ($null -eq $view) { return }
-    if ($eventArgs.X -lt $view.Left -or $eventArgs.X -gt $view.Right -or $eventArgs.Y -lt $view.Top -or $eventArgs.Y -gt $view.Bottom) { return }
+    if ($null -eq $script:shot) { return }
+    if ($eventArgs.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
 
-    $imgX = ($eventArgs.X - $view.Left) / $view.Scale
-    $imgY = ($eventArgs.Y - $view.Top) / $view.Scale
+    $script:dragMoved = $false
+    $script:dragStart = [PSCustomObject]@{ X = [double]$eventArgs.X; Y = [double]$eventArgs.Y }
+    $script:dragOrigin = [PSCustomObject]@{ X = $script:vOx; Y = $script:vOy }
+
+    # grab a nearby marker for dragging (screen distance <= 12 px)
+    $script:dragMode = 'pan'
+    $script:dragIndex = -1
+    if (-not $script:calibrating) {
+        for ($i = $script:markers.Count - 1; $i -ge 0; $i--) {
+            $x = $script:vOx + $script:markers[$i].X * $script:vScale
+            $y = $script:vOy + $script:markers[$i].Y * $script:vScale
+            $d = [Math]::Sqrt((($eventArgs.X - $x) * ($eventArgs.X - $x)) + (($eventArgs.Y - $y) * ($eventArgs.Y - $y)))
+            if ($d -le 12) { $script:dragMode = 'point'; $script:dragIndex = $i; break }
+        }
+    }
+})
+
+$picture.add_MouseMove({
+    param($sender, $eventArgs)
+    if ($null -eq $script:shot -or $script:dragMode -eq '') { return }
+    if ($eventArgs.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
+
+    $dx = $eventArgs.X - $script:dragStart.X
+    $dy = $eventArgs.Y - $script:dragStart.Y
+    if ([Math]::Abs($dx) + [Math]::Abs($dy) -gt 4) { $script:dragMoved = $true }
+    if (-not $script:dragMoved) { return }
+
+    if ($script:dragMode -eq 'point' -and $script:dragIndex -ge 0) {
+        $imgX = ($eventArgs.X - $script:vOx) / $script:vScale
+        $imgY = ($eventArgs.Y - $script:vOy) / $script:vScale
+        $imgX = [Math]::Max(0, [Math]::Min($script:shot.Width, $imgX))
+        $imgY = [Math]::Max(0, [Math]::Min($script:shot.Height, $imgY))
+        $script:markers[$script:dragIndex] = [PSCustomObject]@{ X = $imgX; Y = $imgY }
+        Update-Status
+    } else {
+        $script:vOx = $script:dragOrigin.X + $dx
+        $script:vOy = $script:dragOrigin.Y + $dy
+        Limit-View
+    }
+    $picture.Invalidate()
+})
+
+$picture.add_MouseUp({
+    param($sender, $eventArgs)
+    if ($null -eq $script:shot) { return }
 
     if ($eventArgs.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+        # a plain click on empty space (pan mode, no drag) places a point;
+        # tapping an existing marker without dragging does nothing.
+        $wasClick = ($script:dragMode -eq 'pan') -and (-not $script:dragMoved)
+        $script:dragMode = ''
+        $script:dragIndex = -1
+        if (-not $wasClick) { $picture.Invalidate(); return }
+
+        $imgX = ($eventArgs.X - $script:vOx) / $script:vScale
+        $imgY = ($eventArgs.Y - $script:vOy) / $script:vScale
+        if ($imgX -lt 0 -or $imgX -gt $script:shot.Width -or $imgY -lt 0 -or $imgY -gt $script:shot.Height) { return }
+
         if ($script:calibrating) {
             $script:calibPts += [PSCustomObject]@{ X = $imgX; Y = $imgY }
             if ($script:calibPts.Count -ge 2) {
@@ -437,37 +558,49 @@ $picture.add_MouseClick({
             } else {
                 Update-Status
             }
-        }
-        else {
+        } else {
             $script:markers += [PSCustomObject]@{ X = $imgX; Y = $imgY }
             Update-Status
         }
+        Update-Controls
+        $picture.Invalidate()
     }
     elseif ($eventArgs.Button -eq [System.Windows.Forms.MouseButtons]::Right) {
         $nearestIndex = -1
         $nearestDistance = [double]::MaxValue
         for ($i = 0; $i -lt $script:markers.Count; $i++) {
-            $x = $view.Left + ($script:markers[$i].X * $view.Scale)
-            $y = $view.Top + ($script:markers[$i].Y * $view.Scale)
-            $distance = [Math]::Sqrt((($eventArgs.X - $x) * ($eventArgs.X - $x)) + (($eventArgs.Y - $y) * ($eventArgs.Y - $y)))
-            if ($distance -lt $nearestDistance) {
-                $nearestIndex = $i
-                $nearestDistance = $distance
-            }
+            $x = $script:vOx + $script:markers[$i].X * $script:vScale
+            $y = $script:vOy + $script:markers[$i].Y * $script:vScale
+            $d = [Math]::Sqrt((($eventArgs.X - $x) * ($eventArgs.X - $x)) + (($eventArgs.Y - $y) * ($eventArgs.Y - $y)))
+            if ($d -lt $nearestDistance) { $nearestIndex = $i; $nearestDistance = $d }
         }
         if ($nearestIndex -ge 0 -and $nearestDistance -le 30) {
             $list = [System.Collections.ArrayList]@($script:markers)
             $list.RemoveAt($nearestIndex)
             $script:markers = @($list)
+            Update-Controls
             Update-Status
+            $picture.Invalidate()
         }
     }
-    Update-Controls
-    $picture.Invalidate()
+})
+
+# Focus the canvas when the mouse is over it so the wheel event reaches it.
+$picture.add_MouseEnter({ $picture.Focus() })
+
+$picture.add_MouseWheel({
+    param($sender, $eventArgs)
+    if ($null -eq $script:shot) { return }
+    # eventArgs.X / .Y are already relative to the panel.
+    if ($eventArgs.Delta -gt 0) { Zoom-View -Factor 1.2 -CenterX $eventArgs.X -CenterY $eventArgs.Y }
+    else { Zoom-View -Factor (1 / 1.2) -CenterX $eventArgs.X -CenterY $eventArgs.Y }
 })
 
 $btnCapture.add_Click({ Capture-Desktop })
 $btnMinimize.add_Click({ $form.WindowState = [System.Windows.Forms.FormWindowState]::Minimized })
+$btnZoomIn.add_Click({ Zoom-View -Factor 1.3 -CenterX ($picture.ClientSize.Width / 2) -CenterY ($picture.ClientSize.Height / 2) })
+$btnZoomOut.add_Click({ Zoom-View -Factor (1 / 1.3) -CenterX ($picture.ClientSize.Width / 2) -CenterY ($picture.ClientSize.Height / 2) })
+$btnFit.add_Click({ Set-FitView; $picture.Invalidate() })
 $btnCalib.add_Click({ Start-Calibration })
 $btnClear.add_Click({
     $script:markers = @()
@@ -487,7 +620,8 @@ $btnSave.add_Click({
     $graphics = [System.Drawing.Graphics]::FromImage($output)
     try {
         $graphics.DrawImageUnscaled($script:shot, 0, 0)
-        Draw-Annotations -Graphics $graphics -OffsetX 0 -OffsetY 0 -Scale 1
+        $fontScale = [Math]::Max(1.0, $script:shot.Width / 1400.0)
+        Draw-Annotations -Graphics $graphics -OffsetX 0 -OffsetY 0 -Scale 1 -FontScale $fontScale
         $output.Save($dialog.FileName, [System.Drawing.Imaging.ImageFormat]::Png)
         $status.Text = "บันทึกไฟล์แล้ว: $($dialog.FileName)"
     }
@@ -495,6 +629,11 @@ $btnSave.add_Click({
         $graphics.Dispose()
         $output.Dispose()
     }
+})
+
+$form.add_Resize({
+    if ($null -ne $script:shot -and $script:vScale -le $script:fitScale) { Set-FitView }
+    $picture.Invalidate()
 })
 
 $form.add_KeyDown({
@@ -505,6 +644,12 @@ $form.add_KeyDown({
     }
     elseif ($eventArgs.KeyCode -eq [System.Windows.Forms.Keys]::K) {
         Start-Calibration
+    }
+    elseif ($eventArgs.KeyCode -eq [System.Windows.Forms.Keys]::Add -or $eventArgs.KeyCode -eq [System.Windows.Forms.Keys]::Oemplus) {
+        Zoom-View -Factor 1.3 -CenterX ($picture.ClientSize.Width / 2) -CenterY ($picture.ClientSize.Height / 2)
+    }
+    elseif ($eventArgs.KeyCode -eq [System.Windows.Forms.Keys]::Subtract -or $eventArgs.KeyCode -eq [System.Windows.Forms.Keys]::OemMinus) {
+        Zoom-View -Factor (1 / 1.3) -CenterX ($picture.ClientSize.Width / 2) -CenterY ($picture.ClientSize.Height / 2)
     }
     elseif ($eventArgs.KeyCode -eq [System.Windows.Forms.Keys]::Delete -and $script:markers.Count -gt 0) {
         $script:markers = @($script:markers | Select-Object -First ($script:markers.Count - 1))
