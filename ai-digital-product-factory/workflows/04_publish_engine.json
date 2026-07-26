@@ -1,0 +1,1082 @@
+{
+  "name": "ADPF 04 Publish Engine",
+  "id": "ADPF04PUBLISHENGIN",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "adpf04-receive-publish-request",
+      "name": "Receive Publish Request",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        380
+      ],
+      "notes": "Entry point. Called by 01 with the exported product package.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Central prompt library. Every OpenAI agent used by this workflow lives\n// here so prompts are versioned with the workflow itself and can be\n// diffed in git (mirrored in prompts/*.md).\nconst PROMPT_VERSION = $env.PROMPT_VERSION || 'v1.0.0';\nconst PROMPTS = {\n  \"publisher_ai\": {\n    \"id\": \"publisher_ai\",\n    \"title\": \"Publisher AI\",\n    \"purpose\": \"Build the marketplace payload and decide cross-platform compatibility.\",\n    \"system\": \"You are Publisher AI. You prepare the final marketplace payload for an Etsy digital\\nlisting and judge whether the same package can be reused on Gumroad and MiriCanvas.\\n\\nRules:\\n- Etsy listings created by this pipeline are ALWAYS drafts. Never set state active.\\n- `who_made` must be \\\"i_did\\\", `when_made` must be \\\"made_to_order\\\",\\n  `is_supply` must be false for finished digital products.\\n- Gumroad is compatible when the package contains at least one downloadable file\\n  and the licence permits resale outside Etsy.\\n- MiriCanvas is compatible only when an editable source (SVG or template spec)\\n  exists; a flattened PDF alone is NOT compatible.\\n- `approved` is false if anything in the QA report is unresolved.\\n- Output valid JSON only.\",\n    \"user_template\": \"METADATA: {{metadata_json}}\\nSEO: {{seo_json}}\\nQA REPORT: {{qa_json}}\\nFILE MANIFEST: {{file_manifest}}\\nFACTORY PROFILE: {{factory_profile_json}}\\n\\nAnswer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"approved\\\": true,\\n  \\\"reason\\\": \\\"string\\\",\\n  \\\"etsy\\\": {\\n    \\\"title\\\": \\\"string\\\",\\n    \\\"description\\\": \\\"string\\\",\\n    \\\"price\\\": 0,\\n    \\\"quantity\\\": 999,\\n    \\\"tags\\\": [\\\"string\\\"],\\n    \\\"materials\\\": [\\\"string\\\"],\\n    \\\"who_made\\\": \\\"i_did\\\",\\n    \\\"when_made\\\": \\\"made_to_order\\\",\\n    \\\"is_supply\\\": false,\\n    \\\"type\\\": \\\"download\\\",\\n    \\\"state\\\": \\\"draft\\\"\\n  },\\n  \\\"gumroad\\\": {\\\"compatible\\\": true, \\\"reason\\\": \\\"string\\\", \\\"suggested_price_usd\\\": 0},\\n  \\\"miricanvas\\\": {\\\"compatible\\\": true, \\\"reason\\\": \\\"string\\\", \\\"editable_source\\\": \\\"string\\\"}\\n}\"\n  }\n};\n\nreturn $input.all().map((item) => ({\n  json: { ...item.json, prompt_version: PROMPT_VERSION, prompts: PROMPTS },\n}));\n"
+      },
+      "id": "adpf04-prompt-library",
+      "name": "Prompt Library",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        380
+      ],
+      "notes": "Versioned prompt for the Publisher agent.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Unpack what 03 produced and refuse to publish anything that failed QA.\nconst ctx = $input.first().json;\nconst product = ctx.product || {};\n\nif (product.ok !== true) {\n  throw new Error(`04 Publish Engine received a product that did not pass QA: ${product.failure_reason || 'unknown'}`);\n}\n\nconst files = product.files || [];\nconst fileByKey = Object.fromEntries(files.map((f) => [f.key, f]));\n\nreturn [{\n  json: {\n    run_id: ctx.run_id,\n    factory: ctx.factory,\n    prompt_version: ctx.prompt_version,\n    dry_run: ctx.dry_run === true,\n    product_name: product.product_name,\n    slug: product.slug,\n    metadata: product.metadata,\n    seo: product.seo,\n    qa: product.qa,\n    profile: product.profile,\n    manifest: product.manifest,\n    file_keys: Object.keys(fileByKey),\n    listing_state: (ctx.etsy_listing_state || $env.ETSY_LISTING_STATE || 'draft').toLowerCase(),\n  },\n}];"
+      },
+      "id": "adpf04-normalize-publish-input",
+      "name": "Normalize Publish Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        380
+      ],
+      "notes": "Refuses anything that did not pass the QA gate in 03.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Mustache-style renderer for the {{placeholders}} in the prompt templates.\nconst render = (template, vars) =>\n  String(template).replace(/\\{\\{\\s*(\\w+)\\s*\\}\\}/g, (_, key) =>\n    vars[key] === undefined || vars[key] === null ? '' : String(vars[key]));\n\nconst ctx = $input.first().json;\nconst agent = $('Prompt Library').first().json.prompts.publisher_ai;\n\nreturn [{\n  json: {\n    ...ctx,\n    publisher_user_prompt: render(agent.user_template, {\n      metadata_json: JSON.stringify(ctx.metadata, null, 2),\n      seo_json: JSON.stringify(ctx.seo, null, 2),\n      qa_json: JSON.stringify(ctx.qa, null, 2),\n      file_manifest: JSON.stringify(ctx.manifest, null, 2),\n      factory_profile_json: JSON.stringify(ctx.profile, null, 2),\n    }),\n  },\n}];"
+      },
+      "id": "adpf04-build-publisher-prompt",
+      "name": "Build Publisher Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        380
+      ],
+      "notes": "Renders the Publisher AI template.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $env.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.2, max_tokens: 2000, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.publisher_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.publisher_ai.output_contract) }, { role: 'user', content: $json.publisher_user_prompt } ] }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "adpf04-openai-publisher-ai",
+      "name": "OpenAI: Publisher AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        380
+      ],
+      "notes": "Agent 8/8. Final policy check plus cross-platform compatibility opinion.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// The publisher verdict is advisory for compatibility and blocking for approval.\nconst ctx = $('Build Publisher Prompt').first().json;\nconst response = $input.first().json;\n\nlet verdict = {};\ntry {\n  verdict = JSON.parse(response?.choices?.[0]?.message?.content || '{}');\n} catch (e) {\n  verdict = {};\n}\n\n// Etsy state is decided by configuration, never by the model.\nconst listingState = ctx.listing_state === 'active' ? 'active' : 'draft';\n\nreturn [{\n  json: {\n    ...ctx,\n    publisher: {\n      approved: verdict.approved !== false && ctx.qa?.passed === true,\n      reason: verdict.reason || 'no reason returned',\n      etsy: verdict.etsy || {},\n      gumroad: verdict.gumroad || {},\n      miricanvas: verdict.miricanvas || {},\n    },\n    listing_state: listingState,\n  },\n}];"
+      },
+      "id": "adpf04-parse-publisher-verdict",
+      "name": "Parse Publisher Verdict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1500,
+        380
+      ],
+      "notes": "The listing state comes from configuration, never from the model.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.publisher.approved }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "adpf04-check-publisher-approved",
+      "name": "Check: Publisher Approved",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1800,
+        380
+      ],
+      "notes": "A veto here stops the upload entirely.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Build the exact field set Etsy's createDraftListing expects. Everything is\n// clamped again here because Etsy rejects the whole call on a single bad field.\nconst ctx = $input.first().json;\nconst seo = ctx.seo;\nconst metadata = ctx.metadata;\n\nconst tags = (seo.tags || []).slice(0, 13).map((t) => String(t).slice(0, 20));\nconst materials = (seo.materials || []).slice(0, 13).map((t) => String(t).slice(0, 45));\n\nreturn [{\n  json: {\n    ...ctx,\n    etsy_payload: {\n      quantity: 999,\n      title: String(seo.title).slice(0, 140),\n      description: String(seo.description).slice(0, 12000),\n      price: metadata.price_usd,\n      who_made: 'i_did',\n      when_made: 'made_to_order',\n      taxonomy_id: Number($env.ETSY_TAXONOMY_ID || 2078),\n      listing_type: 'download',\n      is_supply: false,\n      state: ctx.listing_state,\n      tags: tags.join(','),\n      materials: materials.join(','),\n      should_auto_renew: false,\n      is_personalizable: false,\n    },\n  },\n}];"
+      },
+      "id": "adpf04-build-etsy-listing-payload",
+      "name": "Build Etsy Listing Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2100,
+        380
+      ],
+      "notes": "Clamps every Etsy field again - one bad field rejects the whole call.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ETSY_API_BASE }}/v3/application/shops/{{ $env.ETSY_SHOP_ID }}/listings",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ETSY_API_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        },
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "quantity",
+              "value": "={{ $json.etsy_payload.quantity }}"
+            },
+            {
+              "name": "title",
+              "value": "={{ $json.etsy_payload.title }}"
+            },
+            {
+              "name": "description",
+              "value": "={{ $json.etsy_payload.description }}"
+            },
+            {
+              "name": "price",
+              "value": "={{ $json.etsy_payload.price }}"
+            },
+            {
+              "name": "who_made",
+              "value": "={{ $json.etsy_payload.who_made }}"
+            },
+            {
+              "name": "when_made",
+              "value": "={{ $json.etsy_payload.when_made }}"
+            },
+            {
+              "name": "taxonomy_id",
+              "value": "={{ $json.etsy_payload.taxonomy_id }}"
+            },
+            {
+              "name": "type",
+              "value": "={{ $json.etsy_payload.listing_type }}"
+            },
+            {
+              "name": "is_supply",
+              "value": "={{ $json.etsy_payload.is_supply }}"
+            },
+            {
+              "name": "state",
+              "value": "={{ $json.etsy_payload.state }}"
+            },
+            {
+              "name": "tags",
+              "value": "={{ $json.etsy_payload.tags }}"
+            },
+            {
+              "name": "materials",
+              "value": "={{ $json.etsy_payload.materials }}"
+            },
+            {
+              "name": "should_auto_renew",
+              "value": "={{ $json.etsy_payload.should_auto_renew }}"
+            }
+          ]
+        }
+      },
+      "id": "adpf04-etsy-create-draft-listing",
+      "name": "Etsy: Create Draft Listing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2400,
+        380
+      ],
+      "notes": "Creates the listing as a DRAFT (state comes from ETSY_LISTING_STATE, default draft) so a human reviews before it goes live. OAuth2 credential.",
+      "notesInFlow": true,
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ !!($json.listing_id || $json.results) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "adpf04-check-listing-created",
+      "name": "Check: Listing Created",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2700,
+        380
+      ],
+      "notes": "Etsy returns listing_id on success; anything else is a failure.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Etsy listing images, in display order: cover first, then the previews, then\n// the thumbnail as the last slot.\nconst ctx = $('Build Etsy Listing Payload').first().json;\nconst listing = $input.first().json;\nconst files = $('Receive Publish Request').first().json.product.files;\n\nconst listingId = listing?.listing_id || listing?.results?.[0]?.listing_id;\nif (!listingId) {\n  throw new Error(`Etsy did not return a listing_id: ${JSON.stringify(listing).slice(0, 400)}`);\n}\n\nconst order = ['cover_jpg', 'preview_1_jpg', 'preview_2_jpg', 'preview_3_jpg', 'thumbnail_png'];\nconst images = order\n  .map((key) => files.find((f) => f.key === key))\n  .filter(Boolean)\n  .map((file, index) => ({\n    run_id: ctx.run_id,\n    listing_id: listingId,\n    rank: index + 1,\n    key: file.key,\n    file_name: file.file_name,\n    mime_type: file.mime_type,\n    b64: file.b64,\n  }));\n\nif (!images.length) throw new Error('No listing images available to upload');\nreturn images.map((json) => ({ json }));"
+      },
+      "id": "adpf04-enumerate-listing-images",
+      "name": "Enumerate Listing Images",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3000,
+        380
+      ],
+      "notes": "Cover, previews, then thumbnail - one item per image, ranked.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {
+          "reset": false
+        }
+      },
+      "id": "adpf04-loop-listing-images",
+      "name": "Loop: Listing Images",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        3300,
+        380
+      ],
+      "notes": "Sequential upload keeps well inside Etsy's rate limits.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Convert the manifest entry into an n8n binary item for the multipart upload.\nconst job = $input.first().json;\nreturn [{\n  json: { listing_id: job.listing_id, rank: job.rank, key: job.key, file_name: job.file_name },\n  binary: {\n    data: {\n      data: job.b64,\n      mimeType: job.mime_type,\n      fileName: job.file_name,\n      fileExtension: job.file_name.split('.').pop(),\n    },\n  },\n}];"
+      },
+      "id": "adpf04-prepare-image-upload",
+      "name": "Prepare Image Upload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        570
+      ],
+      "notes": "base64 manifest entry -> n8n binary for the multipart request.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ETSY_API_BASE }}/v3/application/shops/{{ $env.ETSY_SHOP_ID }}/listings/{{ $json.listing_id }}/images",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ETSY_API_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 180000
+        },
+        "contentType": "multipart-form-data",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "image",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "rank",
+              "value": "={{ $json.rank }}"
+            }
+          ]
+        }
+      },
+      "id": "adpf04-etsy-upload-listing-image",
+      "name": "Etsy: Upload Listing Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3900,
+        570
+      ],
+      "notes": "Multipart image upload, one call per image.",
+      "notesInFlow": true,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Summarise the image upload loop.\nconst uploads = $input.all().map((i) => i.json);\nconst ctx = $('Build Etsy Listing Payload').first().json;\nconst listingId = $('Enumerate Listing Images').first().json.listing_id;\n\nreturn [{\n  json: {\n    ...ctx,\n    etsy_listing_id: listingId,\n    uploaded_images: uploads\n      .map((u) => u.listing_image_id || u.results?.[0]?.listing_image_id)\n      .filter(Boolean),\n    uploaded_image_count: uploads.length,\n  },\n}];"
+      },
+      "id": "adpf04-collect-image-uploads",
+      "name": "Collect Image Uploads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        380
+      ],
+      "notes": "Summarises the loop and carries the listing id forward.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// The actual product file the buyer downloads.\nconst ctx = $input.first().json;\nconst files = $('Receive Publish Request').first().json.product.files;\nconst pdf = files.find((f) => f.key === 'product_pdf');\n\nif (!pdf) throw new Error('No product PDF found in the export manifest');\n\nreturn [{\n  json: { ...ctx, digital_file_name: pdf.file_name },\n  binary: {\n    data: {\n      data: pdf.b64,\n      mimeType: pdf.mime_type,\n      fileName: pdf.file_name,\n      fileExtension: 'pdf',\n    },\n  },\n}];"
+      },
+      "id": "adpf04-prepare-digital-file-upload",
+      "name": "Prepare Digital File Upload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3900,
+        380
+      ],
+      "notes": "The PDF the buyer actually downloads, as binary.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ETSY_API_BASE }}/v3/application/shops/{{ $env.ETSY_SHOP_ID }}/listings/{{ $json.etsy_listing_id }}/files",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.ETSY_API_KEY }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000
+        },
+        "contentType": "multipart-form-data",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            },
+            {
+              "name": "name",
+              "value": "={{ $json.digital_file_name }}"
+            },
+            {
+              "name": "rank",
+              "value": "1"
+            }
+          ]
+        }
+      },
+      "id": "adpf04-etsy-upload-listing-file",
+      "name": "Etsy: Upload Listing File",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4200,
+        380
+      ],
+      "notes": "Attaches the digital download to the listing.",
+      "notesInFlow": true,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Deterministic compatibility rules, then the model verdict as a veto only.\nconst ctx = $('Prepare Digital File Upload').first().json;\nconst publisher = ctx.publisher || {};\nconst files = $('Receive Publish Request').first().json.product.files;\n\nconst downloadable = files.filter((f) => ['PDF', 'SVG', 'PNG', 'JPG'].includes(f.format));\nconst reasons = [];\n\nif (!ctx.profile.gumroad_ready) reasons.push('factory profile marks Gumroad as not applicable');\nif (!downloadable.length) reasons.push('no downloadable file in the package');\nif (!ctx.metadata.price_usd || ctx.metadata.price_usd < 1) reasons.push('price below the Gumroad minimum');\nif (publisher.gumroad?.compatible === false) reasons.push(publisher.gumroad.reason || 'publisher agent vetoed');\n\nreturn [{\n  json: {\n    ...ctx,\n    etsy_listing_id: ctx.etsy_listing_id,\n    gumroad_compatible: reasons.length === 0,\n    gumroad_reasons: reasons,\n    gumroad_file_count: downloadable.length,\n  },\n}];"
+      },
+      "id": "adpf04-check-gumroad-compatibility",
+      "name": "Check Gumroad Compatibility",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4500,
+        380
+      ],
+      "notes": "Deterministic rules first; the Publisher agent can only veto.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.gumroad_compatible }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "adpf04-check-gumroad-compatible",
+      "name": "Check: Gumroad Compatible",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4800,
+        380
+      ],
+      "notes": "Compatible products get a prepared package - never an automatic upload.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Prepare only - nothing is uploaded to Gumroad automatically. The manifest is\n// everything a human (or a later workflow) needs to finish the listing.\nconst ctx = $input.first().json;\nconst files = $('Receive Publish Request').first().json.product.files;\nconst publisher = ctx.publisher || {};\n\nconst pkg = {\n  platform: 'gumroad',\n  status: 'prepared_not_uploaded',\n  prepared_at: new Date().toISOString(),\n  run_id: ctx.run_id,\n  product_name: ctx.product_name,\n  name: ctx.seo.title.slice(0, 100),\n  description: ctx.seo.description,\n  price_usd: publisher.gumroad?.suggested_price_usd || ctx.metadata.price_usd,\n  currency: 'USD',\n  tags: ctx.seo.tags.slice(0, 10),\n  category: ctx.metadata.category,\n  license: ctx.metadata.license,\n  etsy_listing_id: ctx.etsy_listing_id,\n  files: files\n    .filter((f) => ['PDF', 'SVG', 'PNG', 'JPG'].includes(f.format))\n    .map((f) => ({ file_name: f.file_name, format: f.format, bytes: f.bytes, purpose: f.purpose })),\n  next_manual_steps: [\n    'Review the description and price in the Gumroad dashboard',\n    'Upload the files listed above from the Google Drive backup folder',\n    'Publish when the Etsy listing has been reviewed',\n  ],\n};\n\nreturn [{ json: { ...ctx, gumroad_package: pkg, gumroad_package_ready: true } }];"
+      },
+      "id": "adpf04-prepare-gumroad-package",
+      "name": "Prepare Gumroad Package",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5100,
+        190
+      ],
+      "notes": "Builds gumroad-package.json. PREPARE ONLY, no API call to Gumroad.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Not compatible - record why, then carry on.\nconst ctx = $input.first().json;\nreturn [{\n  json: {\n    ...ctx,\n    gumroad_package: {\n      platform: 'gumroad',\n      status: 'skipped',\n      reasons: ctx.gumroad_reasons,\n    },\n    gumroad_package_ready: false,\n  },\n}];"
+      },
+      "id": "adpf04-skip-gumroad-package",
+      "name": "Skip Gumroad Package",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5100,
+        570
+      ],
+      "notes": "Records why Gumroad was skipped so the reason is auditable.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// MiriCanvas is only worth preparing when an editable source exists; a flattened\n// PDF cannot be imported as a template.\nconst ctx = $input.first().json;\nconst publisher = ctx.publisher || {};\nconst files = $('Receive Publish Request').first().json.product.files;\nconst svg = files.find((f) => f.format === 'SVG');\n\nconst reasons = [];\nif (!ctx.profile.miricanvas_ready) reasons.push('factory profile marks MiriCanvas as not applicable');\nif (!svg) reasons.push('no editable SVG source in the package');\nif (publisher.miricanvas?.compatible === false) {\n  reasons.push(publisher.miricanvas.reason || 'publisher agent vetoed');\n}\n\nreturn [{\n  json: {\n    ...ctx,\n    miricanvas_compatible: reasons.length === 0,\n    miricanvas_reasons: reasons,\n    miricanvas_source: svg ? svg.file_name : null,\n  },\n}];"
+      },
+      "id": "adpf04-check-miricanvas-compatibility",
+      "name": "Check MiriCanvas Compatibility",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5400,
+        380
+      ],
+      "notes": "Requires an editable SVG source - a flat PDF is not importable.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.miricanvas_compatible }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "adpf04-check-miricanvas-compatible",
+      "name": "Check: MiriCanvas Compatible",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5700,
+        380
+      ],
+      "notes": "Same rule as Gumroad: prepare only.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Prepare only - no automatic upload. MiriCanvas has no public write API, so\n// this manifest is the hand-off for a human import.\nconst ctx = $input.first().json;\nconst files = $('Receive Publish Request').first().json.product.files;\n\nconst pkg = {\n  platform: 'miricanvas',\n  status: 'prepared_not_uploaded',\n  prepared_at: new Date().toISOString(),\n  run_id: ctx.run_id,\n  template_name: ctx.product_name,\n  category: ctx.metadata.category,\n  canvas: {\n    width_pt: ctx.profile.page_width_pt,\n    height_pt: ctx.profile.page_height_pt,\n    page_size: ctx.profile.page_size,\n  },\n  editable_source: ctx.miricanvas_source,\n  assets: files\n    .filter((f) => ['SVG', 'PNG', 'JPG'].includes(f.format))\n    .map((f) => ({ file_name: f.file_name, format: f.format, purpose: f.purpose })),\n  text_slots: (ctx.seo.tags || []).slice(0, 5),\n  next_manual_steps: [\n    'Import the SVG source into MiriCanvas',\n    'Map the editable text slots and save as a template',\n    'Keep the licence note from metadata.json in the template description',\n  ],\n};\n\nreturn [{ json: { ...ctx, miricanvas_package: pkg, miricanvas_package_ready: true } }];"
+      },
+      "id": "adpf04-prepare-miricanvas-package",
+      "name": "Prepare MiriCanvas Package",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6000,
+        190
+      ],
+      "notes": "Builds miricanvas-package.json. PREPARE ONLY, no upload.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const ctx = $input.first().json;\nreturn [{\n  json: {\n    ...ctx,\n    miricanvas_package: {\n      platform: 'miricanvas',\n      status: 'skipped',\n      reasons: ctx.miricanvas_reasons,\n    },\n    miricanvas_package_ready: false,\n  },\n}];"
+      },
+      "id": "adpf04-skip-miricanvas-package",
+      "name": "Skip MiriCanvas Package",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6000,
+        570
+      ],
+      "notes": "Records why MiriCanvas was skipped.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "id": "adpf04-merge-package-preparation",
+      "name": "Merge: Package Preparation",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        6300,
+        380
+      ],
+      "notes": "Join point for both compatibility branches.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Publish contract returned to 01. The prepared packages are appended to the\n// file manifest so 05 backs them up to Google Drive alongside the product.\nconst ctx = $input.first().json;\nconst fileUpload = (() => {\n  try { return $('Etsy: Upload Listing File').first().json; } catch (e) { return {}; }\n})();\n\nconst encode = (obj) => Buffer.from(JSON.stringify(obj, null, 2), 'utf8').toString('base64');\nconst extraFiles = [];\n\nif (ctx.gumroad_package_ready) {\n  const payload = encode(ctx.gumroad_package);\n  extraFiles.push({\n    key: 'gumroad_package_json',\n    file_name: 'gumroad-package.json',\n    format: 'JSON',\n    mime_type: 'application/json',\n    purpose: 'prepared Gumroad package (not uploaded)',\n    bytes: Math.round((payload.length * 3) / 4),\n    b64: payload,\n  });\n}\nif (ctx.miricanvas_package_ready) {\n  const payload = encode(ctx.miricanvas_package);\n  extraFiles.push({\n    key: 'miricanvas_package_json',\n    file_name: 'miricanvas-package.json',\n    format: 'JSON',\n    mime_type: 'application/json',\n    purpose: 'prepared MiriCanvas package (not uploaded)',\n    bytes: Math.round((payload.length * 3) / 4),\n    b64: payload,\n  });\n}\n\nreturn [{\n  json: {\n    ok: true,\n    run_id: ctx.run_id,\n    etsy_listing_id: ctx.etsy_listing_id,\n    etsy_listing_state: ctx.listing_state,\n    etsy_listing_url: `https://www.etsy.com/listing/${ctx.etsy_listing_id}`,\n    uploaded_image_count: ctx.uploaded_image_count || 0,\n    digital_file_id: fileUpload?.listing_file_id || null,\n    gumroad_package_ready: ctx.gumroad_package_ready === true,\n    gumroad_package: ctx.gumroad_package,\n    miricanvas_package_ready: ctx.miricanvas_package_ready === true,\n    miricanvas_package: ctx.miricanvas_package,\n    extra_files: extraFiles,\n    published_at: new Date().toISOString(),\n  },\n}];"
+      },
+      "id": "adpf04-build-publish-result",
+      "name": "Build Publish Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6600,
+        380
+      ],
+      "notes": "Publish contract for 01, plus the package files for the Drive backup.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "id": "adpf04-return-publish-result",
+      "name": "Return: Publish Result",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        6900,
+        380
+      ],
+      "notes": "Terminal node - its item is the sub-workflow return value.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Any Etsy failure or a publisher veto ends here with ok=false so 01 can log it.\nconst item = $input.first().json;\nconst ctx = (() => {\n  try { return $('Normalize Publish Input').first().json; } catch (e) { return {}; }\n})();\n\nconst error = item.error || {};\nconst reason = item.publisher?.approved === false\n  ? `Publisher agent refused to publish: ${item.publisher.reason}`\n  : (error.message || item.message || 'Etsy listing creation failed');\n\nreturn [{\n  json: {\n    ok: false,\n    run_id: ctx.run_id || item.run_id,\n    product_name: ctx.product_name || null,\n    failure_reason: String(reason).slice(0, 1000),\n    etsy_response: error.description || null,\n    failed_stage: 'publish',\n  },\n}];"
+      },
+      "id": "adpf04-build-publish-failure",
+      "name": "Build Publish Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6600,
+        760
+      ],
+      "notes": "Turns a veto or an Etsy error into ok=false with a readable reason.",
+      "notesInFlow": true
+    }
+  ],
+  "connections": {
+    "Receive Publish Request": {
+      "main": [
+        [
+          {
+            "node": "Prompt Library",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prompt Library": {
+      "main": [
+        [
+          {
+            "node": "Normalize Publish Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Publish Input": {
+      "main": [
+        [
+          {
+            "node": "Build Publisher Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Publisher Prompt": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: Publisher AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: Publisher AI": {
+      "main": [
+        [
+          {
+            "node": "Parse Publisher Verdict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Publisher Verdict": {
+      "main": [
+        [
+          {
+            "node": "Check: Publisher Approved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Publisher Approved": {
+      "main": [
+        [
+          {
+            "node": "Build Etsy Listing Payload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Publish Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Etsy Listing Payload": {
+      "main": [
+        [
+          {
+            "node": "Etsy: Create Draft Listing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Etsy: Create Draft Listing": {
+      "main": [
+        [
+          {
+            "node": "Check: Listing Created",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Publish Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Listing Created": {
+      "main": [
+        [
+          {
+            "node": "Enumerate Listing Images",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Publish Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enumerate Listing Images": {
+      "main": [
+        [
+          {
+            "node": "Loop: Listing Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop: Listing Images": {
+      "main": [
+        [
+          {
+            "node": "Collect Image Uploads",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Image Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Image Upload": {
+      "main": [
+        [
+          {
+            "node": "Etsy: Upload Listing Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Etsy: Upload Listing Image": {
+      "main": [
+        [
+          {
+            "node": "Loop: Listing Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Image Uploads": {
+      "main": [
+        [
+          {
+            "node": "Prepare Digital File Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Digital File Upload": {
+      "main": [
+        [
+          {
+            "node": "Etsy: Upload Listing File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Etsy: Upload Listing File": {
+      "main": [
+        [
+          {
+            "node": "Check Gumroad Compatibility",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Gumroad Compatibility": {
+      "main": [
+        [
+          {
+            "node": "Check: Gumroad Compatible",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Gumroad Compatible": {
+      "main": [
+        [
+          {
+            "node": "Prepare Gumroad Package",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip Gumroad Package",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Gumroad Package": {
+      "main": [
+        [
+          {
+            "node": "Check MiriCanvas Compatibility",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Gumroad Package": {
+      "main": [
+        [
+          {
+            "node": "Check MiriCanvas Compatibility",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check MiriCanvas Compatibility": {
+      "main": [
+        [
+          {
+            "node": "Check: MiriCanvas Compatible",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: MiriCanvas Compatible": {
+      "main": [
+        [
+          {
+            "node": "Prepare MiriCanvas Package",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip MiriCanvas Package",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare MiriCanvas Package": {
+      "main": [
+        [
+          {
+            "node": "Merge: Package Preparation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip MiriCanvas Package": {
+      "main": [
+        [
+          {
+            "node": "Merge: Package Preparation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge: Package Preparation": {
+      "main": [
+        [
+          {
+            "node": "Build Publish Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Publish Result": {
+      "main": [
+        [
+          {
+            "node": "Return: Publish Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Publish Failure": {
+      "main": [
+        [
+          {
+            "node": "Return: Publish Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "executionTimeout": 3600,
+    "timezone": "Asia/Bangkok"
+  },
+  "pinData": {},
+  "staticData": null,
+  "meta": {
+    "instanceId": "ai-digital-product-factory"
+  },
+  "tags": [
+    {
+      "name": "ai-digital-product-factory"
+    }
+  ],
+  "versionId": "v1.0.0"
+}

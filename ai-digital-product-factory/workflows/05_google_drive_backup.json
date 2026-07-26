@@ -1,0 +1,876 @@
+{
+  "name": "ADPF 05 Google Drive Backup",
+  "id": "ADPF05DRIVEBACKUPX",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "adpf05-receive-backup-request",
+      "name": "Receive Backup Request",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        380
+      ],
+      "notes": "Entry point. Called by 01 only after Etsy accepted the listing.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Work out the backup destination:\n//   AI Digital Product Factory / Etsy / <Category> / <Product Name>\n// Folder names are sanitised because they end up inside a Drive query string.\nconst ctx = $input.first().json;\nconst product = ctx.product || {};\nconst publish = ctx.publish || {};\nconst metadata = product.metadata || {};\n\nconst clean = (value, fallback) => String(value || fallback)\n  .replace(/[\\\\/:*?\"<>|']/g, ' ')\n  .replace(/[\\x00-\\x1f]/g, '')\n  .replace(/\\s+/g, ' ')\n  .trim()\n  .slice(0, 120) || fallback;\n\nreturn [{\n  json: {\n    run_id: ctx.run_id,\n    factory: ctx.factory,\n    prompt_version: ctx.prompt_version,\n    product_name: metadata.product_name || product.product_name,\n    category: metadata.category || 'Uncategorised',\n    etsy_listing_id: publish.etsy_listing_id || null,\n    folder_names: {\n      root: 'AI Digital Product Factory',\n      marketplace: 'Etsy',\n      category: clean(metadata.category, 'Uncategorised'),\n      product: clean(metadata.product_name || product.product_name, `product-${ctx.run_id}`),\n    },\n    parent_root: $env.GDRIVE_ROOT_FOLDER_ID || 'root',\n    folder_ids: {},\n  },\n}];"
+      },
+      "id": "adpf05-build-backup-plan",
+      "name": "Build Backup Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        380
+      ],
+      "notes": "Resolves and sanitises the four folder names of the backup path.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://www.googleapis.com/drive/v3/files?q={{ encodeURIComponent(\"name='\" + $('Build Backup Plan').first().json.folder_names.root + \"' and mimeType='application/vnd.google-apps.folder' and '\" + $('Build Backup Plan').first().json.parent_root + \"' in parents and trashed=false\") }}&fields=files(id,name)&pageSize=1&supportsAllDrives=true&includeItemsFromAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "adpf05-drive-find-root-folder",
+      "name": "Drive: Find Root Folder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        380
+      ],
+      "notes": "Look for 'root' under its parent. Makes the backup idempotent.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ ($json.files || []).length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "adpf05-check-root-folder-exists",
+      "name": "Check: Root Folder Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        900,
+        380
+      ],
+      "notes": "Reuse the existing folder instead of creating a duplicate.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id,name",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $('Build Backup Plan').first().json.folder_names.root, mimeType: 'application/vnd.google-apps.folder', parents: [$('Build Backup Plan').first().json.parent_root] }) }}"
+      },
+      "id": "adpf05-drive-create-root-folder",
+      "name": "Drive: Create Root Folder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        570
+      ],
+      "notes": "Create the 'root' folder on first run. Google Drive OAuth2 credential.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Both branches land here: an existing folder from the search, or the\n// folder that was just created. One shape out either way.\nconst plan = $('Build Backup Plan').first().json;\nconst found = $input.first().json;\nconst id = found?.files?.[0]?.id || found?.id;\n\nif (!id) {\n  throw new Error('Could not resolve the Google Drive folder for level: root');\n}\n\nreturn [{ json: { ...plan, folder_ids: { ...plan.folder_ids, root: id }, current_parent: id } }];\n"
+      },
+      "id": "adpf05-resolve-root-folder",
+      "name": "Resolve Root Folder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        380
+      ],
+      "notes": "Normalises both branches into one folder id for the next level.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://www.googleapis.com/drive/v3/files?q={{ encodeURIComponent(\"name='\" + $('Resolve Root Folder').first().json.folder_names.marketplace + \"' and mimeType='application/vnd.google-apps.folder' and '\" + $('Resolve Root Folder').first().json.folder_ids.root + \"' in parents and trashed=false\") }}&fields=files(id,name)&pageSize=1&supportsAllDrives=true&includeItemsFromAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "adpf05-drive-find-marketplace-folder",
+      "name": "Drive: Find Marketplace Folder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1500,
+        380
+      ],
+      "notes": "Look for 'marketplace' under its parent. Makes the backup idempotent.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ ($json.files || []).length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "adpf05-check-marketplace-folder-exists",
+      "name": "Check: Marketplace Folder Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1800,
+        380
+      ],
+      "notes": "Reuse the existing folder instead of creating a duplicate.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id,name",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $('Resolve Root Folder').first().json.folder_names.marketplace, mimeType: 'application/vnd.google-apps.folder', parents: [$('Resolve Root Folder').first().json.folder_ids.root] }) }}"
+      },
+      "id": "adpf05-drive-create-marketplace-folder",
+      "name": "Drive: Create Marketplace Folder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1800,
+        570
+      ],
+      "notes": "Create the 'marketplace' folder on first run. Google Drive OAuth2 credential.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Both branches land here: an existing folder from the search, or the\n// folder that was just created. One shape out either way.\nconst plan = $('Resolve Root Folder').first().json;\nconst found = $input.first().json;\nconst id = found?.files?.[0]?.id || found?.id;\n\nif (!id) {\n  throw new Error('Could not resolve the Google Drive folder for level: marketplace');\n}\n\nreturn [{ json: { ...plan, folder_ids: { ...plan.folder_ids, marketplace: id }, current_parent: id } }];\n"
+      },
+      "id": "adpf05-resolve-marketplace-folder",
+      "name": "Resolve Marketplace Folder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2100,
+        380
+      ],
+      "notes": "Normalises both branches into one folder id for the next level.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://www.googleapis.com/drive/v3/files?q={{ encodeURIComponent(\"name='\" + $('Resolve Marketplace Folder').first().json.folder_names.category + \"' and mimeType='application/vnd.google-apps.folder' and '\" + $('Resolve Marketplace Folder').first().json.folder_ids.marketplace + \"' in parents and trashed=false\") }}&fields=files(id,name)&pageSize=1&supportsAllDrives=true&includeItemsFromAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "adpf05-drive-find-category-folder",
+      "name": "Drive: Find Category Folder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2400,
+        380
+      ],
+      "notes": "Look for 'category' under its parent. Makes the backup idempotent.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ ($json.files || []).length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "adpf05-check-category-folder-exists",
+      "name": "Check: Category Folder Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2700,
+        380
+      ],
+      "notes": "Reuse the existing folder instead of creating a duplicate.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id,name",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $('Resolve Marketplace Folder').first().json.folder_names.category, mimeType: 'application/vnd.google-apps.folder', parents: [$('Resolve Marketplace Folder').first().json.folder_ids.marketplace] }) }}"
+      },
+      "id": "adpf05-drive-create-category-folder",
+      "name": "Drive: Create Category Folder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2700,
+        570
+      ],
+      "notes": "Create the 'category' folder on first run. Google Drive OAuth2 credential.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Both branches land here: an existing folder from the search, or the\n// folder that was just created. One shape out either way.\nconst plan = $('Resolve Marketplace Folder').first().json;\nconst found = $input.first().json;\nconst id = found?.files?.[0]?.id || found?.id;\n\nif (!id) {\n  throw new Error('Could not resolve the Google Drive folder for level: category');\n}\n\nreturn [{ json: { ...plan, folder_ids: { ...plan.folder_ids, category: id }, current_parent: id } }];\n"
+      },
+      "id": "adpf05-resolve-category-folder",
+      "name": "Resolve Category Folder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3000,
+        380
+      ],
+      "notes": "Normalises both branches into one folder id for the next level.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://www.googleapis.com/drive/v3/files?q={{ encodeURIComponent(\"name='\" + $('Resolve Category Folder').first().json.folder_names.product + \"' and mimeType='application/vnd.google-apps.folder' and '\" + $('Resolve Category Folder').first().json.folder_ids.category + \"' in parents and trashed=false\") }}&fields=files(id,name)&pageSize=1&supportsAllDrives=true&includeItemsFromAllDrives=true",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "adpf05-drive-find-product-folder",
+      "name": "Drive: Find Product Folder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3300,
+        380
+      ],
+      "notes": "Look for 'product' under its parent. Makes the backup idempotent.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ ($json.files || []).length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "adpf05-check-product-folder-exists",
+      "name": "Check: Product Folder Exists",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3600,
+        380
+      ],
+      "notes": "Reuse the existing folder instead of creating a duplicate.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id,name",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $('Resolve Category Folder').first().json.folder_names.product, mimeType: 'application/vnd.google-apps.folder', parents: [$('Resolve Category Folder').first().json.folder_ids.category] }) }}"
+      },
+      "id": "adpf05-drive-create-product-folder",
+      "name": "Drive: Create Product Folder",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3600,
+        570
+      ],
+      "notes": "Create the 'product' folder on first run. Google Drive OAuth2 credential.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Both branches land here: an existing folder from the search, or the\n// folder that was just created. One shape out either way.\nconst plan = $('Resolve Category Folder').first().json;\nconst found = $input.first().json;\nconst id = found?.files?.[0]?.id || found?.id;\n\nif (!id) {\n  throw new Error('Could not resolve the Google Drive folder for level: product');\n}\n\nreturn [{ json: { ...plan, folder_ids: { ...plan.folder_ids, product: id }, current_parent: id } }];\n"
+      },
+      "id": "adpf05-resolve-product-folder",
+      "name": "Resolve Product Folder",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3900,
+        380
+      ],
+      "notes": "Normalises both branches into one folder id for the next level.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// One item per file to back up. The product export, the prepared marketplace\n// packages and a workflow log all land in the same product folder.\nconst plan = $('Resolve Product Folder').first().json;\nconst ctx = $('Receive Backup Request').first().json;\nconst product = ctx.product || {};\nconst publish = ctx.publish || {};\n\nconst files = [...(product.files || []), ...(publish.extra_files || [])];\n\n// Workflow log: what ran, what it cost, what came out.\nconst log = [\n  `AI Digital Product Factory - workflow log`,\n  `====================================================`,\n  `Run id           : ${ctx.run_id}`,\n  `Factory          : ${ctx.factory}`,\n  `Product          : ${plan.product_name}`,\n  `Category         : ${plan.category}`,\n  `Prompt version   : ${ctx.prompt_version}`,\n  `Started at       : ${ctx.started_at}`,\n  `Backed up at     : ${new Date().toISOString()}`,\n  ``,\n  `Etsy listing id  : ${publish.etsy_listing_id || 'n/a'}`,\n  `Etsy state       : ${publish.etsy_listing_state || 'n/a'}`,\n  `Etsy images      : ${publish.uploaded_image_count || 0}`,\n  `Gumroad package  : ${publish.gumroad_package_ready ? 'prepared' : 'skipped'}`,\n  `MiriCanvas pkg   : ${publish.miricanvas_package_ready ? 'prepared' : 'skipped'}`,\n  ``,\n  `PDF pages        : ${product.stats?.pdf_pages ?? 'n/a'}`,\n  `Content pages    : ${product.stats?.content_pages ?? 'n/a'}`,\n  `Images generated : ${product.stats?.images?.generated ?? 'n/a'} / ${product.stats?.images?.requested ?? 'n/a'}`,\n  `Placeholder art  : ${product.stats?.placeholder_images ? 'YES (dry run)' : 'no'}`,\n  `Total bytes      : ${product.stats?.total_bytes ?? 'n/a'}`,\n  `QA summary       : ${product.qa?.summary || 'n/a'}`,\n  ``,\n  `Files`,\n  `-----`,\n  ...files.map((f) => `- ${f.file_name} (${f.format}, ${f.bytes} bytes) - ${f.purpose}`),\n].join('\\n');\n\nconst all = [\n  ...files,\n  {\n    key: 'workflow_log_txt',\n    file_name: 'workflow-log.txt',\n    format: 'TXT',\n    mime_type: 'text/plain',\n    purpose: 'run log',\n    b64: Buffer.from(log, 'utf8').toString('base64'),\n  },\n];\n\nreturn all.map((file, index) => ({\n  json: {\n    ...file,\n    upload_index: index + 1,\n    upload_total: all.length,\n    parent_folder_id: plan.folder_ids.product,\n  },\n}));"
+      },
+      "id": "adpf05-enumerate-backup-files",
+      "name": "Enumerate Backup Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4200,
+        380
+      ],
+      "notes": "Product PDF, cover, thumbnail, previews, metadata.json, description.txt, Prompt.md, SEO.json, source files, prepared packages and the workflow log.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {
+          "reset": false
+        }
+      },
+      "id": "adpf05-loop-upload-files",
+      "name": "Loop: Upload Files",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        4500,
+        380
+      ],
+      "notes": "Sequential uploads keep memory flat and stay inside Drive quotas.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Manifest entry -> binary item for the Google Drive node.\nconst file = $input.first().json;\nreturn [{\n  json: {\n    file_name: file.file_name,\n    parent_folder_id: file.parent_folder_id,\n    key: file.key,\n    format: file.format,\n  },\n  binary: {\n    data: {\n      data: file.b64,\n      mimeType: file.mime_type,\n      fileName: file.file_name,\n      fileExtension: (file.file_name.split('.').pop() || 'bin'),\n    },\n  },\n}];"
+      },
+      "id": "adpf05-prepare-upload-binary",
+      "name": "Prepare Upload Binary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4800,
+        570
+      ],
+      "notes": "base64 manifest entry -> binary for the Google Drive node.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "inputDataFieldName": "data",
+        "name": "={{ $json.file_name }}",
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $json.parent_folder_id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "id": "adpf05-drive-upload-file",
+      "name": "Drive: Upload File",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        5100,
+        570
+      ],
+      "notes": "Native Google Drive node, OAuth2 credential. Uploads into the product folder.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Backup contract returned to 01.\nconst plan = $('Resolve Product Folder').first().json;\nconst uploads = $input.all().map((i) => i.json).filter((u) => u && (u.id || u.fileId));\n\nreturn [{\n  json: {\n    ok: true,\n    run_id: plan.run_id,\n    drive_folder_id: plan.folder_ids.product,\n    drive_folder_path: [\n      plan.folder_names.root,\n      plan.folder_names.marketplace,\n      plan.folder_names.category,\n      plan.folder_names.product,\n    ].join('/'),\n    drive_folder_ids: plan.folder_ids,\n    uploaded_files: uploads.map((u) => ({\n      id: u.id || u.fileId,\n      name: u.name || u.file_name,\n      web_link: u.webViewLink || null,\n    })),\n    uploaded_file_count: uploads.length,\n    backed_up_at: new Date().toISOString(),\n  },\n}];"
+      },
+      "id": "adpf05-collect-drive-file-ids",
+      "name": "Collect Drive File Ids",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4800,
+        380
+      ],
+      "notes": "Backup contract for 01: folder id, folder path and every uploaded file id.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "id": "adpf05-return-backup-result",
+      "name": "Return: Backup Result",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        5100,
+        380
+      ],
+      "notes": "Terminal node - its item is the sub-workflow return value.",
+      "notesInFlow": true
+    }
+  ],
+  "connections": {
+    "Drive: Find Root Folder": {
+      "main": [
+        [
+          {
+            "node": "Check: Root Folder Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Root Folder Exists": {
+      "main": [
+        [
+          {
+            "node": "Resolve Root Folder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Drive: Create Root Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive: Create Root Folder": {
+      "main": [
+        [
+          {
+            "node": "Resolve Root Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive: Find Marketplace Folder": {
+      "main": [
+        [
+          {
+            "node": "Check: Marketplace Folder Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Marketplace Folder Exists": {
+      "main": [
+        [
+          {
+            "node": "Resolve Marketplace Folder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Drive: Create Marketplace Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive: Create Marketplace Folder": {
+      "main": [
+        [
+          {
+            "node": "Resolve Marketplace Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive: Find Category Folder": {
+      "main": [
+        [
+          {
+            "node": "Check: Category Folder Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Category Folder Exists": {
+      "main": [
+        [
+          {
+            "node": "Resolve Category Folder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Drive: Create Category Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive: Create Category Folder": {
+      "main": [
+        [
+          {
+            "node": "Resolve Category Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive: Find Product Folder": {
+      "main": [
+        [
+          {
+            "node": "Check: Product Folder Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Product Folder Exists": {
+      "main": [
+        [
+          {
+            "node": "Resolve Product Folder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Drive: Create Product Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive: Create Product Folder": {
+      "main": [
+        [
+          {
+            "node": "Resolve Product Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Receive Backup Request": {
+      "main": [
+        [
+          {
+            "node": "Build Backup Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Backup Plan": {
+      "main": [
+        [
+          {
+            "node": "Drive: Find Root Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Root Folder": {
+      "main": [
+        [
+          {
+            "node": "Drive: Find Marketplace Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Marketplace Folder": {
+      "main": [
+        [
+          {
+            "node": "Drive: Find Category Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Category Folder": {
+      "main": [
+        [
+          {
+            "node": "Drive: Find Product Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Product Folder": {
+      "main": [
+        [
+          {
+            "node": "Enumerate Backup Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enumerate Backup Files": {
+      "main": [
+        [
+          {
+            "node": "Loop: Upload Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop: Upload Files": {
+      "main": [
+        [
+          {
+            "node": "Collect Drive File Ids",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Upload Binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Upload Binary": {
+      "main": [
+        [
+          {
+            "node": "Drive: Upload File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive: Upload File": {
+      "main": [
+        [
+          {
+            "node": "Loop: Upload Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Drive File Ids": {
+      "main": [
+        [
+          {
+            "node": "Return: Backup Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "executionTimeout": 3600,
+    "timezone": "Asia/Bangkok"
+  },
+  "pinData": {},
+  "staticData": null,
+  "meta": {
+    "instanceId": "ai-digital-product-factory"
+  },
+  "tags": [
+    {
+      "name": "ai-digital-product-factory"
+    }
+  ],
+  "versionId": "v1.0.0"
+}

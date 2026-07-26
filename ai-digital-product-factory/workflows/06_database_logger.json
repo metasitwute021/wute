@@ -1,0 +1,340 @@
+{
+  "name": "ADPF 06 Database Logger",
+  "id": "ADPF06DATABASELOGX",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "adpf06-receive-db-request",
+      "name": "Receive DB Request",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        190
+      ],
+      "notes": "Entry point. op = run_start | product_upsert | status_update | error_log.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Normalise the record, then build both dialects up front. Which one actually\n// runs is decided by the DB_TYPE switch below.\nconst VALID_OPS = ['run_start', 'product_upsert', 'status_update', 'error_log'];\n\nconst rec = $input.first().json || {};\nconst op = VALID_OPS.includes(rec.op) ? rec.op : 'product_upsert';\n\nconst keywords = Array.isArray(rec.keywords) ? rec.keywords.join(',') : (rec.keywords || '');\nconst level = op === 'error_log' ? 'error' : 'info';\nconst status = rec.status || (op === 'error_log' ? 'failed' : 'running');\n\nconst message = op === 'error_log'\n  ? String(rec.error_log || rec.error_message || 'unspecified error').slice(0, 4000)\n  : `${op}: ${rec.product_name || rec.factory || rec.run_id}`;\n\nif (!rec.run_id) throw new Error('06 Database Logger requires a run_id');\n\n// $1 .. $14 - the order is shared by both dialects.\nconst values = [\n  rec.run_id,\n  rec.factory || null,\n  rec.product_name || null,\n  rec.category || null,\n  keywords,\n  rec.marketplace || '',\n  rec.drive_folder_id || null,\n  rec.etsy_listing_id ? String(rec.etsy_listing_id) : null,\n  rec.prompt_version || null,\n  status,\n  rec.error_log || null,\n  op,\n  level,\n  message,\n];\n\n// --- SQLite: no parameter binding through the CLI, so escape by hand. ------\nconst q = (value) => {\n  if (value === null || value === undefined) return 'NULL';\n  return \"'\" + String(value).replace(/'/g, \"''\").replace(/\\r/g, '').replace(/^ADPFSQL$/gm, 'ADPF_SQL') + \"'\";\n};\n\nconst sqliteSql = [\n  'INSERT INTO adpf_products (',\n  '  run_id, factory, product_name, category, keywords, marketplace,',\n  '  drive_folder_id, etsy_listing_id, prompt_version, status, error_log, updated_at',\n  ') VALUES (',\n  '  ' + values.slice(0, 11).map(q).join(', ') + \", datetime('now')\",\n  ') ON CONFLICT(run_id) DO UPDATE SET',\n  '  factory         = COALESCE(excluded.factory, adpf_products.factory),',\n  '  product_name    = COALESCE(excluded.product_name, adpf_products.product_name),',\n  '  category        = COALESCE(excluded.category, adpf_products.category),',\n  \"  keywords        = COALESCE(NULLIF(excluded.keywords, ''), adpf_products.keywords),\",\n  \"  marketplace     = COALESCE(NULLIF(excluded.marketplace, ''), adpf_products.marketplace),\",\n  '  drive_folder_id = COALESCE(excluded.drive_folder_id, adpf_products.drive_folder_id),',\n  '  etsy_listing_id = COALESCE(excluded.etsy_listing_id, adpf_products.etsy_listing_id),',\n  '  prompt_version  = COALESCE(excluded.prompt_version, adpf_products.prompt_version),',\n  '  status          = excluded.status,',\n  '  error_log       = COALESCE(excluded.error_log, adpf_products.error_log),',\n  \"  updated_at      = datetime('now');\",\n  'INSERT INTO adpf_events (run_id, op, level, message) VALUES (' +\n    [values[0], values[11], values[12], values[13]].map(q).join(', ') + ');',\n  \"SELECT 'ok' AS result, (SELECT id FROM adpf_products WHERE run_id = \" + q(values[0]) + ') AS product_id;',\n].join('\\n');\n\nreturn [{\n  json: {\n    op,\n    run_id: rec.run_id,\n    status,\n    db_type: String($env.DB_TYPE || 'postgres').toLowerCase(),\n    pg_params: values,\n    sqlite_sql: sqliteSql,\n  },\n}];"
+      },
+      "id": "adpf06-build-sql-statement",
+      "name": "Build SQL Statement",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        190
+      ],
+      "notes": "Validates the record and prepares both dialects: parameter array for PostgreSQL, fully escaped SQL text for the SQLite CLI.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rule-0",
+                    "leftValue": "={{ ($env.DB_TYPE || 'postgres').toLowerCase() }}",
+                    "rightValue": "postgres",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "postgres"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rule-1",
+                    "leftValue": "={{ ($env.DB_TYPE || 'postgres').toLowerCase() }}",
+                    "rightValue": "sqlite",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "sqlite"
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "fallback"
+        }
+      },
+      "id": "adpf06-route-database-type",
+      "name": "Route: Database Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        600,
+        190
+      ],
+      "notes": "DB_TYPE decides the engine. Anything unknown falls back to PostgreSQL.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- AI Digital Product Factory - PostgreSQL schema\nCREATE TABLE IF NOT EXISTS adpf_products (\n  id              BIGSERIAL PRIMARY KEY,\n  run_id          TEXT        NOT NULL UNIQUE,\n  factory         TEXT,\n  product_name    TEXT,\n  category        TEXT,\n  keywords        TEXT,\n  marketplace     TEXT,\n  drive_folder_id TEXT,\n  etsy_listing_id TEXT,\n  prompt_version  TEXT,\n  status          TEXT        NOT NULL DEFAULT 'running',\n  error_log       TEXT,\n  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),\n  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()\n);\n\nCREATE INDEX IF NOT EXISTS adpf_products_status_idx   ON adpf_products (status);\nCREATE INDEX IF NOT EXISTS adpf_products_category_idx ON adpf_products (category);\nCREATE INDEX IF NOT EXISTS adpf_products_created_idx  ON adpf_products (created_at DESC);\n\nCREATE TABLE IF NOT EXISTS adpf_events (\n  id         BIGSERIAL PRIMARY KEY,\n  run_id     TEXT        NOT NULL,\n  op         TEXT        NOT NULL,\n  level      TEXT        NOT NULL DEFAULT 'info',\n  message    TEXT,\n  created_at TIMESTAMPTZ NOT NULL DEFAULT now()\n);\n\nCREATE INDEX IF NOT EXISTS adpf_events_run_idx ON adpf_events (run_id, created_at DESC);",
+        "options": {}
+      },
+      "id": "adpf06-postgres-ensure-schema",
+      "name": "Postgres: Ensure Schema",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        900,
+        0
+      ],
+      "notes": "Idempotent DDL so a fresh database bootstraps itself on the first run.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH product AS (\n  INSERT INTO adpf_products (\n    run_id, factory, product_name, category, keywords, marketplace,\n    drive_folder_id, etsy_listing_id, prompt_version, status, error_log\n  )\n  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)\n  ON CONFLICT (run_id) DO UPDATE SET\n    factory         = COALESCE(EXCLUDED.factory, adpf_products.factory),\n    product_name    = COALESCE(EXCLUDED.product_name, adpf_products.product_name),\n    category        = COALESCE(EXCLUDED.category, adpf_products.category),\n    keywords        = COALESCE(NULLIF(EXCLUDED.keywords, ''), adpf_products.keywords),\n    marketplace     = COALESCE(NULLIF(EXCLUDED.marketplace, ''), adpf_products.marketplace),\n    drive_folder_id = COALESCE(EXCLUDED.drive_folder_id, adpf_products.drive_folder_id),\n    etsy_listing_id = COALESCE(EXCLUDED.etsy_listing_id, adpf_products.etsy_listing_id),\n    prompt_version  = COALESCE(EXCLUDED.prompt_version, adpf_products.prompt_version),\n    status          = EXCLUDED.status,\n    error_log       = COALESCE(EXCLUDED.error_log, adpf_products.error_log),\n    updated_at      = now()\n  RETURNING id\n), event AS (\n  INSERT INTO adpf_events (run_id, op, level, message)\n  VALUES ($1, $12, $13, $14)\n  RETURNING id\n)\nSELECT (SELECT id FROM product) AS product_id, (SELECT id FROM event) AS event_id;",
+        "options": {
+          "queryReplacement": "={{ $('Build SQL Statement').first().json.pg_params }}"
+        }
+      },
+      "id": "adpf06-postgres-write-record",
+      "name": "Postgres: Write Record",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1200,
+        0
+      ],
+      "notes": "Single parameterised statement: upsert the product row (NULLs never clobber existing values) and append an event.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "command": "={{ \"sqlite3 '\" + ($env.DB_SQLITE_PATH || '/home/node/.n8n/adpf.db') + \"' <<'ADPFSQL'\\n\" + \"-- AI Digital Product Factory - SQLite schema\\nCREATE TABLE IF NOT EXISTS adpf_products (\\n  id              INTEGER PRIMARY KEY AUTOINCREMENT,\\n  run_id          TEXT NOT NULL UNIQUE,\\n  factory         TEXT,\\n  product_name    TEXT,\\n  category        TEXT,\\n  keywords        TEXT,\\n  marketplace     TEXT,\\n  drive_folder_id TEXT,\\n  etsy_listing_id TEXT,\\n  prompt_version  TEXT,\\n  status          TEXT NOT NULL DEFAULT 'running',\\n  error_log       TEXT,\\n  created_at      TEXT NOT NULL DEFAULT (datetime('now')),\\n  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))\\n);\\n\\nCREATE INDEX IF NOT EXISTS adpf_products_status_idx   ON adpf_products (status);\\nCREATE INDEX IF NOT EXISTS adpf_products_category_idx ON adpf_products (category);\\nCREATE INDEX IF NOT EXISTS adpf_products_created_idx  ON adpf_products (created_at DESC);\\n\\nCREATE TABLE IF NOT EXISTS adpf_events (\\n  id         INTEGER PRIMARY KEY AUTOINCREMENT,\\n  run_id     TEXT NOT NULL,\\n  op         TEXT NOT NULL,\\n  level      TEXT NOT NULL DEFAULT 'info',\\n  message    TEXT,\\n  created_at TEXT NOT NULL DEFAULT (datetime('now'))\\n);\\n\\nCREATE INDEX IF NOT EXISTS adpf_events_run_idx ON adpf_events (run_id, created_at DESC);\" + \"\\nADPFSQL\" }}"
+      },
+      "id": "adpf06-sqlite-ensure-schema",
+      "name": "SQLite: Ensure Schema",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        900,
+        380
+      ],
+      "notes": "Requires the sqlite3 CLI on the n8n host. Self-hosted deployments only.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "command": "={{ \"sqlite3 '\" + ($env.DB_SQLITE_PATH || '/home/node/.n8n/adpf.db') + \"' <<'ADPFSQL'\\n\" + $('Build SQL Statement').first().json.sqlite_sql + \"\\nADPFSQL\" }}"
+      },
+      "id": "adpf06-sqlite-write-record",
+      "name": "SQLite: Write Record",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        380
+      ],
+      "notes": "Same upsert + event insert, escaped in the Build SQL Statement node.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// One result shape whichever engine ran.\nconst ctx = $('Build SQL Statement').first().json;\nconst raw = $input.first().json || {};\n\nconst stdout = String(raw.stdout || '');\nconst failed = Boolean(raw.stderr) || raw.exitCode > 0;\n\nreturn [{\n  json: {\n    ok: !failed,\n    op: ctx.op,\n    run_id: ctx.run_id,\n    status: ctx.status,\n    engine: ctx.db_type,\n    record_id: raw.product_id || raw.id || null,\n    event_id: raw.event_id || null,\n    stdout: stdout ? stdout.slice(0, 500) : null,\n    error: failed ? String(raw.stderr || 'database command failed').slice(0, 500) : null,\n    written_at: new Date().toISOString(),\n  },\n}];"
+      },
+      "id": "adpf06-build-db-result",
+      "name": "Build DB Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1500,
+        190
+      ],
+      "notes": "Normalises the PostgreSQL row and the CLI stdout into one result shape.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "id": "adpf06-return-db-result",
+      "name": "Return: DB Result",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1800,
+        190
+      ],
+      "notes": "Terminal node - its item is the sub-workflow return value.",
+      "notesInFlow": true
+    }
+  ],
+  "connections": {
+    "Receive DB Request": {
+      "main": [
+        [
+          {
+            "node": "Build SQL Statement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build SQL Statement": {
+      "main": [
+        [
+          {
+            "node": "Route: Database Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route: Database Type": {
+      "main": [
+        [
+          {
+            "node": "Postgres: Ensure Schema",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "SQLite: Ensure Schema",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Postgres: Ensure Schema",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres: Ensure Schema": {
+      "main": [
+        [
+          {
+            "node": "Postgres: Write Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQLite: Ensure Schema": {
+      "main": [
+        [
+          {
+            "node": "SQLite: Write Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres: Write Record": {
+      "main": [
+        [
+          {
+            "node": "Build DB Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQLite: Write Record": {
+      "main": [
+        [
+          {
+            "node": "Build DB Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build DB Result": {
+      "main": [
+        [
+          {
+            "node": "Return: DB Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "executionTimeout": 3600,
+    "timezone": "Asia/Bangkok"
+  },
+  "pinData": {},
+  "staticData": null,
+  "meta": {
+    "instanceId": "ai-digital-product-factory"
+  },
+  "tags": [
+    {
+      "name": "ai-digital-product-factory"
+    }
+  ],
+  "versionId": "v1.0.0"
+}

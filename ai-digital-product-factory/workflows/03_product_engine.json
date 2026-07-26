@@ -1,0 +1,1746 @@
+{
+  "name": "ADPF 03 Product Engine",
+  "id": "ADPF03PRODUCTENGIN",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "adpf03-receive-product-request",
+      "name": "Receive Product Request",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        570
+      ],
+      "notes": "Entry point. Called by 01 with the run context + research package.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Central prompt library. Every OpenAI agent used by this workflow lives\n// here so prompts are versioned with the workflow itself and can be\n// diffed in git (mirrored in prompts/*.md).\nconst PROMPT_VERSION = $env.PROMPT_VERSION || 'v1.0.0';\nconst PROMPTS = {\n  \"idea_ai\": {\n    \"id\": \"idea_ai\",\n    \"title\": \"Idea AI\",\n    \"purpose\": \"Expand a research concept into a concrete, buildable product specification.\",\n    \"system\": \"You are Idea AI, a digital product designer. You convert a validated market concept\\ninto a production brief that a content writer and an image generator can execute\\nwithout asking questions.\\n\\nRules:\\n- Respect the FACTORY PROFILE limits exactly (page count, page size, output formats).\\n- The product must be deliverable as static files. Never propose interactivity,\\n  fillable-PDF scripting, video, or anything requiring a runtime.\\n- `product_name` is a shop-facing name, max 60 characters, no emoji, no ALL CAPS.\\n- `sections` describes the real structure of the deliverable, in order.\\n- `visual_direction` must be one coherent art direction reused across every image.\\n- Never reference a real brand, celebrity, franchise, or trademarked style.\\n- Output valid JSON only.\",\n    \"user_template\": \"RESEARCH CONCEPT:\\n{{research_json}}\\n\\nFACTORY PROFILE:\\n{{factory_profile_json}}\\n\\nDesign the product. Answer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"product_name\\\": \\\"string\\\",\\n  \\\"one_liner\\\": \\\"string\\\",\\n  \\\"promise\\\": \\\"string\\\",\\n  \\\"sections\\\": [{\\\"title\\\": \\\"string\\\", \\\"purpose\\\": \\\"string\\\", \\\"page_count\\\": 0}],\\n  \\\"visual_direction\\\": {\\n    \\\"style\\\": \\\"string\\\",\\n    \\\"palette\\\": [\\\"#RRGGBB\\\"],\\n    \\\"typography\\\": \\\"string\\\",\\n    \\\"mood\\\": \\\"string\\\"\\n  },\\n  \\\"bonus_items\\\": [\\\"string\\\"],\\n  \\\"estimated_total_pages\\\": 0\\n}\"\n  },\n  \"writer_ai\": {\n    \"id\": \"writer_ai\",\n    \"title\": \"Writer AI\",\n    \"purpose\": \"Write the actual page-by-page content that goes inside the product file.\",\n    \"system\": \"You are Writer AI. You write the finished copy that will be typeset directly into\\nthe product PDF. Everything you write ships to a paying customer as-is.\\n\\nRules:\\n- Write in clear US English at a 7th-grade reading level.\\n- Every page must be self-contained and useful on its own.\\n- `lines` are already-wrapped display lines, max 92 characters each, no markdown\\n  syntax, no bullet characters other than \\\"- \\\".\\n- Do not write filler, lorem ipsum, or \\\"insert text here\\\" placeholders.\\n- Never claim medical, legal, financial, or therapeutic outcomes.\\n- Respect the requested page count within +/- 1 page.\\n- Output valid JSON only.\",\n    \"user_template\": \"PRODUCT BRIEF:\\n{{idea_json}}\\n\\nFACTORY PROFILE:\\n{{factory_profile_json}}\\n\\nCONTENT SCHEMA REQUIRED BY THIS FACTORY:\\n{{content_schema}}\\n\\nWrite the complete product content. Answer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"cover_title\\\": \\\"string\\\",\\n  \\\"cover_subtitle\\\": \\\"string\\\",\\n  \\\"pages\\\": [\\n    {\\\"page_number\\\": 0, \\\"title\\\": \\\"string\\\", \\\"lines\\\": [\\\"string\\\"], \\\"needs_image\\\": true}\\n  ],\\n  \\\"intro_text\\\": \\\"string\\\",\\n  \\\"usage_instructions\\\": [\\\"string\\\"],\\n  \\\"credits\\\": \\\"string\\\"\\n}\"\n  },\n  \"designer_ai\": {\n    \"id\": \"designer_ai\",\n    \"title\": \"Designer AI\",\n    \"purpose\": \"Author the image prompt set (and SVG source when applicable).\",\n    \"system\": \"You are Designer AI, an art director who writes prompts for the OpenAI Image API.\\n\\nRules:\\n- Every prompt must be fully self-contained: subject, composition, palette,\\n  lighting, medium, background, and negative guidance in one paragraph.\\n- Reuse the visual direction across every prompt so the set looks like one product.\\n- Never name a living artist, brand, franchise, or copyrighted character.\\n- Never request text, lettering, words, numbers, watermarks, or logos inside the\\n  image - typography is added later by the PDF engine.\\n- `cover` is a portrait hero image, `thumbnail` is a square shop icon, `previews`\\n  are 3 lifestyle/mockup shots, `pages` are the in-product illustrations.\\n- When `svg_required` is true, also return `svg_markup`: a single valid, standalone\\n  <svg> element, viewBox=\\\"0 0 1024 1024\\\", flat vector shapes only, no <script>,\\n  no <foreignObject>, no external references, no base64 images.\\n- Output valid JSON only.\",\n    \"user_template\": \"PRODUCT BRIEF:\\n{{idea_json}}\\n\\nPAGES NEEDING ART:\\n{{image_page_list}}\\n\\nFACTORY PROFILE:\\n{{factory_profile_json}}\\n\\nSVG REQUIRED: {{svg_required}}\\n\\nAuthor the image plan. Answer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"cover\\\": {\\\"prompt\\\": \\\"string\\\"},\\n  \\\"thumbnail\\\": {\\\"prompt\\\": \\\"string\\\"},\\n  \\\"previews\\\": [{\\\"prompt\\\": \\\"string\\\"}],\\n  \\\"pages\\\": [{\\\"page_number\\\": 0, \\\"prompt\\\": \\\"string\\\"}],\\n  \\\"svg_markup\\\": \\\"string|null\\\"\\n}\"\n  },\n  \"seo_ai\": {\n    \"id\": \"seo_ai\",\n    \"title\": \"SEO AI\",\n    \"purpose\": \"Produce Etsy-compliant title, description and tags.\",\n    \"system\": \"You are SEO AI, an Etsy search optimisation specialist.\\n\\nHard Etsy limits you must never break:\\n- Title: max 140 characters, primary keyword inside the first 40 characters,\\n  no ALL CAPS words, no more than one \\\"|\\\" separator group per phrase.\\n- Tags: exactly 13 tags, each max 20 characters, lowercase, letters/numbers/spaces\\n  only, no duplicates, no single-word repeats of the same stem more than twice.\\n- Description: 5 short paragraphs - hook, what's included, how to use it,\\n  file/delivery details, policy note that it is an instant digital download with\\n  no physical item shipped.\\n- Never promise refunds, never mention competitors, never use trademarked terms.\\n- Output valid JSON only.\",\n    \"user_template\": \"TASK: {{seo_task}}\\n\\nRESEARCH CONCEPT:\\n{{research_json}}\\n\\nPRODUCT BRIEF:\\n{{idea_json}}\\n\\nDELIVERABLE FILES:\\n{{file_manifest}}\\n\\nAnswer with the exact JSON contract for this task.\",\n    \"output_contract\": \"title  -> {\\\"title\\\": \\\"string\\\", \\\"char_count\\\": 0}\\ndescription -> {\\\"description\\\": \\\"string\\\", \\\"paragraph_count\\\": 0}\\ntags -> {\\\"tags\\\": [\\\"string\\\"], \\\"materials\\\": [\\\"string\\\"]}\\nkeywords -> {\\\"primary\\\": \\\"string\\\", \\\"sub_keywords\\\": [\\\"string\\\"], \\\"long_tail\\\": [\\\"string\\\"]}\"\n  },\n  \"metadata_ai\": {\n    \"id\": \"metadata_ai\",\n    \"title\": \"Metadata AI\",\n    \"purpose\": \"Emit the machine-readable metadata record that travels with the product.\",\n    \"system\": \"You are Metadata AI. You produce the canonical metadata record stored beside the\\nproduct in Google Drive and in the products database.\\n\\nRules:\\n- Copy values verbatim from the inputs. Never invent a value that was supplied.\\n- `price_usd` must be a number with at most 2 decimals, between 1 and 500.\\n- `taxonomy_hint` is a plain-English Etsy category path, not an id.\\n- `compatibility.gumroad` and `compatibility.miricanvas` are booleans with a short\\n  reason string in `compatibility.notes`.\\n- Output valid JSON only.\",\n    \"user_template\": \"RESEARCH: {{research_json}}\\nBRIEF: {{idea_json}}\\nSEO: {{seo_json}}\\nFILES: {{file_manifest}}\\nFACTORY PROFILE: {{factory_profile_json}}\\n\\nAnswer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"product_name\\\": \\\"string\\\",\\n  \\\"factory\\\": \\\"string\\\",\\n  \\\"category\\\": \\\"string\\\",\\n  \\\"taxonomy_hint\\\": \\\"string\\\",\\n  \\\"price_usd\\\": 0,\\n  \\\"currency\\\": \\\"USD\\\",\\n  \\\"keywords\\\": [\\\"string\\\"],\\n  \\\"tags\\\": [\\\"string\\\"],\\n  \\\"files\\\": [{\\\"name\\\": \\\"string\\\", \\\"format\\\": \\\"string\\\", \\\"purpose\\\": \\\"string\\\"}],\\n  \\\"compatibility\\\": {\\\"gumroad\\\": true, \\\"miricanvas\\\": true, \\\"notes\\\": \\\"string\\\"},\\n  \\\"license\\\": \\\"string\\\",\\n  \\\"prompt_version\\\": \\\"string\\\"\\n}\"\n  },\n  \"qa_ai\": {\n    \"id\": \"qa_ai\",\n    \"title\": \"QA AI\",\n    \"purpose\": \"Gate the product before anything is uploaded to a marketplace.\",\n    \"system\": \"You are QA AI, the last line of defence before a product is published. You are\\ndeliberately strict: it is cheaper to regenerate than to get a shop suspended.\\n\\nFail the product (`passed: false`) if ANY of these are true:\\n- Title over 140 chars, or tag count != 13, or any tag over 20 chars.\\n- Any trademarked name, brand, franchise, celebrity, or licensed character.\\n- Placeholder text, empty pages, duplicated pages, or truncated sentences.\\n- Claims about health, income, legal or therapeutic outcomes.\\n- Description does not disclose that it is a digital download.\\n- Page count differs from the brief by more than 2.\\n- Content that is unsafe for a general audience, or targets children with anything\\n  other than age-appropriate material.\\n\\nScore each dimension 0-10. `passed` requires every score >= 7 and zero blockers.\\nOutput valid JSON only.\",\n    \"user_template\": \"BRIEF: {{idea_json}}\\nCONTENT: {{content_json}}\\nSEO: {{seo_json}}\\nMETADATA: {{metadata_json}}\\nFILE MANIFEST: {{file_manifest}}\\n\\nReview the product. Answer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"passed\\\": true,\\n  \\\"scores\\\": {\\\"content\\\": 0, \\\"seo\\\": 0, \\\"compliance\\\": 0, \\\"completeness\\\": 0, \\\"design\\\": 0},\\n  \\\"blockers\\\": [\\\"string\\\"],\\n  \\\"warnings\\\": [\\\"string\\\"],\\n  \\\"fix_instructions\\\": [\\\"string\\\"],\\n  \\\"summary\\\": \\\"string\\\"\\n}\"\n  }\n};\n\nreturn $input.all().map((item) => ({\n  json: { ...item.json, prompt_version: PROMPT_VERSION, prompts: PROMPTS },\n}));\n"
+      },
+      "id": "adpf03-prompt-library",
+      "name": "Prompt Library",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        570
+      ],
+      "notes": "Versioned prompts for the six agents used on the production line.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Entry contract check. 03 refuses to run without a research package, because\n// every downstream prompt is grounded in it.\nconst ctx = $input.first().json;\nconst research = ctx.research || {};\n\nif (!research.keyword || !research.product_type) {\n  throw new Error('03 Product Engine requires a research package with keyword and product_type');\n}\n\nreturn [{\n  json: {\n    run_id: ctx.run_id,\n    factory: String(ctx.factory || research.product_type).toLowerCase().trim(),\n    prompt_version: ctx.prompt_version || $env.PROMPT_VERSION || 'v1.0.0',\n    dry_run: ctx.dry_run === true,\n    research,\n    market: ctx.market || {},\n    created_at: new Date().toISOString(),\n  },\n}];"
+      },
+      "id": "adpf03-normalize-factory-input",
+      "name": "Normalize Factory Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        570
+      ],
+      "notes": "Validates the research contract and resolves the factory key.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rule-0",
+                    "leftValue": "={{ $json.factory }}",
+                    "rightValue": "planner",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "planner"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rule-1",
+                    "leftValue": "={{ $json.factory }}",
+                    "rightValue": "printable",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "printable"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rule-2",
+                    "leftValue": "={{ $json.factory }}",
+                    "rightValue": "canva",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "canva"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rule-3",
+                    "leftValue": "={{ $json.factory }}",
+                    "rightValue": "wallart",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "wallart"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rule-4",
+                    "leftValue": "={{ $json.factory }}",
+                    "rightValue": "resume",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "resume"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rule-5",
+                    "leftValue": "={{ $json.factory }}",
+                    "rightValue": "spreadsheet",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "spreadsheet"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rule-6",
+                    "leftValue": "={{ $json.factory }}",
+                    "rightValue": "kids",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "kids"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rule-7",
+                    "leftValue": "={{ $json.factory }}",
+                    "rightValue": "svg",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "svg"
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "fallback"
+        }
+      },
+      "id": "adpf03-route-factory-type",
+      "name": "Route: Factory Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        900,
+        570
+      ],
+      "notes": "One output per factory. The fallback output keeps unknown keys alive as printables.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"profile\": {\n    \"factory_key\": \"planner\",\n    \"display_name\": \"Planner Factory\",\n    \"page_size\": \"A4 portrait\",\n    \"page_width_pt\": 595.28,\n    \"page_height_pt\": 841.89,\n    \"target_pages\": 24,\n    \"image_pages\": 4,\n    \"image_size\": \"1024x1536\",\n    \"cover_size\": \"1024x1536\",\n    \"thumbnail_size\": \"1024x1024\",\n    \"preview_size\": \"1024x1024\",\n    \"preview_count\": 3,\n    \"output_formats\": [\n      \"PDF\",\n      \"PNG\",\n      \"JPG\",\n      \"JSON\",\n      \"TXT\"\n    ],\n    \"svg_required\": false,\n    \"content_schema\": \"A dated-agnostic planner: cover, how-to-use page, then repeating spreads (monthly overview, weekly layout, daily focus, habit tracker, notes). Every page must have printable structure described in lines, e.g. column headers and row labels.\",\n    \"art_direction\": \"calm minimal stationery, soft neutral palette, generous white space\",\n    \"etsy_taxonomy_hint\": \"Paper & Party Supplies > Paper > Calendars & Planners\",\n    \"price_range_usd\": [\n      4,\n      15\n    ],\n    \"gumroad_ready\": true,\n    \"miricanvas_ready\": false\n  }\n}",
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "adpf03-factory-profile-planner",
+      "name": "Factory Profile: Planner",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1200,
+        0
+      ],
+      "notes": "Planner Factory: A4 portrait, 24 pages, formats PDF/PNG/JPG/JSON/TXT.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"profile\": {\n    \"factory_key\": \"printable\",\n    \"display_name\": \"Printable Factory\",\n    \"page_size\": \"US Letter portrait\",\n    \"page_width_pt\": 612,\n    \"page_height_pt\": 792,\n    \"target_pages\": 12,\n    \"image_pages\": 3,\n    \"image_size\": \"1024x1536\",\n    \"cover_size\": \"1024x1536\",\n    \"thumbnail_size\": \"1024x1024\",\n    \"preview_size\": \"1024x1024\",\n    \"preview_count\": 3,\n    \"output_formats\": [\n      \"PDF\",\n      \"PNG\",\n      \"JPG\",\n      \"JSON\",\n      \"TXT\"\n    ],\n    \"svg_required\": false,\n    \"content_schema\": \"A focused printable pack: cover, instructions, then standalone print-and-use sheets (checklists, trackers, worksheets). Each sheet must work on its own without the others.\",\n    \"art_direction\": \"clean editorial layout, one accent colour, high print contrast\",\n    \"etsy_taxonomy_hint\": \"Paper & Party Supplies > Paper > Stationery\",\n    \"price_range_usd\": [\n      3,\n      12\n    ],\n    \"gumroad_ready\": true,\n    \"miricanvas_ready\": false\n  }\n}",
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "adpf03-factory-profile-printable",
+      "name": "Factory Profile: Printable",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1200,
+        190
+      ],
+      "notes": "Printable Factory: US Letter portrait, 12 pages, formats PDF/PNG/JPG/JSON/TXT.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"profile\": {\n    \"factory_key\": \"canva\",\n    \"display_name\": \"Canva Factory\",\n    \"page_size\": \"A4 portrait\",\n    \"page_width_pt\": 595.28,\n    \"page_height_pt\": 841.89,\n    \"target_pages\": 10,\n    \"image_pages\": 3,\n    \"image_size\": \"1024x1536\",\n    \"cover_size\": \"1024x1536\",\n    \"thumbnail_size\": \"1024x1024\",\n    \"preview_size\": \"1024x1024\",\n    \"preview_count\": 3,\n    \"output_formats\": [\n      \"PDF\",\n      \"PNG\",\n      \"JPG\",\n      \"SVG\",\n      \"JSON\",\n      \"TXT\"\n    ],\n    \"svg_required\": true,\n    \"content_schema\": \"An editable template kit: cover, brand/style guide page, then template pages. Every template page must list its editable text slots and recommended image slots so it can be rebuilt in an editor. Include a page describing the licence and edit workflow.\",\n    \"art_direction\": \"modern brandable template look, flat vector shapes, two-colour system\",\n    \"etsy_taxonomy_hint\": \"Craft Supplies & Tools > Digital > Templates\",\n    \"price_range_usd\": [\n      6,\n      24\n    ],\n    \"gumroad_ready\": true,\n    \"miricanvas_ready\": true\n  }\n}",
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "adpf03-factory-profile-canva",
+      "name": "Factory Profile: Canva",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1200,
+        380
+      ],
+      "notes": "Canva Factory: A4 portrait, 10 pages, formats PDF/PNG/JPG/SVG/JSON/TXT, editable SVG source.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"profile\": {\n    \"factory_key\": \"wallart\",\n    \"display_name\": \"Wall Art Factory\",\n    \"page_size\": \"2:3 portrait print\",\n    \"page_width_pt\": 576,\n    \"page_height_pt\": 864,\n    \"target_pages\": 8,\n    \"image_pages\": 6,\n    \"image_size\": \"1024x1536\",\n    \"cover_size\": \"1024x1536\",\n    \"thumbnail_size\": \"1024x1024\",\n    \"preview_size\": \"1536x1024\",\n    \"preview_count\": 3,\n    \"output_formats\": [\n      \"PDF\",\n      \"PNG\",\n      \"JPG\",\n      \"JSON\",\n      \"TXT\"\n    ],\n    \"svg_required\": false,\n    \"content_schema\": \"A wall art set: cover, a short printing/sizing guide (2:3, 3:4, 4:5, ISO ratios), then one page per artwork with a title and a two-line description. Text pages stay minimal - the art carries it.\",\n    \"art_direction\": \"gallery-ready fine art print, cohesive palette across the set\",\n    \"etsy_taxonomy_hint\": \"Art & Collectibles > Prints > Digital Prints\",\n    \"price_range_usd\": [\n      5,\n      20\n    ],\n    \"gumroad_ready\": true,\n    \"miricanvas_ready\": false\n  }\n}",
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "adpf03-factory-profile-wall-art",
+      "name": "Factory Profile: Wall Art",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1200,
+        570
+      ],
+      "notes": "Wall Art Factory: 2:3 portrait print, 8 pages, formats PDF/PNG/JPG/JSON/TXT.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"profile\": {\n    \"factory_key\": \"resume\",\n    \"display_name\": \"Resume Factory\",\n    \"page_size\": \"US Letter portrait\",\n    \"page_width_pt\": 612,\n    \"page_height_pt\": 792,\n    \"target_pages\": 8,\n    \"image_pages\": 1,\n    \"image_size\": \"1024x1536\",\n    \"cover_size\": \"1024x1536\",\n    \"thumbnail_size\": \"1024x1024\",\n    \"preview_size\": \"1024x1024\",\n    \"preview_count\": 3,\n    \"output_formats\": [\n      \"PDF\",\n      \"PNG\",\n      \"JPG\",\n      \"SVG\",\n      \"JSON\",\n      \"TXT\"\n    ],\n    \"svg_required\": true,\n    \"content_schema\": \"A resume kit: cover, ATS rules page, a filled example resume, a blank structure page, a matching cover-letter page, and a page of action verbs plus a tailoring checklist. Sample content must be realistic but clearly fictional.\",\n    \"art_direction\": \"professional typographic layout, single accent rule, no decoration\",\n    \"etsy_taxonomy_hint\": \"Paper & Party Supplies > Paper > Stationery > Design & Templates\",\n    \"price_range_usd\": [\n      5,\n      18\n    ],\n    \"gumroad_ready\": true,\n    \"miricanvas_ready\": true\n  }\n}",
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "adpf03-factory-profile-resume",
+      "name": "Factory Profile: Resume",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1200,
+        760
+      ],
+      "notes": "Resume Factory: US Letter portrait, 8 pages, formats PDF/PNG/JPG/SVG/JSON/TXT, editable SVG source.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"profile\": {\n    \"factory_key\": \"spreadsheet\",\n    \"display_name\": \"Spreadsheet Factory\",\n    \"page_size\": \"A4 landscape\",\n    \"page_width_pt\": 841.89,\n    \"page_height_pt\": 595.28,\n    \"target_pages\": 10,\n    \"image_pages\": 2,\n    \"image_size\": \"1536x1024\",\n    \"cover_size\": \"1024x1536\",\n    \"thumbnail_size\": \"1024x1024\",\n    \"preview_size\": \"1536x1024\",\n    \"preview_count\": 3,\n    \"output_formats\": [\n      \"PDF\",\n      \"PNG\",\n      \"JPG\",\n      \"JSON\",\n      \"TXT\"\n    ],\n    \"svg_required\": false,\n    \"content_schema\": \"A spreadsheet system delivered as documentation plus a printable companion: cover, setup guide, one page per sheet listing exact column headers, data types and the formulas to paste, then a worked example and a troubleshooting page. Formulas must be plain text and valid in both Google Sheets and Excel.\",\n    \"art_direction\": \"data-dashboard aesthetic, muted chart palette, tidy grid\",\n    \"etsy_taxonomy_hint\": \"Craft Supplies & Tools > Digital > Templates\",\n    \"price_range_usd\": [\n      5,\n      22\n    ],\n    \"gumroad_ready\": true,\n    \"miricanvas_ready\": false\n  }\n}",
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "adpf03-factory-profile-spreadsheet",
+      "name": "Factory Profile: Spreadsheet",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1200,
+        950
+      ],
+      "notes": "Spreadsheet Factory: A4 landscape, 10 pages, formats PDF/PNG/JPG/JSON/TXT.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"profile\": {\n    \"factory_key\": \"kids\",\n    \"display_name\": \"Kids Factory\",\n    \"page_size\": \"US Letter portrait\",\n    \"page_width_pt\": 612,\n    \"page_height_pt\": 792,\n    \"target_pages\": 16,\n    \"image_pages\": 8,\n    \"image_size\": \"1024x1536\",\n    \"cover_size\": \"1024x1536\",\n    \"thumbnail_size\": \"1024x1024\",\n    \"preview_size\": \"1024x1024\",\n    \"preview_count\": 3,\n    \"output_formats\": [\n      \"PDF\",\n      \"PNG\",\n      \"JPG\",\n      \"SVG\",\n      \"JSON\",\n      \"TXT\"\n    ],\n    \"svg_required\": true,\n    \"content_schema\": \"An age-appropriate activity pack for ages 3-8: cover, a parent guide page, then activity pages (tracing, counting, matching, colouring, simple mazes). Instructions are one short sentence in plain language. Absolutely no licensed characters and nothing that could frighten a small child.\",\n    \"art_direction\": \"friendly rounded shapes, bright but soft palette, thick clean outlines\",\n    \"etsy_taxonomy_hint\": \"Toys & Games > Games & Puzzles > Educational Games\",\n    \"price_range_usd\": [\n      3,\n      12\n    ],\n    \"gumroad_ready\": true,\n    \"miricanvas_ready\": true\n  }\n}",
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "adpf03-factory-profile-kids",
+      "name": "Factory Profile: Kids",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1200,
+        1140
+      ],
+      "notes": "Kids Factory: US Letter portrait, 16 pages, formats PDF/PNG/JPG/SVG/JSON/TXT, editable SVG source.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"profile\": {\n    \"factory_key\": \"svg\",\n    \"display_name\": \"SVG Factory\",\n    \"page_size\": \"Square preview sheet\",\n    \"page_width_pt\": 612,\n    \"page_height_pt\": 612,\n    \"target_pages\": 6,\n    \"image_pages\": 4,\n    \"image_size\": \"1024x1024\",\n    \"cover_size\": \"1024x1024\",\n    \"thumbnail_size\": \"1024x1024\",\n    \"preview_size\": \"1024x1024\",\n    \"preview_count\": 3,\n    \"output_formats\": [\n      \"SVG\",\n      \"PDF\",\n      \"PNG\",\n      \"JPG\",\n      \"JSON\",\n      \"TXT\"\n    ],\n    \"svg_required\": true,\n    \"content_schema\": \"A cut-file bundle: cover, a machine compatibility page (Cricut, Silhouette, ScanNCut), a sizing/weeding tips page, then one page per design with usage ideas. The SVG source is the actual product, so keep the text pages short and practical.\",\n    \"art_direction\": \"bold flat vector silhouettes, closed paths, no gradients, no thin strokes\",\n    \"etsy_taxonomy_hint\": \"Craft Supplies & Tools > Digital > Cut Files\",\n    \"price_range_usd\": [\n      3,\n      14\n    ],\n    \"gumroad_ready\": true,\n    \"miricanvas_ready\": true\n  }\n}",
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "adpf03-factory-profile-svg",
+      "name": "Factory Profile: SVG",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1200,
+        1330
+      ],
+      "notes": "SVG Factory: Square preview sheet, 6 pages, formats SVG/PDF/PNG/JPG/JSON/TXT, editable SVG source.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"profile\": {\n    \"factory_key\": \"printable\",\n    \"display_name\": \"Printable Factory (fallback)\",\n    \"page_size\": \"US Letter portrait\",\n    \"page_width_pt\": 612,\n    \"page_height_pt\": 792,\n    \"target_pages\": 12,\n    \"image_pages\": 3,\n    \"image_size\": \"1024x1536\",\n    \"cover_size\": \"1024x1536\",\n    \"thumbnail_size\": \"1024x1024\",\n    \"preview_size\": \"1024x1024\",\n    \"preview_count\": 3,\n    \"output_formats\": [\n      \"PDF\",\n      \"PNG\",\n      \"JPG\",\n      \"JSON\",\n      \"TXT\"\n    ],\n    \"svg_required\": false,\n    \"content_schema\": \"A focused printable pack: cover, instructions, then standalone print-and-use sheets (checklists, trackers, worksheets). Each sheet must work on its own without the others.\",\n    \"art_direction\": \"clean editorial layout, one accent colour, high print contrast\",\n    \"etsy_taxonomy_hint\": \"Paper & Party Supplies > Paper > Stationery\",\n    \"price_range_usd\": [\n      3,\n      12\n    ],\n    \"gumroad_ready\": true,\n    \"miricanvas_ready\": false\n  }\n}",
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "adpf03-factory-profile-fallback",
+      "name": "Factory Profile: Fallback",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1200,
+        1520
+      ],
+      "notes": "Unknown factory keys degrade to the printable profile instead of failing.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "id": "adpf03-merge-factory-profiles",
+      "name": "Merge: Factory Profiles",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1500,
+        570
+      ],
+      "notes": "Single join point - everything after this is shared by all 8 factories.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Mustache-style renderer for the {{placeholders}} in the prompt templates.\nconst render = (template, vars) =>\n  String(template).replace(/\\{\\{\\s*(\\w+)\\s*\\}\\}/g, (_, key) =>\n    vars[key] === undefined || vars[key] === null ? '' : String(vars[key]));\n\nconst ctx = $input.first().json;\nconst agent = $('Prompt Library').first().json.prompts.idea_ai;\n\nreturn [{\n  json: {\n    run_id: ctx.run_id,\n    factory: ctx.factory,\n    idea_user_prompt: render(agent.user_template, {\n      research_json: JSON.stringify(ctx.research, null, 2),\n      factory_profile_json: JSON.stringify(ctx.profile, null, 2),\n    }),\n  },\n}];"
+      },
+      "id": "adpf03-build-idea-prompt",
+      "name": "Build Idea Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        570
+      ],
+      "notes": "Renders the Idea AI template from research + factory profile.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $env.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.8, max_tokens: 2500, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.idea_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.idea_ai.output_contract) }, { role: 'user', content: $json.idea_user_prompt } ] }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "adpf03-openai-idea-ai",
+      "name": "OpenAI: Idea AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2100,
+        570
+      ],
+      "notes": "Agent 2/8. Turns the market concept into a buildable product brief.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Parse the product brief and enforce the limits the factory profile declares.\nconst base = $('Merge: Factory Profiles').first().json;\nconst response = $input.first().json;\n\nlet idea;\ntry {\n  idea = JSON.parse(response?.choices?.[0]?.message?.content || '');\n} catch (e) {\n  throw new Error(`Idea AI returned invalid JSON: ${e.message}`);\n}\n\nif (!idea.product_name || !Array.isArray(idea.sections) || !idea.sections.length) {\n  throw new Error('Idea AI output is missing product_name or sections');\n}\n\nidea.product_name = String(idea.product_name).replace(/\\s+/g, ' ').trim().slice(0, 60);\nidea.slug = idea.product_name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');\nidea.estimated_total_pages = Math.min(\n  base.profile.target_pages + 4,\n  Number(idea.estimated_total_pages) || base.profile.target_pages\n);\n\nreturn [{ json: { run_id: base.run_id, factory: base.factory, idea } }];"
+      },
+      "id": "adpf03-parse-idea-json",
+      "name": "Parse Idea JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        570
+      ],
+      "notes": "Validates the brief and clamps name/slug/page count to the profile.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Mustache-style renderer for the {{placeholders}} in the prompt templates.\nconst render = (template, vars) =>\n  String(template).replace(/\\{\\{\\s*(\\w+)\\s*\\}\\}/g, (_, key) =>\n    vars[key] === undefined || vars[key] === null ? '' : String(vars[key]));\n\nconst base = $('Merge: Factory Profiles').first().json;\nconst idea = $('Parse Idea JSON').first().json.idea;\nconst agent = $('Prompt Library').first().json.prompts.writer_ai;\n\nreturn [{\n  json: {\n    run_id: base.run_id,\n    content_user_prompt: render(agent.user_template, {\n      idea_json: JSON.stringify(idea, null, 2),\n      factory_profile_json: JSON.stringify(base.profile, null, 2),\n      content_schema: base.profile.content_schema,\n    }) + `\\n\\nHard requirement: produce ${base.profile.target_pages} content pages.`,\n  },\n}];"
+      },
+      "id": "adpf03-build-content-prompt",
+      "name": "Build Content Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2700,
+        570
+      ],
+      "notes": "Renders the Writer AI template with the factory content schema.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $env.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.7, max_tokens: 8000, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.writer_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.writer_ai.output_contract) }, { role: 'user', content: $json.content_user_prompt } ] }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "adpf03-openai-writer-ai",
+      "name": "OpenAI: Writer AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3000,
+        570
+      ],
+      "notes": "Agent 3/8. Writes the page-by-page copy that is typeset into the PDF.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Normalise the written content into exactly the shape the PDF builder expects.\nconst base = $('Merge: Factory Profiles').first().json;\nconst idea = $('Parse Idea JSON').first().json.idea;\nconst response = $input.first().json;\n\nlet content;\ntry {\n  content = JSON.parse(response?.choices?.[0]?.message?.content || '');\n} catch (e) {\n  throw new Error(`Writer AI returned invalid JSON: ${e.message}`);\n}\n\nconst pages = (content.pages || [])\n  .filter((p) => p && (p.title || (p.lines || []).length))\n  .map((p, index) => ({\n    page_number: Number(p.page_number) || index + 1,\n    title: String(p.title || `Page ${index + 1}`).slice(0, 90),\n    lines: (p.lines || []).map((l) => String(l).slice(0, 400)).filter(Boolean),\n    needs_image: p.needs_image === true,\n  }));\n\nif (!pages.length) {\n  throw new Error('Writer AI produced no usable pages');\n}\n\n// Cap how many pages get their own illustration - images are the expensive part.\nlet imageBudget = base.profile.image_pages;\nfor (const page of pages) {\n  if (page.needs_image && imageBudget > 0) { imageBudget -= 1; }\n  else { page.needs_image = false; }\n}\n\nreturn [{\n  json: {\n    run_id: base.run_id,\n    content: {\n      cover_title: String(content.cover_title || idea.product_name).slice(0, 70),\n      cover_subtitle: String(content.cover_subtitle || idea.one_liner || '').slice(0, 120),\n      intro_text: content.intro_text || '',\n      usage_instructions: content.usage_instructions || [],\n      credits: content.credits || 'Created with the AI Digital Product Factory',\n      pages,\n    },\n    word_count: pages.reduce((sum, p) => sum + p.lines.join(' ').split(/\\s+/).length, 0),\n  },\n}];"
+      },
+      "id": "adpf03-parse-content-json",
+      "name": "Parse Content JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3300,
+        570
+      ],
+      "notes": "Normalises pages and caps how many of them get their own illustration.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Mustache-style renderer for the {{placeholders}} in the prompt templates.\nconst render = (template, vars) =>\n  String(template).replace(/\\{\\{\\s*(\\w+)\\s*\\}\\}/g, (_, key) =>\n    vars[key] === undefined || vars[key] === null ? '' : String(vars[key]));\n\nconst base = $('Merge: Factory Profiles').first().json;\nconst idea = $('Parse Idea JSON').first().json.idea;\nconst content = $('Parse Content JSON').first().json.content;\nconst agent = $('Prompt Library').first().json.prompts.designer_ai;\n\nconst imagePages = content.pages\n  .filter((p) => p.needs_image)\n  .map((p) => ({ page_number: p.page_number, title: p.title, gist: (p.lines[0] || '').slice(0, 160) }));\n\nreturn [{\n  json: {\n    run_id: base.run_id,\n    designer_user_prompt: render(agent.user_template, {\n      idea_json: JSON.stringify(idea, null, 2),\n      image_page_list: JSON.stringify(imagePages, null, 2),\n      factory_profile_json: JSON.stringify(\n        { art_direction: base.profile.art_direction, page_size: base.profile.page_size },\n        null,\n        2\n      ),\n      svg_required: String(base.profile.svg_required),\n    }),\n  },\n}];"
+      },
+      "id": "adpf03-build-designer-prompt",
+      "name": "Build Designer Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        570
+      ],
+      "notes": "Renders the Designer AI template (image plan + optional SVG source).",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $env.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.9, max_tokens: 4000, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.designer_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.designer_ai.output_contract) }, { role: 'user', content: $json.designer_user_prompt } ] }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "adpf03-openai-designer-ai",
+      "name": "OpenAI: Designer AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3900,
+        570
+      ],
+      "notes": "Agent 4/8. Authors every image prompt and the sanitised SVG markup.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Build the concrete image job list. Formats are chosen on purpose:\n//   jpeg -> anything that goes inside the PDF (embeds as /DCTDecode untouched)\n//   png  -> the shop thumbnail, where a lossless icon looks better\nconst base = $('Merge: Factory Profiles').first().json;\nconst content = $('Parse Content JSON').first().json.content;\nconst response = $input.first().json;\n\nlet plan;\ntry {\n  plan = JSON.parse(response?.choices?.[0]?.message?.content || '');\n} catch (e) {\n  throw new Error(`Designer AI returned invalid JSON: ${e.message}`);\n}\n\nconst style = base.profile.art_direction;\nconst decorate = (prompt) =>\n  `${String(prompt || '').trim()} Art direction: ${style}. ` +\n  'No text, no letters, no numbers, no watermark, no logo, no signature.';\n\nconst jobs = [];\njobs.push({\n  role: 'cover',\n  key: 'cover',\n  prompt: decorate(plan?.cover?.prompt || `Cover artwork for ${content.cover_title}`),\n  size: base.profile.cover_size,\n  format: 'jpeg',\n});\njobs.push({\n  role: 'thumbnail',\n  key: 'thumbnail',\n  prompt: decorate(plan?.thumbnail?.prompt || `Square shop icon for ${content.cover_title}`),\n  size: base.profile.thumbnail_size,\n  format: 'png',\n});\n\nconst previews = Array.isArray(plan?.previews) ? plan.previews : [];\nfor (let i = 0; i < base.profile.preview_count; i += 1) {\n  jobs.push({\n    role: 'preview',\n    key: `preview_${i + 1}`,\n    index: i + 1,\n    prompt: decorate(previews[i]?.prompt || `Lifestyle mockup ${i + 1} of ${content.cover_title}`),\n    size: base.profile.preview_size,\n    format: 'jpeg',\n  });\n}\n\nconst pagePrompts = new Map(\n  (Array.isArray(plan?.pages) ? plan.pages : []).map((p) => [Number(p.page_number), p.prompt])\n);\nfor (const page of content.pages.filter((p) => p.needs_image)) {\n  jobs.push({\n    role: 'page',\n    key: `page_${page.page_number}`,\n    page_number: page.page_number,\n    prompt: decorate(pagePrompts.get(page.page_number) || page.title),\n    size: base.profile.image_size,\n    format: 'jpeg',\n  });\n}\n\n// Sanitise the optional editable vector source.\nlet svg = null;\nif (base.profile.svg_required && typeof plan?.svg_markup === 'string') {\n  svg = plan.svg_markup\n    .replace(/<\\?xml[\\s\\S]*?\\?>/gi, '')\n    .replace(/<!DOCTYPE[\\s\\S]*?>/gi, '')\n    .replace(/<script[\\s\\S]*?<\\/script>/gi, '')\n    .replace(/<foreignObject[\\s\\S]*?<\\/foreignObject>/gi, '')\n    .replace(/\\son\\w+\\s*=\\s*\"[^\"]*\"/gi, '')\n    .replace(/\\son\\w+\\s*=\\s*'[^']*'/gi, '')\n    .replace(/(href|xlink:href)\\s*=\\s*\"(?!#)[^\"]*\"/gi, '')\n    .trim();\n  if (!/^<svg[\\s>]/i.test(svg)) svg = null;\n}\n\nreturn [{\n  json: {\n    run_id: base.run_id,\n    dry_run: base.dry_run === true,\n    image_jobs: jobs,\n    svg_markup: svg,\n    image_job_count: jobs.length,\n  },\n}];"
+      },
+      "id": "adpf03-parse-image-plan",
+      "name": "Parse Image Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4200,
+        570
+      ],
+      "notes": "Builds the image job list (cover/thumbnail/previews/pages) and strips scripts and external references out of the SVG.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Fan the job list out into one item per image so the loop can process them\n// one at a time (and so a single failure cannot take the batch down).\nconst ctx = $input.first().json;\nreturn ctx.image_jobs.map((job, index) => ({\n  json: { ...job, job_index: index, total_jobs: ctx.image_jobs.length, dry_run: ctx.dry_run },\n}));"
+      },
+      "id": "adpf03-split-image-jobs",
+      "name": "Split: Image Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4500,
+        570
+      ],
+      "notes": "One item per image so a single failure cannot take the batch down.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {
+          "reset": false
+        }
+      },
+      "id": "adpf03-loop-image-jobs",
+      "name": "Loop: Image Jobs",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        4800,
+        570
+      ],
+      "notes": "Sequential generation: output 1 = next job, output 0 = all jobs done.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ !$json.dry_run }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "adpf03-check-generate-image",
+      "name": "Check: Generate Image",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5100,
+        760
+      ],
+      "notes": "dry_run=true swaps in a placeholder so rehearsals cost nothing.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/images/generations",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $env.OPENAI_MODEL_IMAGE || 'gpt-image-1', prompt: $json.prompt, size: $json.size, output_format: $json.format, quality: $env.OPENAI_IMAGE_QUALITY || 'high', n: 1 }) }}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "adpf03-openai-image-api",
+      "name": "OpenAI: Image API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5400,
+        760
+      ],
+      "notes": "Agent 4/8 (image call). JPEG for anything that lands in the PDF, PNG for the thumbnail.",
+      "notesInFlow": true,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 8000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Attach the generated bytes to the job. A failed generation is recorded rather\n// than thrown, so one bad prompt does not destroy an otherwise good product.\nconst job = $('Loop: Image Jobs').first().json;\nconst response = $input.first().json;\nconst b64 = response?.data?.[0]?.b64_json || null;\n\nreturn [{\n  json: {\n    ...job,\n    b64,\n    generated: Boolean(b64),\n    placeholder: false,\n    bytes: b64 ? Math.round((b64.length * 3) / 4) : 0,\n    error: b64 ? null : (response?.error?.message || 'image generation returned no data'),\n  },\n}];"
+      },
+      "id": "adpf03-store-generated-image",
+      "name": "Store Generated Image",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5700,
+        760
+      ],
+      "notes": "Attaches the bytes to the job; records the error instead of throwing.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Dry-run path: a 1x1 JPEG stands in for a generated image so the rest of the\n// pipeline (PDF, uploads, backup) can be rehearsed for free.\nconst job = $input.first().json;\nreturn [{\n  json: {\n    ...job,\n    b64: '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==',\n    format: 'jpeg',\n    generated: false,\n    placeholder: true,\n  },\n}];"
+      },
+      "id": "adpf03-use-placeholder-image",
+      "name": "Use Placeholder Image",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5400,
+        950
+      ],
+      "notes": "1x1 JPEG stand-in for dry runs.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Regroup every finished job into a single addressable image set.\nconst base = $('Merge: Factory Profiles').first().json;\nconst plan = $('Parse Image Plan').first().json;\nconst items = $input.all().map((i) => i.json).filter((j) => j && j.key);\n\nconst byKey = {};\nfor (const job of items) {\n  if (job.b64) byKey[job.key] = job;\n}\n\nconst failed = items.filter((j) => !j.b64).map((j) => ({ key: j.key, error: j.error }));\nif (!byKey.cover || !byKey.thumbnail) {\n  throw new Error(\n    'Image generation failed for the cover or thumbnail: ' + JSON.stringify(failed)\n  );\n}\n\nconst previews = items.filter((j) => j.role === 'preview' && j.b64);\nconst pages = items.filter((j) => j.role === 'page' && j.b64);\n\nreturn [{\n  json: {\n    run_id: base.run_id,\n    images: {\n      cover: { b64: byKey.cover.b64, format: 'jpeg' },\n      thumbnail: { b64: byKey.thumbnail.b64, format: 'png' },\n      previews: previews.map((p) => ({ index: p.index, b64: p.b64, format: 'jpeg' })),\n      pages: pages.map((p) => ({ page_number: p.page_number, b64: p.b64, format: 'jpeg' })),\n    },\n    svg_markup: plan.svg_markup || null,\n    image_stats: {\n      requested: plan.image_job_count,\n      generated: items.filter((j) => j.b64).length,\n      failed,\n      placeholder: items.some((j) => j.placeholder),\n    },\n  },\n}];"
+      },
+      "id": "adpf03-collect-generated-images",
+      "name": "Collect Generated Images",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5100,
+        570
+      ],
+      "notes": "Regroups the finished jobs; aborts only if cover or thumbnail is missing.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Mustache-style renderer for the {{placeholders}} in the prompt templates.\nconst render = (template, vars) =>\n  String(template).replace(/\\{\\{\\s*(\\w+)\\s*\\}\\}/g, (_, key) =>\n    vars[key] === undefined || vars[key] === null ? '' : String(vars[key]));\n\n// Planned deliverables, used by the SEO / metadata / QA prompts before the\n// bytes actually exist.\nconst plannedFiles = (base, idea, images) => {\n  const files = [\n    { name: `${idea.slug}.pdf`, format: 'PDF', purpose: 'main product file' },\n    { name: `${idea.slug}-thumbnail.png`, format: 'PNG', purpose: 'shop thumbnail' },\n    { name: `${idea.slug}-cover.jpg`, format: 'JPG', purpose: 'listing cover image' },\n    { name: 'metadata.json', format: 'JSON', purpose: 'machine readable product record' },\n    { name: 'description.txt', format: 'TXT', purpose: 'marketplace description' },\n  ];\n  (images?.previews || []).forEach((p) => files.push({\n    name: `${idea.slug}-preview-${p.index}.jpg`, format: 'JPG', purpose: 'listing preview',\n  }));\n  if (base.profile.svg_required) {\n    files.push({ name: `${idea.slug}.svg`, format: 'SVG', purpose: 'editable vector source' });\n  }\n  return files;\n};\n\nconst base = $('Merge: Factory Profiles').first().json;\nconst idea = $('Parse Idea JSON').first().json.idea;\nconst images = $('Collect Generated Images').first().json.images;\nconst agent = $('Prompt Library').first().json.prompts.seo_ai;\n\nreturn [{\n  json: {\n    run_id: base.run_id,\n    seo_user_prompt: render(agent.user_template, {\n      seo_task: 'title',\n      research_json: JSON.stringify(base.research, null, 2),\n      idea_json: JSON.stringify(idea, null, 2),\n      file_manifest: JSON.stringify(plannedFiles(base, idea, images), null, 2),\n    }),\n  },\n}];"
+      },
+      "id": "adpf03-build-seo-title-prompt",
+      "name": "Build SEO Title Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5400,
+        380
+      ],
+      "notes": "SEO AI in 'title' mode.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $env.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.6, max_tokens: 600, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.seo_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.seo_ai.output_contract) }, { role: 'user', content: $json.seo_user_prompt } ] }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "adpf03-openai-seo-ai-title",
+      "name": "OpenAI: SEO AI Title",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5700,
+        380
+      ],
+      "notes": "Agent 5/8. Etsy title, keyword-front-loaded, max 140 characters.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Mustache-style renderer for the {{placeholders}} in the prompt templates.\nconst render = (template, vars) =>\n  String(template).replace(/\\{\\{\\s*(\\w+)\\s*\\}\\}/g, (_, key) =>\n    vars[key] === undefined || vars[key] === null ? '' : String(vars[key]));\n\n// Planned deliverables, used by the SEO / metadata / QA prompts before the\n// bytes actually exist.\nconst plannedFiles = (base, idea, images) => {\n  const files = [\n    { name: `${idea.slug}.pdf`, format: 'PDF', purpose: 'main product file' },\n    { name: `${idea.slug}-thumbnail.png`, format: 'PNG', purpose: 'shop thumbnail' },\n    { name: `${idea.slug}-cover.jpg`, format: 'JPG', purpose: 'listing cover image' },\n    { name: 'metadata.json', format: 'JSON', purpose: 'machine readable product record' },\n    { name: 'description.txt', format: 'TXT', purpose: 'marketplace description' },\n  ];\n  (images?.previews || []).forEach((p) => files.push({\n    name: `${idea.slug}-preview-${p.index}.jpg`, format: 'JPG', purpose: 'listing preview',\n  }));\n  if (base.profile.svg_required) {\n    files.push({ name: `${idea.slug}.svg`, format: 'SVG', purpose: 'editable vector source' });\n  }\n  return files;\n};\n\nconst base = $('Merge: Factory Profiles').first().json;\nconst idea = $('Parse Idea JSON').first().json.idea;\nconst content = $('Parse Content JSON').first().json.content;\nconst images = $('Collect Generated Images').first().json.images;\nconst agent = $('Prompt Library').first().json.prompts.seo_ai;\n\nreturn [{\n  json: {\n    run_id: base.run_id,\n    seo_user_prompt: render(agent.user_template, {\n      seo_task: 'description',\n      research_json: JSON.stringify(base.research, null, 2),\n      idea_json: JSON.stringify({ ...idea, page_count: content.pages.length }, null, 2),\n      file_manifest: JSON.stringify(plannedFiles(base, idea, images), null, 2),\n    }),\n  },\n}];"
+      },
+      "id": "adpf03-build-seo-description-prompt",
+      "name": "Build SEO Description Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6000,
+        380
+      ],
+      "notes": "SEO AI in 'description' mode.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $env.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.6, max_tokens: 1500, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.seo_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.seo_ai.output_contract) }, { role: 'user', content: $json.seo_user_prompt } ] }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "adpf03-openai-seo-ai-description",
+      "name": "OpenAI: SEO AI Description",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6300,
+        380
+      ],
+      "notes": "Agent 5/8. Five-paragraph description including the digital download notice.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Mustache-style renderer for the {{placeholders}} in the prompt templates.\nconst render = (template, vars) =>\n  String(template).replace(/\\{\\{\\s*(\\w+)\\s*\\}\\}/g, (_, key) =>\n    vars[key] === undefined || vars[key] === null ? '' : String(vars[key]));\n\n// Planned deliverables, used by the SEO / metadata / QA prompts before the\n// bytes actually exist.\nconst plannedFiles = (base, idea, images) => {\n  const files = [\n    { name: `${idea.slug}.pdf`, format: 'PDF', purpose: 'main product file' },\n    { name: `${idea.slug}-thumbnail.png`, format: 'PNG', purpose: 'shop thumbnail' },\n    { name: `${idea.slug}-cover.jpg`, format: 'JPG', purpose: 'listing cover image' },\n    { name: 'metadata.json', format: 'JSON', purpose: 'machine readable product record' },\n    { name: 'description.txt', format: 'TXT', purpose: 'marketplace description' },\n  ];\n  (images?.previews || []).forEach((p) => files.push({\n    name: `${idea.slug}-preview-${p.index}.jpg`, format: 'JPG', purpose: 'listing preview',\n  }));\n  if (base.profile.svg_required) {\n    files.push({ name: `${idea.slug}.svg`, format: 'SVG', purpose: 'editable vector source' });\n  }\n  return files;\n};\n\nconst base = $('Merge: Factory Profiles').first().json;\nconst idea = $('Parse Idea JSON').first().json.idea;\nconst images = $('Collect Generated Images').first().json.images;\nconst agent = $('Prompt Library').first().json.prompts.seo_ai;\n\nreturn [{\n  json: {\n    run_id: base.run_id,\n    seo_user_prompt: render(agent.user_template, {\n      seo_task: 'tags',\n      research_json: JSON.stringify(base.research, null, 2),\n      idea_json: JSON.stringify(idea, null, 2),\n      file_manifest: JSON.stringify(plannedFiles(base, idea, images), null, 2),\n    }) + '\\nCandidate keywords you may reuse: ' +\n      (base.research.sub_keywords || []).join(', '),\n  },\n}];"
+      },
+      "id": "adpf03-build-seo-tags-prompt",
+      "name": "Build SEO Tags Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6600,
+        380
+      ],
+      "notes": "SEO AI in 'tags' mode, seeded with the researched keywords.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $env.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.5, max_tokens: 800, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.seo_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.seo_ai.output_contract) }, { role: 'user', content: $json.seo_user_prompt } ] }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "adpf03-openai-seo-ai-etsy-tags",
+      "name": "OpenAI: SEO AI Etsy Tags",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6900,
+        380
+      ],
+      "notes": "Agent 5/8. Exactly 13 Etsy tags plus the materials list.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Etsy rejects listings on hard limits, so the model output is repaired here\n// rather than trusted: 140 char title, exactly 13 tags, 20 chars per tag.\nconst base = $('Merge: Factory Profiles').first().json;\nconst idea = $('Parse Idea JSON').first().json.idea;\n\nconst readJson = (nodeName) => {\n  try {\n    return JSON.parse($(nodeName).first().json?.choices?.[0]?.message?.content || '{}');\n  } catch (e) {\n    return {};\n  }\n};\n\nconst titleOut = readJson('OpenAI: SEO AI Title');\nconst descriptionOut = readJson('OpenAI: SEO AI Description');\nconst tagsOut = readJson('OpenAI: SEO AI Etsy Tags');\n\nlet title = String(titleOut.title || idea.product_name).replace(/\\s+/g, ' ').trim();\nif (title.length > 140) title = title.slice(0, 137).replace(/[\\s,|-]+$/, '') + '...';\n\nconst normaliseTag = (tag) => String(tag)\n  .toLowerCase()\n  .replace(/[^a-z0-9 ]/g, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim()\n  .slice(0, 20)\n  .trim();\n\nconst candidates = [\n  ...(tagsOut.tags || []),\n  ...(base.research.sub_keywords || []),\n  ...(base.research.long_tail || []),\n  base.research.keyword,\n  base.factory,\n];\n\nconst tags = [];\nfor (const candidate of candidates) {\n  const tag = normaliseTag(candidate);\n  if (tag && tag.length >= 3 && !tags.includes(tag)) tags.push(tag);\n  if (tags.length === 13) break;\n}\nwhile (tags.length < 13) tags.push(normaliseTag(`${base.factory} download ${tags.length}`));\n\nconst description = String(descriptionOut.description || '').trim() ||\n  `${idea.product_name}\\n\\n${idea.promise || idea.one_liner || ''}`;\n\nconst disclosure = 'This is an instant digital download. No physical item will be shipped.';\nconst finalDescription = description.toLowerCase().includes('digital download')\n  ? description\n  : `${description}\\n\\n${disclosure}`;\n\nconst materials = (tagsOut.materials || ['digital file', 'pdf', 'printable'])\n  .map(normaliseTag)\n  .filter(Boolean)\n  .slice(0, 13);\n\nreturn [{\n  json: {\n    run_id: base.run_id,\n    seo: {\n      title,\n      title_length: title.length,\n      description: finalDescription,\n      tags,\n      materials,\n      primary_keyword: base.research.keyword,\n    },\n    seo_warnings: [\n      title.length > 140 ? 'title truncated' : null,\n      (tagsOut.tags || []).length !== 13 ? 'tag list repaired locally' : null,\n    ].filter(Boolean),\n  },\n}];"
+      },
+      "id": "adpf03-validate-seo-package",
+      "name": "Validate SEO Package",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7200,
+        380
+      ],
+      "notes": "Repairs the SEO output locally against Etsy's hard limits (140 / 13 / 20).",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Mustache-style renderer for the {{placeholders}} in the prompt templates.\nconst render = (template, vars) =>\n  String(template).replace(/\\{\\{\\s*(\\w+)\\s*\\}\\}/g, (_, key) =>\n    vars[key] === undefined || vars[key] === null ? '' : String(vars[key]));\n\n// Planned deliverables, used by the SEO / metadata / QA prompts before the\n// bytes actually exist.\nconst plannedFiles = (base, idea, images) => {\n  const files = [\n    { name: `${idea.slug}.pdf`, format: 'PDF', purpose: 'main product file' },\n    { name: `${idea.slug}-thumbnail.png`, format: 'PNG', purpose: 'shop thumbnail' },\n    { name: `${idea.slug}-cover.jpg`, format: 'JPG', purpose: 'listing cover image' },\n    { name: 'metadata.json', format: 'JSON', purpose: 'machine readable product record' },\n    { name: 'description.txt', format: 'TXT', purpose: 'marketplace description' },\n  ];\n  (images?.previews || []).forEach((p) => files.push({\n    name: `${idea.slug}-preview-${p.index}.jpg`, format: 'JPG', purpose: 'listing preview',\n  }));\n  if (base.profile.svg_required) {\n    files.push({ name: `${idea.slug}.svg`, format: 'SVG', purpose: 'editable vector source' });\n  }\n  return files;\n};\n\nconst base = $('Merge: Factory Profiles').first().json;\nconst idea = $('Parse Idea JSON').first().json.idea;\nconst seo = $('Validate SEO Package').first().json.seo;\nconst images = $('Collect Generated Images').first().json.images;\nconst agent = $('Prompt Library').first().json.prompts.metadata_ai;\n\nreturn [{\n  json: {\n    run_id: base.run_id,\n    metadata_user_prompt: render(agent.user_template, {\n      research_json: JSON.stringify(base.research, null, 2),\n      idea_json: JSON.stringify(idea, null, 2),\n      seo_json: JSON.stringify(seo, null, 2),\n      file_manifest: JSON.stringify(plannedFiles(base, idea, images), null, 2),\n      factory_profile_json: JSON.stringify(base.profile, null, 2),\n    }),\n  },\n}];"
+      },
+      "id": "adpf03-build-metadata-prompt",
+      "name": "Build Metadata Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7500,
+        380
+      ],
+      "notes": "Renders the Metadata AI template.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $env.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.2, max_tokens: 1500, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.metadata_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.metadata_ai.output_contract) }, { role: 'user', content: $json.metadata_user_prompt } ] }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "adpf03-openai-metadata-ai",
+      "name": "OpenAI: Metadata AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        7800,
+        380
+      ],
+      "notes": "Agent 6/8. Produces the canonical metadata record.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Metadata is the record of truth for the database and Google Drive, so every\n// field is clamped locally instead of trusted.\nconst base = $('Merge: Factory Profiles').first().json;\nconst idea = $('Parse Idea JSON').first().json.idea;\nconst seo = $('Validate SEO Package').first().json.seo;\nconst response = $input.first().json;\n\nlet metadata = {};\ntry {\n  metadata = JSON.parse(response?.choices?.[0]?.message?.content || '{}');\n} catch (e) {\n  metadata = {};\n}\n\nconst [minPrice, maxPrice] = base.profile.price_range_usd;\nconst suggested = Number(metadata.price_usd) || Number(base.research.price_suggestion_usd) || minPrice;\nconst price = Math.round(Math.min(maxPrice, Math.max(minPrice, suggested)) * 100) / 100;\n\nreturn [{\n  json: {\n    run_id: base.run_id,\n    metadata: {\n      product_name: idea.product_name,\n      slug: idea.slug,\n      factory: base.factory,\n      category: metadata.category || base.research.category || 'Digital Downloads',\n      taxonomy_hint: metadata.taxonomy_hint || base.profile.etsy_taxonomy_hint,\n      price_usd: price,\n      currency: 'USD',\n      keywords: seo.tags,\n      tags: seo.tags,\n      compatibility: {\n        gumroad: base.profile.gumroad_ready && metadata?.compatibility?.gumroad !== false,\n        miricanvas: base.profile.miricanvas_ready && metadata?.compatibility?.miricanvas !== false,\n        notes: metadata?.compatibility?.notes || 'derived from the factory profile',\n      },\n      license: metadata.license || 'Personal use only. Commercial resale of the file is not permitted.',\n      prompt_version: base.prompt_version,\n      generated_at: new Date().toISOString(),\n    },\n  },\n}];"
+      },
+      "id": "adpf03-parse-metadata-json",
+      "name": "Parse Metadata JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8100,
+        380
+      ],
+      "notes": "Clamps price to the factory range and derives platform compatibility.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Mustache-style renderer for the {{placeholders}} in the prompt templates.\nconst render = (template, vars) =>\n  String(template).replace(/\\{\\{\\s*(\\w+)\\s*\\}\\}/g, (_, key) =>\n    vars[key] === undefined || vars[key] === null ? '' : String(vars[key]));\n\n// Planned deliverables, used by the SEO / metadata / QA prompts before the\n// bytes actually exist.\nconst plannedFiles = (base, idea, images) => {\n  const files = [\n    { name: `${idea.slug}.pdf`, format: 'PDF', purpose: 'main product file' },\n    { name: `${idea.slug}-thumbnail.png`, format: 'PNG', purpose: 'shop thumbnail' },\n    { name: `${idea.slug}-cover.jpg`, format: 'JPG', purpose: 'listing cover image' },\n    { name: 'metadata.json', format: 'JSON', purpose: 'machine readable product record' },\n    { name: 'description.txt', format: 'TXT', purpose: 'marketplace description' },\n  ];\n  (images?.previews || []).forEach((p) => files.push({\n    name: `${idea.slug}-preview-${p.index}.jpg`, format: 'JPG', purpose: 'listing preview',\n  }));\n  if (base.profile.svg_required) {\n    files.push({ name: `${idea.slug}.svg`, format: 'SVG', purpose: 'editable vector source' });\n  }\n  return files;\n};\n\nconst base = $('Merge: Factory Profiles').first().json;\nconst idea = $('Parse Idea JSON').first().json.idea;\nconst content = $('Parse Content JSON').first().json.content;\nconst seo = $('Validate SEO Package').first().json.seo;\nconst metadata = $('Parse Metadata JSON').first().json.metadata;\nconst images = $('Collect Generated Images').first().json.images;\nconst agent = $('Prompt Library').first().json.prompts.qa_ai;\n\n// The QA agent reviews the copy, never the image bytes.\nconst reviewableContent = {\n  cover_title: content.cover_title,\n  cover_subtitle: content.cover_subtitle,\n  page_count: content.pages.length,\n  pages: content.pages.map((p) => ({ page_number: p.page_number, title: p.title, lines: p.lines })),\n  usage_instructions: content.usage_instructions,\n};\n\nreturn [{\n  json: {\n    run_id: base.run_id,\n    qa_user_prompt: render(agent.user_template, {\n      idea_json: JSON.stringify(idea, null, 2),\n      content_json: JSON.stringify(reviewableContent, null, 2),\n      seo_json: JSON.stringify(seo, null, 2),\n      metadata_json: JSON.stringify(metadata, null, 2),\n      file_manifest: JSON.stringify(plannedFiles(base, idea, images), null, 2),\n    }),\n  },\n}];"
+      },
+      "id": "adpf03-build-qa-prompt",
+      "name": "Build QA Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8400,
+        380
+      ],
+      "notes": "Renders the QA AI template with the full reviewable payload.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $env.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.1, max_tokens: 2000, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.qa_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.qa_ai.output_contract) }, { role: 'user', content: $json.qa_user_prompt } ] }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "adpf03-openai-qa-ai",
+      "name": "OpenAI: QA AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        8700,
+        380
+      ],
+      "notes": "Agent 7/8. Strict compliance gate before anything is published.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// The QA verdict decides whether anything reaches a marketplace at all.\nconst base = $('Merge: Factory Profiles').first().json;\nconst response = $input.first().json;\n\nlet report;\ntry {\n  report = JSON.parse(response?.choices?.[0]?.message?.content || '');\n} catch (e) {\n  report = {\n    passed: false,\n    blockers: [`QA AI returned invalid JSON: ${e.message}`],\n    scores: {},\n    warnings: [],\n    summary: 'QA response could not be parsed',\n  };\n}\n\nconst scores = report.scores || {};\nconst lowest = Object.values(scores).length ? Math.min(...Object.values(scores).map(Number)) : 0;\nconst blockers = report.blockers || [];\n\n// Local re-check: never rely solely on the model to enforce hard limits.\nconst seo = $('Validate SEO Package').first().json.seo;\nif (seo.title.length > 140) blockers.push('title exceeds 140 characters');\nif (seo.tags.length !== 13) blockers.push(`tag count is ${seo.tags.length}, expected 13`);\nif (seo.tags.some((t) => t.length > 20)) blockers.push('a tag exceeds 20 characters');\n\nconst passed = report.passed === true && blockers.length === 0 && lowest >= 7;\n\nreturn [{\n  json: {\n    run_id: base.run_id,\n    qa: { ...report, passed, blockers, lowest_score: lowest },\n  },\n}];"
+      },
+      "id": "adpf03-parse-qa-report",
+      "name": "Parse QA Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9000,
+        380
+      ],
+      "notes": "Adds deterministic Etsy limit checks on top of the model verdict.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.qa.passed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "adpf03-check-qa-passed",
+      "name": "Check: QA Passed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        9300,
+        380
+      ],
+      "notes": "Fail closed: a rejected product never reaches the Publish Engine.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Business rejection, not a technical error: return ok=false so 01 logs it and\n// stops cleanly instead of raising a workflow exception.\nconst base = $('Merge: Factory Profiles').first().json;\nconst qa = $('Parse QA Report').first().json.qa;\nconst idea = $('Parse Idea JSON').first().json.idea;\n\nreturn [{\n  json: {\n    ok: false,\n    run_id: base.run_id,\n    factory: base.factory,\n    product_name: idea.product_name,\n    failure_reason: `QA gate rejected the product: ${(qa.blockers || []).join('; ') || qa.summary}`,\n    qa,\n  },\n}];"
+      },
+      "id": "adpf03-build-qa-failure-result",
+      "name": "Build QA Failure Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9600,
+        570
+      ],
+      "notes": "Returns ok=false (business rejection) rather than raising an error.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// ---------------------------------------------------------------------------\n// Minimal PDF 1.4 writer (no external dependencies).\n// ---------------------------------------------------------------------------\nconst PDF_FONT = { regular: 'F1', bold: 'F2' };\n\n// Strip anything Helvetica/WinAnsi cannot show, then escape PDF string syntax.\nfunction pdfEscape(text) {\n  return String(text === undefined || text === null ? '' : text)\n    .replace(/[‘’]/g, \"'\")\n    .replace(/[“”]/g, '\"')\n    .replace(/[–—]/g, '-')\n    .replace(/…/g, '...')\n    .replace(/[^\\x20-\\x7E\\xA1-\\xFF]/g, '')\n    .replace(/\\\\/g, '\\\\\\\\')\n    .replace(/\\(/g, '\\\\(')\n    .replace(/\\)/g, '\\\\)');\n}\n\n// Read width/height/components out of a JPEG SOF marker.\nfunction jpegInfo(buffer) {\n  let i = 2;\n  while (i < buffer.length - 9) {\n    if (buffer[i] !== 0xff) { i += 1; continue; }\n    const marker = buffer[i + 1];\n    if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {\n      i += 2;\n      continue;\n    }\n    const length = buffer.readUInt16BE(i + 2);\n    const isSOF = marker >= 0xc0 && marker <= 0xcf &&\n      marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;\n    if (isSOF) {\n      return {\n        height: buffer.readUInt16BE(i + 5),\n        width: buffer.readUInt16BE(i + 7),\n        components: buffer[i + 9],\n      };\n    }\n    i += 2 + length;\n  }\n  return { width: 1024, height: 1024, components: 3 };\n}\n\n// Greedy word wrap. Helvetica averages ~0.5em per character, which is accurate\n// enough for body copy at 10-12pt.\nfunction wrapText(text, fontSize, usableWidth) {\n  const maxChars = Math.max(20, Math.floor(usableWidth / (fontSize * 0.5)));\n  const out = [];\n  for (const rawLine of String(text).split('\\n')) {\n    let line = '';\n    for (const word of rawLine.split(/\\s+/)) {\n      if (!word) continue;\n      if (!line.length) { line = word; continue; }\n      if ((line + ' ' + word).length <= maxChars) { line += ' ' + word; }\n      else { out.push(line); line = word; }\n    }\n    out.push(line);\n  }\n  return out;\n}\n\nfunction buildPdf(spec) {\n  const PW = spec.width || 595.28;   // A4 portrait by default\n  const PH = spec.height || 841.89;\n  const margin = spec.margin || 56;\n  const bodySize = spec.body_size || 11;\n  const leading = Math.round(bodySize * 1.5);\n  const usableWidth = PW - margin * 2;\n\n  // Object ids 1-5 are reserved: catalog, page tree, 2 fonts, document info.\n  const objects = [null, null, null, null, null];\n  const push = (content) => { objects.push(content); return objects.length; };\n  const pageIds = [];\n\n  const addPage = (contentStream, extraResources) => {\n    const contentId = push(\n      `<< /Length ${Buffer.byteLength(contentStream, 'latin1')} >>\\n` +\n      `stream\\n${contentStream}\\nendstream`\n    );\n    const resources =\n      `/Font << /F1 3 0 R /F2 4 0 R >>` + (extraResources ? ' ' + extraResources : '');\n    pageIds.push(push(\n      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PW.toFixed(2)} ${PH.toFixed(2)}]` +\n      ` /Resources << ${resources} >> /Contents ${contentId} 0 R >>`\n    ));\n  };\n\n  const footer = (label) => {\n    if (!label) return '';\n    return `BT /${PDF_FONT.regular} 8 Tf 0.45 0.45 0.45 rg ` +\n      `${margin} ${(margin / 2).toFixed(2)} Td (${pdfEscape(label)}) Tj ET 0 0 0 rg\\n`;\n  };\n\n  for (const page of spec.pages || []) {\n    // ---- image page: fit the JPEG inside the page, centred -----------------\n    if (page.type === 'image' && page.jpeg_base64) {\n      const data = Buffer.from(page.jpeg_base64, 'base64');\n      const info = jpegInfo(data);\n      const bleed = page.full_bleed ? 0 : margin / 2;\n      const scale = Math.min(\n        (PW - bleed * 2) / info.width,\n        (PH - bleed * 2) / info.height\n      );\n      const w = info.width * scale;\n      const h = info.height * scale;\n      const x = (PW - w) / 2;\n      const y = (PH - h) / 2;\n      const imageId = push(Buffer.concat([\n        Buffer.from(\n          `<< /Type /XObject /Subtype /Image /Width ${info.width} /Height ${info.height}` +\n          ` /ColorSpace ${info.components === 1 ? '/DeviceGray' : '/DeviceRGB'}` +\n          ` /BitsPerComponent 8 /Filter /DCTDecode /Length ${data.length} >>\\nstream\\n`,\n          'latin1'\n        ),\n        data,\n        Buffer.from('\\nendstream', 'latin1'),\n      ]));\n      let stream = `q ${w.toFixed(2)} 0 0 ${h.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)} cm /Im0 Do Q\\n`;\n      if (page.caption) {\n        stream += `BT /${PDF_FONT.regular} 10 Tf ${margin} ${(y - 18).toFixed(2)} Td ` +\n          `(${pdfEscape(page.caption)}) Tj ET\\n`;\n      }\n      stream += footer(page.footer);\n      addPage(stream, `/XObject << /Im0 ${imageId} 0 R >>`);\n      continue;\n    }\n\n    // ---- text page: wrap, then break into as many pages as needed ---------\n    const titleSize = page.title_size || (page.cover ? 30 : 18);\n    const lines = [];\n    for (const raw of page.lines || []) {\n      for (const wrapped of wrapText(raw, bodySize, usableWidth)) lines.push(wrapped);\n    }\n\n    const firstTop = PH - margin - (page.title ? titleSize + 22 : 0);\n    const linesFirstPage = Math.max(1, Math.floor((firstTop - margin) / leading));\n    const linesNextPage = Math.max(1, Math.floor((PH - margin * 2) / leading));\n\n    let cursor = 0;\n    let chunkIndex = 0;\n    do {\n      const capacity = chunkIndex === 0 ? linesFirstPage : linesNextPage;\n      const chunk = lines.slice(cursor, cursor + capacity);\n      cursor += capacity;\n\n      let stream = '';\n      if (page.title && chunkIndex === 0) {\n        const titleY = PH - margin - titleSize;\n        stream += `BT /${PDF_FONT.bold} ${titleSize} Tf ${margin} ${titleY.toFixed(2)} Td ` +\n          `(${pdfEscape(page.title)}) Tj ET\\n`;\n        stream += `${margin} ${(titleY - 12).toFixed(2)} m ${(PW - margin).toFixed(2)} ` +\n          `${(titleY - 12).toFixed(2)} l 0.7 w 0.8 0.8 0.8 RG S 0 0 0 RG\\n`;\n      }\n      if (page.subtitle && chunkIndex === 0) {\n        stream += `BT /${PDF_FONT.regular} 13 Tf 0.35 0.35 0.35 rg ${margin} ` +\n          `${(PH - margin - titleSize - 34).toFixed(2)} Td (${pdfEscape(page.subtitle)}) Tj ET 0 0 0 rg\\n`;\n      }\n      if (chunk.length) {\n        const startY = (chunkIndex === 0 ? firstTop : PH - margin) -\n          (page.subtitle && chunkIndex === 0 ? 26 : 0);\n        stream += `BT /${PDF_FONT.regular} ${bodySize} Tf ${leading} TL ` +\n          `${margin} ${startY.toFixed(2)} Td\\n`;\n        for (const line of chunk) stream += `(${pdfEscape(line)}) Tj T*\\n`;\n        stream += 'ET\\n';\n      }\n      stream += footer(page.footer);\n      addPage(stream, null);\n      chunkIndex += 1;\n    } while (cursor < lines.length);\n  }\n\n  if (!pageIds.length) {\n    addPage(`BT /${PDF_FONT.regular} 12 Tf 56 780 Td (Empty document) Tj ET\\n`, null);\n  }\n\n  const info = spec.info || {};\n  objects[0] = '<< /Type /Catalog /Pages 2 0 R >>';\n  objects[1] = `<< /Type /Pages /Count ${pageIds.length} /Kids [` +\n    pageIds.map((id) => `${id} 0 R`).join(' ') + '] >>';\n  objects[2] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';\n  objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';\n  objects[4] = '<< /Title (' + pdfEscape(info.title || 'Digital Product') + ')' +\n    ' /Author (' + pdfEscape(info.author || 'AI Digital Product Factory') + ')' +\n    ' /Subject (' + pdfEscape(info.subject || '') + ')' +\n    ' /Keywords (' + pdfEscape(info.keywords || '') + ')' +\n    ' /Creator (AI Digital Product Factory) /Producer (n8n) >>';\n\n  // ---- serialise: header, objects, xref table, trailer --------------------\n  const chunks = [];\n  let offset = 0;\n  const write = (value) => {\n    const buf = Buffer.isBuffer(value) ? value : Buffer.from(String(value), 'latin1');\n    chunks.push(buf);\n    offset += buf.length;\n  };\n\n  write('%PDF-1.4\\n%\\xE2\\xE3\\xCF\\xD3\\n');\n  const offsets = [];\n  objects.forEach((obj, index) => {\n    offsets[index] = offset;\n    write(`${index + 1} 0 obj\\n`);\n    write(obj);\n    write('\\nendobj\\n');\n  });\n\n  const xrefOffset = offset;\n  write(`xref\\n0 ${objects.length + 1}\\n`);\n  write('0000000000 65535 f \\n');\n  for (const o of offsets) write(`${String(o).padStart(10, '0')} 00000 n \\n`);\n  write(\n    `trailer\\n<< /Size ${objects.length + 1} /Root 1 0 R /Info 5 0 R >>\\n` +\n    `startxref\\n${xrefOffset}\\n%%EOF\\n`\n  );\n\n  return { buffer: Buffer.concat(chunks), page_count: pageIds.length };\n}\n\n// ---------------------------------------------------------------------------\n// Assemble the product PDF from the written content and the generated art.\n// ---------------------------------------------------------------------------\nconst base = $('Merge: Factory Profiles').first().json;\nconst idea = $('Parse Idea JSON').first().json.idea;\nconst content = $('Parse Content JSON').first().json.content;\nconst imageSet = $('Collect Generated Images').first().json.images;\nconst metadata = $('Parse Metadata JSON').first().json.metadata;\n\nconst pageImages = new Map((imageSet.pages || []).map((p) => [Number(p.page_number), p.b64]));\nconst footerLabel = `${idea.product_name} - ${metadata.license}`;\n\nconst pdfPages = [];\n\n// 1. Cover\npdfPages.push({ type: 'image', jpeg_base64: imageSet.cover.b64, full_bleed: true });\npdfPages.push({\n  type: 'text',\n  cover: true,\n  title: content.cover_title,\n  subtitle: content.cover_subtitle,\n  lines: [\n    '',\n    content.intro_text || '',\n    '',\n    ...(content.usage_instructions || []).map((line) => `- ${line}`),\n  ].filter((l) => l !== undefined),\n  footer: footerLabel,\n});\n\n// 2. Body\nfor (const page of content.pages) {\n  pdfPages.push({\n    type: 'text',\n    title: page.title,\n    lines: page.lines,\n    footer: `${footerLabel} | page ${page.page_number}`,\n  });\n  const art = pageImages.get(page.page_number);\n  if (art) {\n    pdfPages.push({\n      type: 'image',\n      jpeg_base64: art,\n      caption: page.title,\n      footer: `${footerLabel} | page ${page.page_number}`,\n    });\n  }\n}\n\n// 3. Colophon\npdfPages.push({\n  type: 'text',\n  title: 'Licence and credits',\n  lines: [\n    metadata.license,\n    '',\n    content.credits,\n    '',\n    `Product: ${metadata.product_name}`,\n    `Category: ${metadata.category}`,\n    `Prompt version: ${metadata.prompt_version}`,\n    `Generated: ${metadata.generated_at}`,\n  ],\n  footer: footerLabel,\n});\n\nconst result = buildPdf({\n  width: base.profile.page_width_pt,\n  height: base.profile.page_height_pt,\n  pages: pdfPages,\n  info: {\n    title: metadata.product_name,\n    subject: base.research.keyword,\n    keywords: (metadata.tags || []).join(', '),\n  },\n});\n\nreturn [{\n  json: {\n    run_id: base.run_id,\n    pdf_base64: result.buffer.toString('base64'),\n    pdf_bytes: result.buffer.length,\n    pdf_page_count: result.page_count,\n  },\n}];"
+      },
+      "id": "adpf03-build-pdf-document",
+      "name": "Build PDF Document",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9600,
+        190
+      ],
+      "notes": "Dependency-free PDF writer: Helvetica text pages plus JPEG images embedded as /DCTDecode. No external service, no npm package.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Final packaging step: every deliverable becomes an entry in one manifest,\n// carrying its own base64 payload. Downstream workflows (04 Etsy upload,\n// 05 Drive backup) turn the entries they need into binary at the last moment,\n// which keeps the data intact across every Code node hop.\nconst base = $('Merge: Factory Profiles').first().json;\nconst idea = $('Parse Idea JSON').first().json.idea;\nconst content = $('Parse Content JSON').first().json.content;\nconst collected = $('Collect Generated Images').first().json;\nconst seo = $('Validate SEO Package').first().json.seo;\nconst metadata = $('Parse Metadata JSON').first().json.metadata;\nconst qa = $('Parse QA Report').first().json.qa;\nconst pdf = $input.first().json;\nconst prompts = $('Prompt Library').first().json.prompts;\n\nconst slug = idea.slug;\nconst files = [];\nconst addFile = (key, name, format, mime, b64, purpose) => {\n  if (!b64) return;\n  files.push({\n    key, file_name: name, format, mime_type: mime, purpose,\n    bytes: Math.round((b64.length * 3) / 4), b64,\n  });\n};\nconst encode = (text) => Buffer.from(String(text), 'utf8').toString('base64');\n\n// --- PDF / images ---------------------------------------------------------\naddFile('product_pdf', `${slug}.pdf`, 'PDF', 'application/pdf', pdf.pdf_base64, 'main product file');\naddFile('cover_jpg', `${slug}-cover.jpg`, 'JPG', 'image/jpeg', collected.images.cover.b64, 'listing cover image');\naddFile('thumbnail_png', `${slug}-thumbnail.png`, 'PNG', 'image/png', collected.images.thumbnail.b64, 'shop thumbnail');\nfor (const preview of collected.images.previews || []) {\n  addFile(`preview_${preview.index}_jpg`, `${slug}-preview-${preview.index}.jpg`, 'JPG',\n    'image/jpeg', preview.b64, 'listing preview image');\n}\n\n// --- editable vector source (only for the factories that declare it) ------\nif (base.profile.svg_required && collected.svg_markup) {\n  addFile('source_svg', `${slug}.svg`, 'SVG', 'image/svg+xml', encode(collected.svg_markup),\n    'editable vector source');\n}\n\n// --- text / json side-car files ------------------------------------------\nconst seoJson = {\n  title: seo.title,\n  description: seo.description,\n  tags: seo.tags,\n  materials: seo.materials,\n  primary_keyword: seo.primary_keyword,\n  sub_keywords: base.research.sub_keywords,\n  long_tail: base.research.long_tail || [],\n  difficulty: base.research.difficulty,\n  market: base.market || {},\n};\n\nconst promptMd = [\n  `# Prompt record - ${metadata.product_name}`,\n  '',\n  `- Run id: ${base.run_id}`,\n  `- Factory: ${base.profile.display_name}`,\n  `- Prompt version: ${metadata.prompt_version}`,\n  `- Model (text): ${$env.OPENAI_MODEL_TEXT || 'gpt-4.1'}`,\n  `- Model (image): ${$env.OPENAI_MODEL_IMAGE || 'gpt-image-1'}`,\n  '',\n  '## Agents used',\n  ...Object.values(prompts).map((a) => `- **${a.title}** (\\`${a.id}\\`): ${a.purpose}`),\n  '',\n  '## Research concept',\n  '```json',\n  JSON.stringify(base.research, null, 2),\n  '```',\n  '',\n  '## Product brief',\n  '```json',\n  JSON.stringify(idea, null, 2),\n  '```',\n  '',\n  '## Image prompts',\n  '```json',\n  JSON.stringify($('Parse Image Plan').first().json.image_jobs.map(\n    (j) => ({ key: j.key, size: j.size, format: j.format, prompt: j.prompt })\n  ), null, 2),\n  '```',\n  '',\n  '## QA verdict',\n  '```json',\n  JSON.stringify(qa, null, 2),\n  '```',\n].join('\\n');\n\naddFile('metadata_json', 'metadata.json', 'JSON', 'application/json',\n  encode(JSON.stringify({ ...metadata, qa_summary: qa.summary, files_planned: files.length }, null, 2)),\n  'machine readable product record');\naddFile('description_txt', 'description.txt', 'TXT', 'text/plain', encode(seo.description),\n  'marketplace description');\naddFile('seo_json', 'SEO.json', 'JSON', 'application/json', encode(JSON.stringify(seoJson, null, 2)),\n  'seo research record');\naddFile('prompt_md', 'Prompt.md', 'TXT', 'text/markdown', encode(promptMd),\n  'reproducibility record');\naddFile('content_json', 'content.json', 'JSON', 'application/json',\n  encode(JSON.stringify(content, null, 2)), 'source content of the product');\n\nconst formats = [...new Set(files.map((f) => f.format))];\n\nreturn [{\n  json: {\n    ok: true,\n    run_id: base.run_id,\n    factory: base.factory,\n    profile: base.profile,\n    product_name: metadata.product_name,\n    slug,\n    metadata,\n    seo,\n    qa,\n    research: base.research,\n    files,\n    manifest: files.map(({ b64, ...rest }) => rest),\n    formats,\n    stats: {\n      pdf_pages: pdf.pdf_page_count,\n      pdf_bytes: pdf.pdf_bytes,\n      content_pages: content.pages.length,\n      images: collected.image_stats,\n      total_bytes: files.reduce((sum, f) => sum + f.bytes, 0),\n      placeholder_images: collected.image_stats.placeholder === true,\n    },\n    exported_at: new Date().toISOString(),\n  },\n}];"
+      },
+      "id": "adpf03-export-files",
+      "name": "Export Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9900,
+        190
+      ],
+      "notes": "Builds the deliverable manifest: PDF, PNG, JPG, SVG, JSON and TXT.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "id": "adpf03-return-product-package",
+      "name": "Return: Product Package",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        10200,
+        380
+      ],
+      "notes": "Terminal node - its item is the sub-workflow return value.",
+      "notesInFlow": true
+    }
+  ],
+  "connections": {
+    "Route: Factory Type": {
+      "main": [
+        [
+          {
+            "node": "Factory Profile: Planner",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Factory Profile: Printable",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Factory Profile: Canva",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Factory Profile: Wall Art",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Factory Profile: Resume",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Factory Profile: Spreadsheet",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Factory Profile: Kids",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Factory Profile: SVG",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Factory Profile: Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Factory Profile: Planner": {
+      "main": [
+        [
+          {
+            "node": "Merge: Factory Profiles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Factory Profile: Printable": {
+      "main": [
+        [
+          {
+            "node": "Merge: Factory Profiles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Factory Profile: Canva": {
+      "main": [
+        [
+          {
+            "node": "Merge: Factory Profiles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Factory Profile: Wall Art": {
+      "main": [
+        [
+          {
+            "node": "Merge: Factory Profiles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Factory Profile: Resume": {
+      "main": [
+        [
+          {
+            "node": "Merge: Factory Profiles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Factory Profile: Spreadsheet": {
+      "main": [
+        [
+          {
+            "node": "Merge: Factory Profiles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Factory Profile: Kids": {
+      "main": [
+        [
+          {
+            "node": "Merge: Factory Profiles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Factory Profile: SVG": {
+      "main": [
+        [
+          {
+            "node": "Merge: Factory Profiles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Factory Profile: Fallback": {
+      "main": [
+        [
+          {
+            "node": "Merge: Factory Profiles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Receive Product Request": {
+      "main": [
+        [
+          {
+            "node": "Prompt Library",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prompt Library": {
+      "main": [
+        [
+          {
+            "node": "Normalize Factory Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Factory Input": {
+      "main": [
+        [
+          {
+            "node": "Route: Factory Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge: Factory Profiles": {
+      "main": [
+        [
+          {
+            "node": "Build Idea Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Idea Prompt": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: Idea AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: Idea AI": {
+      "main": [
+        [
+          {
+            "node": "Parse Idea JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Idea JSON": {
+      "main": [
+        [
+          {
+            "node": "Build Content Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Content Prompt": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: Writer AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: Writer AI": {
+      "main": [
+        [
+          {
+            "node": "Parse Content JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Content JSON": {
+      "main": [
+        [
+          {
+            "node": "Build Designer Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Designer Prompt": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: Designer AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: Designer AI": {
+      "main": [
+        [
+          {
+            "node": "Parse Image Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Image Plan": {
+      "main": [
+        [
+          {
+            "node": "Split: Image Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split: Image Jobs": {
+      "main": [
+        [
+          {
+            "node": "Loop: Image Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop: Image Jobs": {
+      "main": [
+        [
+          {
+            "node": "Collect Generated Images",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check: Generate Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Generate Image": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: Image API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Use Placeholder Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: Image API": {
+      "main": [
+        [
+          {
+            "node": "Store Generated Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Generated Image": {
+      "main": [
+        [
+          {
+            "node": "Loop: Image Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Use Placeholder Image": {
+      "main": [
+        [
+          {
+            "node": "Loop: Image Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Generated Images": {
+      "main": [
+        [
+          {
+            "node": "Build SEO Title Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build SEO Title Prompt": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: SEO AI Title",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: SEO AI Title": {
+      "main": [
+        [
+          {
+            "node": "Build SEO Description Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build SEO Description Prompt": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: SEO AI Description",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: SEO AI Description": {
+      "main": [
+        [
+          {
+            "node": "Build SEO Tags Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build SEO Tags Prompt": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: SEO AI Etsy Tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: SEO AI Etsy Tags": {
+      "main": [
+        [
+          {
+            "node": "Validate SEO Package",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate SEO Package": {
+      "main": [
+        [
+          {
+            "node": "Build Metadata Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Metadata Prompt": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: Metadata AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: Metadata AI": {
+      "main": [
+        [
+          {
+            "node": "Parse Metadata JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Metadata JSON": {
+      "main": [
+        [
+          {
+            "node": "Build QA Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build QA Prompt": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: QA AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: QA AI": {
+      "main": [
+        [
+          {
+            "node": "Parse QA Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse QA Report": {
+      "main": [
+        [
+          {
+            "node": "Check: QA Passed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: QA Passed": {
+      "main": [
+        [
+          {
+            "node": "Build PDF Document",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build QA Failure Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build PDF Document": {
+      "main": [
+        [
+          {
+            "node": "Export Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Export Files": {
+      "main": [
+        [
+          {
+            "node": "Return: Product Package",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build QA Failure Result": {
+      "main": [
+        [
+          {
+            "node": "Return: Product Package",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "executionTimeout": 3600,
+    "timezone": "Asia/Bangkok"
+  },
+  "pinData": {},
+  "staticData": null,
+  "meta": {
+    "instanceId": "ai-digital-product-factory"
+  },
+  "tags": [
+    {
+      "name": "ai-digital-product-factory"
+    }
+  ],
+  "versionId": "v1.0.0"
+}

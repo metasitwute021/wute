@@ -1,0 +1,1136 @@
+{
+  "name": "ADPF 01 Master Controller",
+  "id": "ADPF01MASTERCONTROL",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 3 * * *"
+            }
+          ]
+        }
+      },
+      "id": "adpf01-trigger-daily-schedule",
+      "name": "Trigger: Daily Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "notes": "Unattended production run, 03:00 Asia/Bangkok. Disable while testing.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ai-digital-product-factory",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "adpf01-trigger-webhook-run",
+      "name": "Trigger: Webhook Run",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        190
+      ],
+      "notes": "On-demand run. POST {factory, seed_keyword, dry_run}. Protect with a Header Auth credential before exposing it publicly.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "id": "adpf01-trigger-manual-run",
+      "name": "Trigger: Manual Run",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        380
+      ],
+      "notes": "Manual execution from the n8n editor for smoke tests.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Normalise the three trigger shapes (schedule / webhook / manual) into a single\n// run context object that every downstream workflow can rely on.\nconst now = new Date();\nconst incoming = $input.first() ? $input.first().json : {};\nconst body = incoming.body || incoming.query || incoming;\n\nconst rand = Math.random().toString(36).slice(2, 8);\nconst stamp = now.toISOString().slice(0, 10).replace(/-/g, '');\nconst runId = body.run_id || `adpf-${stamp}-${rand}`;\n\nreturn [{\n  json: {\n    run_id: runId,\n    started_at: now.toISOString(),\n    trigger_source: $execution.mode || 'trigger',\n    requested_factory: String(body.factory || body.product_factory || 'auto').toLowerCase().trim(),\n    seed_keyword: String(body.seed_keyword || body.keyword || '').trim(),\n    dry_run: body.dry_run === true || String(body.dry_run).toLowerCase() === 'true',\n    prompt_version: $env.PROMPT_VERSION || 'v1.0.0',\n    marketplace: 'etsy',\n    status: 'running',\n    stage: 'init',\n  },\n}];"
+      },
+      "id": "adpf01-init-run-context",
+      "name": "Init Run Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        190
+      ],
+      "notes": "Builds run_id and normalises the payload of all three triggers.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Fail fast and loudly when the instance is not configured. Nothing below this\n// node can succeed without these values, and a clear message here saves a very\n// confusing OAuth error twenty nodes later.\nconst REQUIRED = ['ETSY_API_BASE', 'ETSY_API_KEY', 'ETSY_SHOP_ID'];\nconst RECOMMENDED = [\n  'OPENAI_MODEL_TEXT',\n  'OPENAI_MODEL_IMAGE',\n  'GDRIVE_ROOT_FOLDER_ID',\n  'DB_TYPE',\n  'PROMPT_VERSION',\n];\n\nconst read = (key) => {\n  try { return $env[key]; } catch (e) { return undefined; }\n};\n\nconst missing = REQUIRED.filter((key) => !read(key));\nif (missing.length) {\n  throw new Error(\n    'AI Digital Product Factory is not configured. Missing environment variables: ' +\n    missing.join(', ') +\n    '. Set them on the n8n instance and make sure N8N_BLOCK_ENV_ACCESS_IN_NODE=false.'\n  );\n}\n\nconst warnings = RECOMMENDED.filter((key) => !read(key));\nconst ctx = $input.first().json;\n\nreturn [{\n  json: {\n    ...ctx,\n    stage: 'validate-environment',\n    env_warnings: warnings,\n    etsy_api_base: read('ETSY_API_BASE'),\n    etsy_shop_id: read('ETSY_SHOP_ID'),\n    db_type: (read('DB_TYPE') || 'postgres').toLowerCase(),\n    etsy_listing_state: (read('ETSY_LISTING_STATE') || 'draft').toLowerCase(),\n  },\n}];"
+      },
+      "id": "adpf01-validate-environment",
+      "name": "Validate Environment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        600,
+        190
+      ],
+      "notes": "Guard clause: aborts immediately when required env vars are missing.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Pick which product factory runs. An explicit request always wins; \"auto\"\n// rotates deterministically through the enabled factories so an unattended daily\n// schedule covers the whole catalogue instead of hammering one niche.\nconst FACTORIES = [\n  'planner', 'printable', 'canva', 'wallart',\n  'resume', 'spreadsheet', 'kids', 'svg',\n];\n\nconst ctx = $input.first().json;\nlet factory = ctx.requested_factory;\n\nif (!factory || factory === 'auto') {\n  const rotation = String($env.FACTORY_ROTATION || FACTORIES.join(','))\n    .split(',')\n    .map((s) => s.trim().toLowerCase())\n    .filter((s) => FACTORIES.includes(s));\n  const pool = rotation.length ? rotation : FACTORIES;\n  const dayIndex = Math.floor(Date.now() / 86400000);\n  factory = pool[dayIndex % pool.length];\n}\n\nif (!FACTORIES.includes(factory)) {\n  throw new Error(\n    `Unknown product factory \"${factory}\". Expected one of: ${FACTORIES.join(', ')}`\n  );\n}\n\nreturn [{ json: { ...ctx, factory, stage: 'factory-selected' } }];"
+      },
+      "id": "adpf01-select-product-factory",
+      "name": "Select Product Factory",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        190
+      ],
+      "notes": "Explicit factory wins, otherwise rotate deterministically per day.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Shape the payload for the 06 Database Logger sub-workflow (op = run_start).\nconst ctx = $input.first().json;\nreturn [{\n  json: {\n    op: 'run_start',\n    run_id: ctx.run_id,\n    factory: ctx.factory,\n    product_name: null,\n    category: null,\n    keywords: [],\n    marketplace: ctx.marketplace,\n    drive_folder_id: null,\n    etsy_listing_id: null,\n    prompt_version: ctx.prompt_version,\n    status: 'running',\n    error_log: null,\n  },\n}];"
+      },
+      "id": "adpf01-prepare-run-start-log",
+      "name": "Prepare Run Start Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        190
+      ],
+      "notes": "Payload for 06 Database Logger, op=run_start.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "ADPF06DATABASELOGX",
+          "mode": "id",
+          "cachedResultName": "ADPF 06 Database Logger"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "adpf01-log-run-started",
+      "name": "Log: Run Started",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1500,
+        190
+      ],
+      "notes": "Writes the run row before any expensive work happens.",
+      "notesInFlow": true,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// The Execute Workflow node replaces the item with the sub-workflow output, so\n// the run context is restored from the node that produced it.\nconst ctx = $('Select Product Factory').first().json;\nconst logResult = $input.first() ? $input.first().json : {};\nreturn [{ json: { ...ctx, stage: 'research', run_log_id: logResult.record_id || null } }];"
+      },
+      "id": "adpf01-restore-run-context",
+      "name": "Restore Run Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        190
+      ],
+      "notes": "Execute Workflow replaces the item - restore the run context here.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "ADPF02RESEARCHENGN",
+          "mode": "id",
+          "cachedResultName": "ADPF 02 Research Engine"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "adpf01-run-research-engine",
+      "name": "Run: Research Engine",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2100,
+        190
+      ],
+      "notes": "Calls 02 Research Engine. Error output (2nd) goes to the error funnel.",
+      "notesInFlow": true,
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "adpf01-check-research-ok",
+      "name": "Check: Research OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2400,
+        190
+      ],
+      "notes": "Research must return ok=true and a complete concept contract.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Contract for 03 Product Engine: run context + the validated research package.\nconst ctx = $('Restore Run Context').first().json;\nconst research = $input.first().json;\nreturn [{\n  json: {\n    ...ctx,\n    stage: 'product',\n    research: research.research || research,\n    market: research.market || {},\n  },\n}];"
+      },
+      "id": "adpf01-compose-product-request",
+      "name": "Compose Product Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2700,
+        190
+      ],
+      "notes": "Input contract for 03 Product Engine.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "ADPF03PRODUCTENGIN",
+          "mode": "id",
+          "cachedResultName": "ADPF 03 Product Engine"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "adpf01-run-product-engine",
+      "name": "Run: Product Engine",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        3000,
+        190
+      ],
+      "notes": "Calls 03 Product Engine (generation + QA gate + file export).",
+      "notesInFlow": true,
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "adpf01-check-product-ok",
+      "name": "Check: Product OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3300,
+        190
+      ],
+      "notes": "False when the QA agent rejected the product - nothing gets published.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Contract for 04 Publish Engine: everything 03 produced plus the run context.\nconst ctx = $('Restore Run Context').first().json;\nconst product = $input.first().json;\nreturn [{\n  json: {\n    ...ctx,\n    stage: 'publish',\n    research: $('Compose Product Request').first().json.research,\n    product,\n  },\n}];"
+      },
+      "id": "adpf01-compose-publish-request",
+      "name": "Compose Publish Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        190
+      ],
+      "notes": "Input contract for 04 Publish Engine.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "ADPF04PUBLISHENGIN",
+          "mode": "id",
+          "cachedResultName": "ADPF 04 Publish Engine"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "adpf01-run-publish-engine",
+      "name": "Run: Publish Engine",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        3900,
+        190
+      ],
+      "notes": "Calls 04 Publish Engine. Creates an Etsy DRAFT listing only.",
+      "notesInFlow": true,
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "adpf01-check-publish-ok",
+      "name": "Check: Publish OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4200,
+        190
+      ],
+      "notes": "Backup only runs once Etsy accepted the listing.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Contract for 05 Google Drive Backup. Runs only after Etsy accepted the draft\n// listing, so the backup folder always mirrors something that really exists.\nconst ctx = $('Restore Run Context').first().json;\nconst publish = $input.first().json;\nconst product = $('Compose Publish Request').first().json.product;\nreturn [{\n  json: {\n    ...ctx,\n    stage: 'backup',\n    research: $('Compose Product Request').first().json.research,\n    product,\n    publish,\n  },\n}];"
+      },
+      "id": "adpf01-compose-backup-request",
+      "name": "Compose Backup Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4500,
+        190
+      ],
+      "notes": "Input contract for 05 Google Drive Backup.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "ADPF05DRIVEBACKUPX",
+          "mode": "id",
+          "cachedResultName": "ADPF 05 Google Drive Backup"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "adpf01-run-drive-backup",
+      "name": "Run: Drive Backup",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        4800,
+        190
+      ],
+      "notes": "Calls 05 Google Drive Backup (idempotent folder tree + file upload).",
+      "notesInFlow": true,
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Final database record for a successful run (op = product_upsert).\nconst ctx = $('Restore Run Context').first().json;\nconst product = $('Compose Publish Request').first().json.product;\nconst publish = $('Compose Backup Request').first().json.publish;\nconst backup = $input.first().json;\nconst meta = product.metadata || {};\n\nreturn [{\n  json: {\n    op: 'product_upsert',\n    run_id: ctx.run_id,\n    factory: ctx.factory,\n    product_name: meta.product_name || product.product_name || 'unknown-product',\n    category: meta.category || (product.research && product.research.category) || null,\n    keywords: meta.keywords || meta.tags || [],\n    marketplace: [\n      'etsy',\n      publish.gumroad_package_ready ? 'gumroad-prepared' : null,\n      publish.miricanvas_package_ready ? 'miricanvas-prepared' : null,\n    ].filter(Boolean).join(','),\n    drive_folder_id: backup.drive_folder_id || null,\n    etsy_listing_id: publish.etsy_listing_id || null,\n    prompt_version: ctx.prompt_version,\n    status: 'completed',\n    error_log: null,\n  },\n}];"
+      },
+      "id": "adpf01-prepare-product-record",
+      "name": "Prepare Product Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5100,
+        190
+      ],
+      "notes": "Final database row: ids, marketplace flags, prompt version, status.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "ADPF06DATABASELOGX",
+          "mode": "id",
+          "cachedResultName": "ADPF 06 Database Logger"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "adpf01-save-product-record",
+      "name": "Save: Product Record",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        5400,
+        190
+      ],
+      "notes": "Calls 06 Database Logger, op=product_upsert.",
+      "notesInFlow": true,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Human readable summary; also the webhook response body.\nconst ctx = $('Restore Run Context').first().json;\nconst record = $('Prepare Product Record').first().json;\nconst backup = $('Run: Drive Backup').first().json;\nconst publish = $('Compose Backup Request').first().json.publish;\nconst started = new Date(ctx.started_at).getTime();\n\nreturn [{\n  json: {\n    ok: true,\n    run_id: ctx.run_id,\n    factory: ctx.factory,\n    product_name: record.product_name,\n    etsy_listing_id: publish.etsy_listing_id || null,\n    etsy_listing_state: ctx.etsy_listing_state,\n    drive_folder_id: backup.drive_folder_id || null,\n    drive_folder_path: backup.drive_folder_path || null,\n    gumroad_package_ready: publish.gumroad_package_ready === true,\n    miricanvas_package_ready: publish.miricanvas_package_ready === true,\n    duration_seconds: Math.round((Date.now() - started) / 1000),\n    finished_at: new Date().toISOString(),\n    status: 'completed',\n  },\n}];"
+      },
+      "id": "adpf01-build-success-summary",
+      "name": "Build Success Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5700,
+        190
+      ],
+      "notes": "Run summary, also returned as the webhook response body.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "id": "adpf01-respond-run-finished",
+      "name": "Respond: Run Finished",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        6000,
+        190
+      ],
+      "notes": "Terminal node of the happy path.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ JSON.stringify({ ...$json, failed_stage: \"research\" }) }}",
+        "options": {}
+      },
+      "id": "adpf01-stage-failed-research",
+      "name": "Stage Failed: Research",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2400,
+        570
+      ],
+      "notes": "Tags the failure with stage=research for the shared error funnel.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ JSON.stringify({ ...$json, failed_stage: \"product\" }) }}",
+        "options": {}
+      },
+      "id": "adpf01-stage-failed-product",
+      "name": "Stage Failed: Product",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3300,
+        570
+      ],
+      "notes": "Tags the failure with stage=product for the shared error funnel.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ JSON.stringify({ ...$json, failed_stage: \"publish\" }) }}",
+        "options": {}
+      },
+      "id": "adpf01-stage-failed-publish",
+      "name": "Stage Failed: Publish",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        4200,
+        570
+      ],
+      "notes": "Tags the failure with stage=publish for the shared error funnel.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ JSON.stringify({ ...$json, failed_stage: \"backup\" }) }}",
+        "options": {}
+      },
+      "id": "adpf01-stage-failed-backup",
+      "name": "Stage Failed: Backup",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        5100,
+        570
+      ],
+      "notes": "Tags the failure with stage=backup for the shared error funnel.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Single funnel for every failed stage. Keeps one error shape for the database,\n// the alert webhook and the final Stop And Error message.\nconst item = $input.first().json;\nconst ctx = (() => {\n  try { return $('Select Product Factory').first().json; } catch (e) { return {}; }\n})();\n\nconst rawError = item.error || item.__error || {};\nconst message =\n  item.failure_reason ||\n  rawError.message ||\n  (typeof rawError === 'string' ? rawError : '') ||\n  item.message ||\n  'Unknown failure';\n\nreturn [{\n  json: {\n    op: 'error_log',\n    ok: false,\n    run_id: ctx.run_id || item.run_id || 'unknown-run',\n    factory: ctx.factory || item.factory || null,\n    stage: item.failed_stage || item.stage || 'unknown',\n    product_name: item.product_name || null,\n    category: item.category || null,\n    keywords: [],\n    marketplace: 'etsy',\n    drive_folder_id: null,\n    etsy_listing_id: item.etsy_listing_id || null,\n    prompt_version: ctx.prompt_version || $env.PROMPT_VERSION || 'v1.0.0',\n    status: 'failed',\n    error_log: JSON.stringify({\n      stage: item.failed_stage || item.stage || 'unknown',\n      message: String(message).slice(0, 4000),\n      details: rawError.description || rawError.stack || null,\n      at: new Date().toISOString(),\n    }),\n    error_message: String(message).slice(0, 500),\n  },\n}];"
+      },
+      "id": "adpf01-build-error-payload",
+      "name": "Build Error Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5400,
+        570
+      ],
+      "notes": "Normalises any stage failure into one error record shape.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "ADPF06DATABASELOGX",
+          "mode": "id",
+          "cachedResultName": "ADPF 06 Database Logger"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "adpf01-log-error-to-database",
+      "name": "Log: Error To Database",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        5700,
+        570
+      ],
+      "notes": "Calls 06 Database Logger, op=error_log. Never blocks the alert below.",
+      "notesInFlow": true,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ALERT_WEBHOOK_URL || 'https://localhost/disabled' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: '[ADPF] run ' + $('Build Error Payload').first().json.run_id + ' failed at stage ' + $('Build Error Payload').first().json.stage + ': ' + $('Build Error Payload').first().json.error_message }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "adpf01-notify-alert-webhook",
+      "name": "Notify: Alert Webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6000,
+        570
+      ],
+      "notes": "Optional Slack/Discord alert. Silently skipped when ALERT_WEBHOOK_URL is unset.",
+      "notesInFlow": true,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ 'ADPF run ' + $('Build Error Payload').first().json.run_id + ' failed at stage ' + $('Build Error Payload').first().json.stage + ': ' + $('Build Error Payload').first().json.error_message }}"
+      },
+      "id": "adpf01-stop-on-fatal-error",
+      "name": "Stop On Fatal Error",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        6300,
+        570
+      ],
+      "notes": "Marks the execution as failed so n8n retries/alerts behave correctly.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "id": "adpf01-trigger-workflow-error-handler",
+      "name": "Trigger: Workflow Error Handler",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        5400,
+        950
+      ],
+      "notes": "Set this workflow as the Error Workflow of 02-06 to capture crashes.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Catches crashes that escape the per-stage handling above (for example an\n// expression error). Wired to the Error Trigger, so it also fires for runs that\n// were started by another workflow.\nconst e = $input.first().json;\nconst execution = e.execution || {};\nconst workflow = e.workflow || {};\n\nreturn [{\n  json: {\n    op: 'error_log',\n    run_id: `crash-${execution.id || Date.now()}`,\n    factory: null,\n    product_name: null,\n    category: null,\n    keywords: [],\n    marketplace: 'etsy',\n    drive_folder_id: null,\n    etsy_listing_id: null,\n    prompt_version: $env.PROMPT_VERSION || 'v1.0.0',\n    status: 'crashed',\n    error_log: JSON.stringify({\n      workflow: workflow.name || null,\n      execution_id: execution.id || null,\n      execution_url: execution.url || null,\n      node: execution.lastNodeExecuted || null,\n      message: (execution.error && execution.error.message) || 'unhandled workflow error',\n      at: new Date().toISOString(),\n    }),\n  },\n}];"
+      },
+      "id": "adpf01-format-global-error",
+      "name": "Format Global Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5700,
+        950
+      ],
+      "notes": "Converts the n8n error payload into the standard error record.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "ADPF06DATABASELOGX",
+          "mode": "id",
+          "cachedResultName": "ADPF 06 Database Logger"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "adpf01-log-global-error",
+      "name": "Log: Global Error",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        6000,
+        950
+      ],
+      "notes": "Persists crashes that escaped the per-stage handling.",
+      "notesInFlow": true,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    }
+  ],
+  "connections": {
+    "Trigger: Daily Schedule": {
+      "main": [
+        [
+          {
+            "node": "Init Run Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger: Webhook Run": {
+      "main": [
+        [
+          {
+            "node": "Init Run Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger: Manual Run": {
+      "main": [
+        [
+          {
+            "node": "Init Run Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Init Run Context": {
+      "main": [
+        [
+          {
+            "node": "Validate Environment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Environment": {
+      "main": [
+        [
+          {
+            "node": "Select Product Factory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Product Factory": {
+      "main": [
+        [
+          {
+            "node": "Prepare Run Start Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Run Start Log": {
+      "main": [
+        [
+          {
+            "node": "Log: Run Started",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log: Run Started": {
+      "main": [
+        [
+          {
+            "node": "Restore Run Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Run Context": {
+      "main": [
+        [
+          {
+            "node": "Run: Research Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run: Research Engine": {
+      "main": [
+        [
+          {
+            "node": "Check: Research OK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stage Failed: Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Research OK": {
+      "main": [
+        [
+          {
+            "node": "Compose Product Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stage Failed: Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compose Product Request": {
+      "main": [
+        [
+          {
+            "node": "Run: Product Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run: Product Engine": {
+      "main": [
+        [
+          {
+            "node": "Check: Product OK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stage Failed: Product",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Product OK": {
+      "main": [
+        [
+          {
+            "node": "Compose Publish Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stage Failed: Product",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compose Publish Request": {
+      "main": [
+        [
+          {
+            "node": "Run: Publish Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run: Publish Engine": {
+      "main": [
+        [
+          {
+            "node": "Check: Publish OK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stage Failed: Publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Publish OK": {
+      "main": [
+        [
+          {
+            "node": "Compose Backup Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stage Failed: Publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compose Backup Request": {
+      "main": [
+        [
+          {
+            "node": "Run: Drive Backup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run: Drive Backup": {
+      "main": [
+        [
+          {
+            "node": "Prepare Product Record",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stage Failed: Backup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Product Record": {
+      "main": [
+        [
+          {
+            "node": "Save: Product Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save: Product Record": {
+      "main": [
+        [
+          {
+            "node": "Build Success Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Success Summary": {
+      "main": [
+        [
+          {
+            "node": "Respond: Run Finished",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stage Failed: Research": {
+      "main": [
+        [
+          {
+            "node": "Build Error Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stage Failed: Product": {
+      "main": [
+        [
+          {
+            "node": "Build Error Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stage Failed: Publish": {
+      "main": [
+        [
+          {
+            "node": "Build Error Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stage Failed: Backup": {
+      "main": [
+        [
+          {
+            "node": "Build Error Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Error Payload": {
+      "main": [
+        [
+          {
+            "node": "Log: Error To Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log: Error To Database": {
+      "main": [
+        [
+          {
+            "node": "Notify: Alert Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify: Alert Webhook": {
+      "main": [
+        [
+          {
+            "node": "Stop On Fatal Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger: Workflow Error Handler": {
+      "main": [
+        [
+          {
+            "node": "Format Global Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Global Error": {
+      "main": [
+        [
+          {
+            "node": "Log: Global Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "executionTimeout": 3600,
+    "timezone": "Asia/Bangkok"
+  },
+  "pinData": {},
+  "staticData": null,
+  "meta": {
+    "instanceId": "ai-digital-product-factory"
+  },
+  "tags": [
+    {
+      "name": "ai-digital-product-factory"
+    }
+  ],
+  "versionId": "v1.0.0"
+}
