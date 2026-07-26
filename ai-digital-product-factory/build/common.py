@@ -21,6 +21,11 @@ WF_ID = {
     "04": "ADPF04PUBLISHENGIN",
     "05": "ADPF05DRIVEBACKUPX",
     "06": "ADPF06DATABASELOGX",
+    # V2 modules
+    "07": "ADPF07IDEAFACTORY",
+    "08": "ADPF08COSTBUDGETX",
+    "09": "ADPF09FEEDBACKLRN",
+    "10": "ADPF10DASHBOARDXX",
 }
 
 WF_NAME = {
@@ -30,6 +35,10 @@ WF_NAME = {
     "04": "ADPF 04 Publish Engine",
     "05": "ADPF 05 Google Drive Backup",
     "06": "ADPF 06 Database Logger",
+    "07": "ADPF 07 Idea Factory",
+    "08": "ADPF 08 Cost and Budget",
+    "09": "ADPF 09 Feedback Learning",
+    "10": "ADPF 10 Dashboard",
 }
 
 PROMPT_VERSION = "v1.0.0"
@@ -52,6 +61,7 @@ T_STOP = ("n8n-nodes-base.stopAndError", 1)
 T_POSTGRES = ("n8n-nodes-base.postgres", 2.5)
 T_EXEC_CMD = ("n8n-nodes-base.executeCommand", 1)
 T_GDRIVE = ("n8n-nodes-base.googleDrive", 3)
+T_RESPOND = ("n8n-nodes-base.respondToWebhook", 1.1)
 
 COL = 300
 ROW = 190

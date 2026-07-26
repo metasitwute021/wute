@@ -140,6 +140,63 @@ console.log(JSON.stringify({ pages: result.page_count, bytes: result.buffer.leng
     return problems
 
 
+def check_sql() -> list[str]:
+    """Parse every PostgreSQL statement with the real PostgreSQL grammar.
+
+    ``pglast`` wraps libpg_query - the parser PostgreSQL itself uses - so this
+    catches reserved words, typos and malformed CTEs without a live server.
+    Skipped (with a warning) when pglast is not installed.
+    """
+    try:
+        import pglast
+    except ImportError:
+        print("[skip] SQL check - pip install pglast to enable it")
+        return []
+
+    problems = []
+    checked = 0
+
+    schema = os.path.join(ROOT, "db", "schema.postgres.sql")
+    if os.path.exists(schema):
+        with open(schema, encoding="utf-8") as fh:
+            try:
+                pglast.parse_sql(fh.read())
+                checked += 1
+            except Exception as exc:  # noqa: BLE001 - message is the useful part
+                problems.append(f"db/schema.postgres.sql\n    {exc}")
+
+    for filename in sorted(os.listdir(WORKFLOW_DIR)):
+        if not filename.endswith(".json"):
+            continue
+        with open(os.path.join(WORKFLOW_DIR, filename), encoding="utf-8") as fh:
+            document = json.load(fh)
+        for node in document["nodes"]:
+            if node["type"] != "n8n-nodes-base.postgres":
+                continue
+            query = node["parameters"].get("query", "")
+            # A query built by an expression is only known at runtime.
+            if not query or query.startswith("="):
+                continue
+            checked += 1
+            try:
+                pglast.parse_sql(query)
+            except Exception as exc:  # noqa: BLE001
+                problems.append(f"{filename} :: {node['name']}\n    {exc}")
+
+    # The statements 06 injects into its Code node never appear in a node param.
+    import wf06  # noqa: PLC0415 - imported here so a missing pglast skips cleanly
+
+    for name in ("SQL_POSTGRES", "SQL_QA_RESULT", "SQL_PRODUCT_VERSION"):
+        checked += 1
+        try:
+            pglast.parse_sql(getattr(wf06, name))
+        except Exception as exc:  # noqa: BLE001
+            problems.append(f"wf06.{name}\n    {exc}")
+
+    print(f"[ok] parsed {checked} PostgreSQL statements")
+    return problems
+
+
 def main() -> int:
     if subprocess.run(["node", "-v"], capture_output=True).returncode != 0:
         print("node is required for verify.py")
@@ -148,6 +205,7 @@ def main() -> int:
     problems: list[str] = []
     with tempfile.TemporaryDirectory() as tmp:
         problems += check_code_nodes(tmp)
+        problems += check_sql()
         problems += check_pdf(tmp)
 
     if problems:

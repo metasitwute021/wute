@@ -4,8 +4,8 @@
     python3 build/build.py
 
 Writes:
-    workflows/0[1-6]_*.json   importable n8n workflows
-    prompts/*.md              the eight OpenAI agent prompt templates
+    workflows/*.json          importable n8n workflows (01-06 core, 07-10 V2)
+    prompts/*.md              the OpenAI agent prompt templates
     db/schema.*.sql           PostgreSQL and SQLite schemas
 
 The generated files are the deliverable; this script exists so the embedded
@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -24,7 +25,9 @@ sys.path.insert(0, HERE)
 
 import prompts  # noqa: E402
 import wf01, wf02, wf03, wf04, wf05, wf06  # noqa: E402
+import wf07, wf08, wf09, wf10  # noqa: E402  (V2 modules)
 from wf06 import DDL_POSTGRES, DDL_SQLITE  # noqa: E402
+from schema_v2 import DDL_V2_POSTGRES, DDL_V2_SQLITE  # noqa: E402
 
 WORKFLOWS = [
     ("01_master_controller.json", wf01.build),
@@ -33,6 +36,11 @@ WORKFLOWS = [
     ("04_publish_engine.json", wf04.build),
     ("05_google_drive_backup.json", wf05.build),
     ("06_database_logger.json", wf06.build),
+    # V2 modules
+    ("07_idea_factory.json", wf07.build),
+    ("08_cost_and_budget.json", wf08.build),
+    ("09_feedback_learning.json", wf09.build),
+    ("10_dashboard.json", wf10.build),
 ]
 
 TRIGGER_TYPES = {
@@ -43,7 +51,18 @@ TRIGGER_TYPES = {
     "n8n-nodes-base.errorTrigger",
 }
 
-SECRET_MARKERS = ("sk-", "Bearer ey", "client_secret", "refresh_token")
+# Nodes that legitimately have no inbound connection.
+TERMINAL_OK = {"n8n-nodes-base.respondToWebhook"}
+
+# Patterns that look like a real credential, not English words that happen to
+# contain them ("risk-check" is not an OpenAI key).
+SECRET_PATTERNS = [
+    (re.compile(r"sk-[A-Za-z0-9_\-]{20,}"), "OpenAI-style API key"),
+    (re.compile(r"Bearer\s+ey[A-Za-z0-9._\-]{20,}"), "hardcoded bearer token"),
+    (re.compile(r'"client_secret"\s*:\s*"[^"]{8,}"'), "OAuth client secret"),
+    (re.compile(r'"refresh_token"\s*:\s*"[^"]{8,}"'), "OAuth refresh token"),
+    (re.compile(r"AIza[A-Za-z0-9_\-]{30,}"), "Google API key"),
+]
 
 
 def validate(document: dict, filename: str) -> list[str]:
@@ -74,14 +93,14 @@ def validate(document: dict, filename: str) -> list[str]:
     for node in document["nodes"]:
         if node["name"] in reachable:
             continue
-        if node["type"] in TRIGGER_TYPES:
+        if node["type"] in TRIGGER_TYPES or node["type"] in TERMINAL_OK:
             continue
         problems.append(f"{node['name']}: orphan node (nothing connects to it)")
 
     blob = json.dumps(document)
-    for marker in SECRET_MARKERS:
-        if marker in blob:
-            problems.append(f"possible hardcoded secret marker: {marker}")
+    for pattern, label in SECRET_PATTERNS:
+        if pattern.search(blob):
+            problems.append(f"possible hardcoded credential ({label})")
 
     return problems
 
@@ -114,10 +133,10 @@ def main() -> int:
     print(f"[ok] prompts/                      {len(written)} agent templates")
 
     with open(os.path.join(db_dir, "schema.postgres.sql"), "w", encoding="utf-8") as fh:
-        fh.write(DDL_POSTGRES + "\n")
+        fh.write(DDL_POSTGRES + "\n\n" + DDL_V2_POSTGRES + "\n")
     with open(os.path.join(db_dir, "schema.sqlite.sql"), "w", encoding="utf-8") as fh:
-        fh.write(DDL_SQLITE + "\n")
-    print("[ok] db/                           2 schemas")
+        fh.write(DDL_SQLITE + "\n\n" + DDL_V2_SQLITE + "\n")
+    print("[ok] db/                           2 schemas (V1 + V2)")
 
     print(f"\n{total_nodes} nodes generated across {len(WORKFLOWS)} workflows")
     if failures:

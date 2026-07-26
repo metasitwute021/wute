@@ -107,6 +107,104 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
+        "jsCode": "// V2 section 10: ask 08 whether there is budget before spending anything.\nconst ctx = $input.first().json;\nreturn [{\n  json: {\n    op: 'check_budget',\n    run_id: ctx.run_id,\n    stage: 'preflight',\n    reserve_usd: Number($env.BUDGET_RUN_RESERVE_USD || 3),\n  },\n}];"
+      },
+      "id": "adpf01-prepare-budget-check",
+      "name": "Prepare Budget Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        380
+      ],
+      "notes": "V2 section 10. Asks 08 whether today's and this month's budget allow a run.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "ADPF08COSTBUDGETX",
+          "mode": "id",
+          "cachedResultName": "ADPF 08 Cost and Budget"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "adpf01-run-budget-check",
+      "name": "Run: Budget Check",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        900,
+        570
+      ],
+      "notes": "Calls 08 Cost and Budget, op=check_budget.",
+      "notesInFlow": true,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Carry the budget verdict alongside the restored run context.\nconst ctx = $('Select Product Factory').first().json;\nconst budget = $input.first().json;\nreturn [{\n  json: {\n    ...ctx,\n    budget: {\n      allowed: budget.allowed !== false,\n      block_reason: budget.block_reason || null,\n      daily_remaining_usd: budget.daily?.remaining_usd ?? null,\n      monthly_remaining_usd: budget.monthly?.remaining_usd ?? null,\n    },\n    // A blocked run is a controlled stop, not a crash.\n    failure_reason: budget.allowed === false\n      ? `Budget manager stopped the run: ${budget.block_reason}` : null,\n  },\n}];"
+      },
+      "id": "adpf01-apply-budget-verdict",
+      "name": "Apply Budget Verdict",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        760
+      ],
+      "notes": "Restores the run context and attaches the budget verdict.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.budget.allowed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "adpf01-check-budget-ok",
+      "name": "Check: Budget OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        900,
+        950
+      ],
+      "notes": "Budget exhausted stops the run here - a controlled stop, not a crash.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
         "jsCode": "// Shape the payload for the 06 Database Logger sub-workflow (op = run_start).\nconst ctx = $input.first().json;\nreturn [{\n  json: {\n    op: 'run_start',\n    run_id: ctx.run_id,\n    factory: ctx.factory,\n    product_name: null,\n    category: null,\n    keywords: [],\n    marketplace: ctx.marketplace,\n    drive_folder_id: null,\n    etsy_listing_id: null,\n    prompt_version: ctx.prompt_version,\n    status: 'running',\n    error_log: null,\n  },\n}];"
       },
       "id": "adpf01-prepare-run-start-log",
@@ -233,7 +331,88 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Contract for 03 Product Engine: run context + the validated research package.\nconst ctx = $('Restore Run Context').first().json;\nconst research = $input.first().json;\nreturn [{\n  json: {\n    ...ctx,\n    stage: 'product',\n    research: research.research || research,\n    market: research.market || {},\n  },\n}];"
+        "jsCode": "// V2 sections 1-6: hand the research package to the Idea Factory.\nconst ctx = $('Restore Run Context').first().json;\nconst research = $input.first().json;\nreturn [{\n  json: {\n    ...ctx,\n    stage: 'ideas',\n    research: research.research || research,\n    market: research.market || {},\n    idea_count: Number(ctx.idea_count || $env.IDEA_TARGET_COUNT || 200),\n  },\n}];"
+      },
+      "id": "adpf01-compose-idea-request",
+      "name": "Compose Idea Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        0
+      ],
+      "notes": "V2. Input contract for 07 Idea Factory.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "ADPF07IDEAFACTORY",
+          "mode": "id",
+          "cachedResultName": "ADPF 07 Idea Factory"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "adpf01-run-idea-factory",
+      "name": "Run: Idea Factory",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        2700,
+        0
+      ],
+      "notes": "Calls 07 Idea Factory: 100-500 ideas scored and funnelled to a top 5.",
+      "notesInFlow": true,
+      "onError": "continueErrorOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "adpf01-check-ideas-ok",
+      "name": "Check: Ideas OK",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3000,
+        0
+      ],
+      "notes": "False when no idea survived scoring, dedupe and the category balancer.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Contract for 03 Product Engine. V2: the research package is now narrowed by\n// the Idea Factory, so the product is built from the winning idea rather than\n// from the raw research concept.\nconst ctx = $('Restore Run Context').first().json;\nconst ideaResult = $input.first().json;\nconst research = $('Compose Idea Request').first().json.research;\nconst selected = ideaResult.selected_idea;\n\nif (!selected) {\n  throw new Error('Idea Factory returned no shortlisted idea');\n}\n\nreturn [{\n  json: {\n    ...ctx,\n    stage: 'product',\n    // The winning idea overrides the generic concept: its title, category and\n    // customer are what the whole production line will build against.\n    factory: selected.factory || ctx.factory,\n    idea_uid: selected.idea_uid,\n    research: {\n      ...research,\n      product_type: selected.factory,\n      category: selected.category,\n      target_customer: selected.target_customer || research.target_customer,\n      keyword: (selected.keywords && selected.keywords[0]) || research.keyword,\n      sub_keywords: selected.keywords && selected.keywords.length\n        ? selected.keywords : research.sub_keywords,\n      price_suggestion_usd: selected.est_price_usd || research.price_suggestion_usd,\n      difficulty: selected.difficulty || research.difficulty,\n      idea_title: selected.title,\n    },\n    market: $('Compose Idea Request').first().json.market,\n    idea: selected,\n    idea_funnel: ideaResult.funnel,\n  },\n}];"
       },
       "id": "adpf01-compose-product-request",
       "name": "Compose Product Request",
@@ -243,7 +422,7 @@
         2700,
         190
       ],
-      "notes": "Input contract for 03 Product Engine.",
+      "notes": "Input contract for 03 Product Engine, built from the winning idea.",
       "notesInFlow": true
     },
     {
@@ -439,7 +618,97 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Final database record for a successful run (op = product_upsert).\nconst ctx = $('Restore Run Context').first().json;\nconst product = $('Compose Publish Request').first().json.product;\nconst publish = $('Compose Backup Request').first().json.publish;\nconst backup = $input.first().json;\nconst meta = product.metadata || {};\n\nreturn [{\n  json: {\n    op: 'product_upsert',\n    run_id: ctx.run_id,\n    factory: ctx.factory,\n    product_name: meta.product_name || product.product_name || 'unknown-product',\n    category: meta.category || (product.research && product.research.category) || null,\n    keywords: meta.keywords || meta.tags || [],\n    marketplace: [\n      'etsy',\n      publish.gumroad_package_ready ? 'gumroad-prepared' : null,\n      publish.miricanvas_package_ready ? 'miricanvas-prepared' : null,\n    ].filter(Boolean).join(','),\n    drive_folder_id: backup.drive_folder_id || null,\n    etsy_listing_id: publish.etsy_listing_id || null,\n    prompt_version: ctx.prompt_version,\n    status: 'completed',\n    error_log: null,\n  },\n}];"
+        "jsCode": "// V2 section 8: fold the measured API cost into the product row so ROI is one\n// column read, not a join at report time.\nconst ctx = $('Restore Run Context').first().json;\nreturn [{ json: { op: 'rollup', run_id: ctx.run_id, stage: 'finalise' } }];"
+      },
+      "id": "adpf01-prepare-cost-rollup",
+      "name": "Prepare Cost Rollup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5100,
+        0
+      ],
+      "notes": "V2 section 8. Asks 08 to fold measured API cost into the product row.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "ADPF08COSTBUDGETX",
+          "mode": "id",
+          "cachedResultName": "ADPF 08 Cost and Budget"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "adpf01-run-cost-rollup",
+      "name": "Run: Cost Rollup",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        5400,
+        0
+      ],
+      "notes": "Calls 08 Cost and Budget, op=rollup. Never blocks the run.",
+      "notesInFlow": true,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// V2 section 12: append-only version history.\nconst ctx = $('Restore Run Context').first().json;\nconst product = $('Compose Publish Request').first().json.product;\n\nreturn [{\n  json: {\n    op: 'product_version',\n    run_id: ctx.run_id,\n    product_name: product.product_name,\n    version: Number(product.version || 1),\n    prompt_version: ctx.prompt_version,\n    change_note: product.is_revision\n      ? `revision of an existing product (similarity ${product.duplicate_similarity})`\n      : 'initial version',\n    qa_score: product.qa?.average_score ?? null,\n  },\n}];"
+      },
+      "id": "adpf01-prepare-version-record",
+      "name": "Prepare Version Record",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5700,
+        0
+      ],
+      "notes": "V2 section 12. Append-only version history for this product.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "ADPF06DATABASELOGX",
+          "mode": "id",
+          "cachedResultName": "ADPF 06 Database Logger"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "adpf01-save-product-version",
+      "name": "Save: Product Version",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        6000,
+        0
+      ],
+      "notes": "Calls 06 Database Logger, op=product_version.",
+      "notesInFlow": true,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Final database record for a successful run (op = product_upsert).\nconst ctx = $('Restore Run Context').first().json;\nconst product = $('Compose Publish Request').first().json.product;\nconst publish = $('Compose Backup Request').first().json.publish;\nconst backup = $input.first().json;\nconst meta = product.metadata || {};\n\nreturn [{\n  json: {\n    op: 'product_upsert',\n    run_id: ctx.run_id,\n    factory: ctx.factory,\n    product_name: meta.product_name || product.product_name || 'unknown-product',\n    category: meta.category || (product.research && product.research.category) || null,\n    keywords: meta.keywords || meta.tags || [],\n    marketplace: [\n      'etsy',\n      publish.gumroad_package_ready ? 'gumroad-prepared' : null,\n      publish.miricanvas_package_ready ? 'miricanvas-prepared' : null,\n    ].filter(Boolean).join(','),\n    // V2: fingerprints for duplicate detection and the version number\n    idea_uid: ctx.idea_uid || null,\n    version: product.version || 1,\n    title_norm: product.title_norm || null,\n    keyword_set: product.keyword_set || null,\n    price_usd: meta.price_usd || null,\n    drive_folder_id: backup.drive_folder_id || null,\n    etsy_listing_id: publish.etsy_listing_id || null,\n    prompt_version: ctx.prompt_version,\n    status: 'completed',\n    error_log: null,\n  },\n}];"
       },
       "id": "adpf01-prepare-product-record",
       "name": "Prepare Product Record",
@@ -484,7 +753,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Human readable summary; also the webhook response body.\nconst ctx = $('Restore Run Context').first().json;\nconst record = $('Prepare Product Record').first().json;\nconst backup = $('Run: Drive Backup').first().json;\nconst publish = $('Compose Backup Request').first().json.publish;\nconst started = new Date(ctx.started_at).getTime();\n\nreturn [{\n  json: {\n    ok: true,\n    run_id: ctx.run_id,\n    factory: ctx.factory,\n    product_name: record.product_name,\n    etsy_listing_id: publish.etsy_listing_id || null,\n    etsy_listing_state: ctx.etsy_listing_state,\n    drive_folder_id: backup.drive_folder_id || null,\n    drive_folder_path: backup.drive_folder_path || null,\n    gumroad_package_ready: publish.gumroad_package_ready === true,\n    miricanvas_package_ready: publish.miricanvas_package_ready === true,\n    duration_seconds: Math.round((Date.now() - started) / 1000),\n    finished_at: new Date().toISOString(),\n    status: 'completed',\n  },\n}];"
+        "jsCode": "// Human readable summary; also the webhook response body.\nconst ctx = $('Restore Run Context').first().json;\nconst record = $('Prepare Product Record').first().json;\nconst backup = $('Run: Drive Backup').first().json;\nconst publish = $('Compose Backup Request').first().json.publish;\nconst started = new Date(ctx.started_at).getTime();\n\nreturn [{\n  json: {\n    ok: true,\n    run_id: ctx.run_id,\n    factory: ctx.factory,\n    product_name: record.product_name,\n    etsy_listing_id: publish.etsy_listing_id || null,\n    etsy_listing_state: ctx.etsy_listing_state,\n    drive_folder_id: backup.drive_folder_id || null,\n    drive_folder_path: backup.drive_folder_path || null,\n    gumroad_package_ready: publish.gumroad_package_ready === true,\n    miricanvas_package_ready: publish.miricanvas_package_ready === true,\n    duration_seconds: Math.round((Date.now() - started) / 1000),\n    finished_at: new Date().toISOString(),\n    status: 'completed',\n    // V2\n    idea_funnel: (() => { try { return $('Compose Product Request').first().json.idea_funnel; }\n                          catch (e) { return null; } })(),\n    qa_stages: (() => { try {\n      return ($('Compose Publish Request').first().json.product.qa?.stages || [])\n        .map((s) => ({ stage: s.stage, passed: s.passed, score: s.score }));\n    } catch (e) { return []; } })(),\n    roi: (() => { try { return $('Run: Cost Rollup').first().json.roi; }\n                  catch (e) { return null; } })(),\n    budget_remaining_usd: ctx.budget?.daily_remaining_usd ?? null,\n  },\n}];"
       },
       "id": "adpf01-build-success-summary",
       "name": "Build Success Summary",
@@ -513,6 +782,23 @@
     {
       "parameters": {
         "mode": "raw",
+        "jsonOutput": "={{ JSON.stringify({ ...$json, failed_stage: \"budget\" }) }}",
+        "options": {}
+      },
+      "id": "adpf01-stage-failed-budget",
+      "name": "Stage Failed: Budget",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1500,
+        570
+      ],
+      "notes": "Tags the failure with stage=budget for the shared error funnel.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "raw",
         "jsonOutput": "={{ JSON.stringify({ ...$json, failed_stage: \"research\" }) }}",
         "options": {}
       },
@@ -525,6 +811,23 @@
         570
       ],
       "notes": "Tags the failure with stage=research for the shared error funnel.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ JSON.stringify({ ...$json, failed_stage: \"ideas\" }) }}",
+        "options": {}
+      },
+      "id": "adpf01-stage-failed-ideas",
+      "name": "Stage Failed: Ideas",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3000,
+        570
+      ],
+      "notes": "Tags the failure with stage=ideas for the shared error funnel.",
       "notesInFlow": true
     },
     {
@@ -781,7 +1084,58 @@
       "main": [
         [
           {
+            "node": "Prepare Budget Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Budget Check": {
+      "main": [
+        [
+          {
+            "node": "Run: Budget Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run: Budget Check": {
+      "main": [
+        [
+          {
+            "node": "Apply Budget Verdict",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply Budget Verdict": {
+      "main": [
+        [
+          {
+            "node": "Check: Budget OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Budget OK": {
+      "main": [
+        [
+          {
             "node": "Prepare Run Start Log",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stage Failed: Budget",
             "type": "main",
             "index": 0
           }
@@ -843,7 +1197,7 @@
       "main": [
         [
           {
-            "node": "Compose Product Request",
+            "node": "Compose Idea Request",
             "type": "main",
             "index": 0
           }
@@ -851,6 +1205,53 @@
         [
           {
             "node": "Stage Failed: Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compose Idea Request": {
+      "main": [
+        [
+          {
+            "node": "Run: Idea Factory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run: Idea Factory": {
+      "main": [
+        [
+          {
+            "node": "Check: Ideas OK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stage Failed: Ideas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Ideas OK": {
+      "main": [
+        [
+          {
+            "node": "Compose Product Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stage Failed: Ideas",
             "type": "main",
             "index": 0
           }
@@ -995,6 +1396,50 @@
       "main": [
         [
           {
+            "node": "Prepare Cost Rollup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Cost Rollup": {
+      "main": [
+        [
+          {
+            "node": "Run: Cost Rollup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run: Cost Rollup": {
+      "main": [
+        [
+          {
+            "node": "Prepare Version Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Version Record": {
+      "main": [
+        [
+          {
+            "node": "Save: Product Version",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save: Product Version": {
+      "main": [
+        [
+          {
             "node": "Build Success Summary",
             "type": "main",
             "index": 0
@@ -1013,7 +1458,29 @@
         ]
       ]
     },
+    "Stage Failed: Budget": {
+      "main": [
+        [
+          {
+            "node": "Build Error Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Stage Failed: Research": {
+      "main": [
+        [
+          {
+            "node": "Build Error Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stage Failed: Ideas": {
       "main": [
         [
           {

@@ -21,7 +21,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Central prompt library. Every OpenAI agent used by this workflow lives\n// here so prompts are versioned with the workflow itself and can be\n// diffed in git (mirrored in prompts/*.md).\nconst PROMPT_VERSION = $env.PROMPT_VERSION || 'v1.0.0';\nconst PROMPTS = {\n  \"idea_ai\": {\n    \"id\": \"idea_ai\",\n    \"title\": \"Idea AI\",\n    \"purpose\": \"Expand a research concept into a concrete, buildable product specification.\",\n    \"system\": \"You are Idea AI, a digital product designer. You convert a validated market concept\\ninto a production brief that a content writer and an image generator can execute\\nwithout asking questions.\\n\\nRules:\\n- Respect the FACTORY PROFILE limits exactly (page count, page size, output formats).\\n- The product must be deliverable as static files. Never propose interactivity,\\n  fillable-PDF scripting, video, or anything requiring a runtime.\\n- `product_name` is a shop-facing name, max 60 characters, no emoji, no ALL CAPS.\\n- `sections` describes the real structure of the deliverable, in order.\\n- `visual_direction` must be one coherent art direction reused across every image.\\n- Never reference a real brand, celebrity, franchise, or trademarked style.\\n- Output valid JSON only.\",\n    \"user_template\": \"RESEARCH CONCEPT:\\n{{research_json}}\\n\\nFACTORY PROFILE:\\n{{factory_profile_json}}\\n\\nDesign the product. Answer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"product_name\\\": \\\"string\\\",\\n  \\\"one_liner\\\": \\\"string\\\",\\n  \\\"promise\\\": \\\"string\\\",\\n  \\\"sections\\\": [{\\\"title\\\": \\\"string\\\", \\\"purpose\\\": \\\"string\\\", \\\"page_count\\\": 0}],\\n  \\\"visual_direction\\\": {\\n    \\\"style\\\": \\\"string\\\",\\n    \\\"palette\\\": [\\\"#RRGGBB\\\"],\\n    \\\"typography\\\": \\\"string\\\",\\n    \\\"mood\\\": \\\"string\\\"\\n  },\\n  \\\"bonus_items\\\": [\\\"string\\\"],\\n  \\\"estimated_total_pages\\\": 0\\n}\"\n  },\n  \"writer_ai\": {\n    \"id\": \"writer_ai\",\n    \"title\": \"Writer AI\",\n    \"purpose\": \"Write the actual page-by-page content that goes inside the product file.\",\n    \"system\": \"You are Writer AI. You write the finished copy that will be typeset directly into\\nthe product PDF. Everything you write ships to a paying customer as-is.\\n\\nRules:\\n- Write in clear US English at a 7th-grade reading level.\\n- Every page must be self-contained and useful on its own.\\n- `lines` are already-wrapped display lines, max 92 characters each, no markdown\\n  syntax, no bullet characters other than \\\"- \\\".\\n- Do not write filler, lorem ipsum, or \\\"insert text here\\\" placeholders.\\n- Never claim medical, legal, financial, or therapeutic outcomes.\\n- Respect the requested page count within +/- 1 page.\\n- Output valid JSON only.\",\n    \"user_template\": \"PRODUCT BRIEF:\\n{{idea_json}}\\n\\nFACTORY PROFILE:\\n{{factory_profile_json}}\\n\\nCONTENT SCHEMA REQUIRED BY THIS FACTORY:\\n{{content_schema}}\\n\\nWrite the complete product content. Answer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"cover_title\\\": \\\"string\\\",\\n  \\\"cover_subtitle\\\": \\\"string\\\",\\n  \\\"pages\\\": [\\n    {\\\"page_number\\\": 0, \\\"title\\\": \\\"string\\\", \\\"lines\\\": [\\\"string\\\"], \\\"needs_image\\\": true}\\n  ],\\n  \\\"intro_text\\\": \\\"string\\\",\\n  \\\"usage_instructions\\\": [\\\"string\\\"],\\n  \\\"credits\\\": \\\"string\\\"\\n}\"\n  },\n  \"designer_ai\": {\n    \"id\": \"designer_ai\",\n    \"title\": \"Designer AI\",\n    \"purpose\": \"Author the image prompt set (and SVG source when applicable).\",\n    \"system\": \"You are Designer AI, an art director who writes prompts for the OpenAI Image API.\\n\\nRules:\\n- Every prompt must be fully self-contained: subject, composition, palette,\\n  lighting, medium, background, and negative guidance in one paragraph.\\n- Reuse the visual direction across every prompt so the set looks like one product.\\n- Never name a living artist, brand, franchise, or copyrighted character.\\n- Never request text, lettering, words, numbers, watermarks, or logos inside the\\n  image - typography is added later by the PDF engine.\\n- `cover` is a portrait hero image, `thumbnail` is a square shop icon, `previews`\\n  are 3 lifestyle/mockup shots, `pages` are the in-product illustrations.\\n- When `svg_required` is true, also return `svg_markup`: a single valid, standalone\\n  <svg> element, viewBox=\\\"0 0 1024 1024\\\", flat vector shapes only, no <script>,\\n  no <foreignObject>, no external references, no base64 images.\\n- Output valid JSON only.\",\n    \"user_template\": \"PRODUCT BRIEF:\\n{{idea_json}}\\n\\nPAGES NEEDING ART:\\n{{image_page_list}}\\n\\nFACTORY PROFILE:\\n{{factory_profile_json}}\\n\\nSVG REQUIRED: {{svg_required}}\\n\\nAuthor the image plan. Answer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"cover\\\": {\\\"prompt\\\": \\\"string\\\"},\\n  \\\"thumbnail\\\": {\\\"prompt\\\": \\\"string\\\"},\\n  \\\"previews\\\": [{\\\"prompt\\\": \\\"string\\\"}],\\n  \\\"pages\\\": [{\\\"page_number\\\": 0, \\\"prompt\\\": \\\"string\\\"}],\\n  \\\"svg_markup\\\": \\\"string|null\\\"\\n}\"\n  },\n  \"seo_ai\": {\n    \"id\": \"seo_ai\",\n    \"title\": \"SEO AI\",\n    \"purpose\": \"Produce Etsy-compliant title, description and tags.\",\n    \"system\": \"You are SEO AI, an Etsy search optimisation specialist.\\n\\nHard Etsy limits you must never break:\\n- Title: max 140 characters, primary keyword inside the first 40 characters,\\n  no ALL CAPS words, no more than one \\\"|\\\" separator group per phrase.\\n- Tags: exactly 13 tags, each max 20 characters, lowercase, letters/numbers/spaces\\n  only, no duplicates, no single-word repeats of the same stem more than twice.\\n- Description: 5 short paragraphs - hook, what's included, how to use it,\\n  file/delivery details, policy note that it is an instant digital download with\\n  no physical item shipped.\\n- Never promise refunds, never mention competitors, never use trademarked terms.\\n- Output valid JSON only.\",\n    \"user_template\": \"TASK: {{seo_task}}\\n\\nRESEARCH CONCEPT:\\n{{research_json}}\\n\\nPRODUCT BRIEF:\\n{{idea_json}}\\n\\nDELIVERABLE FILES:\\n{{file_manifest}}\\n\\nAnswer with the exact JSON contract for this task.\",\n    \"output_contract\": \"title  -> {\\\"title\\\": \\\"string\\\", \\\"char_count\\\": 0}\\ndescription -> {\\\"description\\\": \\\"string\\\", \\\"paragraph_count\\\": 0}\\ntags -> {\\\"tags\\\": [\\\"string\\\"], \\\"materials\\\": [\\\"string\\\"]}\\nkeywords -> {\\\"primary\\\": \\\"string\\\", \\\"sub_keywords\\\": [\\\"string\\\"], \\\"long_tail\\\": [\\\"string\\\"]}\"\n  },\n  \"metadata_ai\": {\n    \"id\": \"metadata_ai\",\n    \"title\": \"Metadata AI\",\n    \"purpose\": \"Emit the machine-readable metadata record that travels with the product.\",\n    \"system\": \"You are Metadata AI. You produce the canonical metadata record stored beside the\\nproduct in Google Drive and in the products database.\\n\\nRules:\\n- Copy values verbatim from the inputs. Never invent a value that was supplied.\\n- `price_usd` must be a number with at most 2 decimals, between 1 and 500.\\n- `taxonomy_hint` is a plain-English Etsy category path, not an id.\\n- `compatibility.gumroad` and `compatibility.miricanvas` are booleans with a short\\n  reason string in `compatibility.notes`.\\n- Output valid JSON only.\",\n    \"user_template\": \"RESEARCH: {{research_json}}\\nBRIEF: {{idea_json}}\\nSEO: {{seo_json}}\\nFILES: {{file_manifest}}\\nFACTORY PROFILE: {{factory_profile_json}}\\n\\nAnswer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"product_name\\\": \\\"string\\\",\\n  \\\"factory\\\": \\\"string\\\",\\n  \\\"category\\\": \\\"string\\\",\\n  \\\"taxonomy_hint\\\": \\\"string\\\",\\n  \\\"price_usd\\\": 0,\\n  \\\"currency\\\": \\\"USD\\\",\\n  \\\"keywords\\\": [\\\"string\\\"],\\n  \\\"tags\\\": [\\\"string\\\"],\\n  \\\"files\\\": [{\\\"name\\\": \\\"string\\\", \\\"format\\\": \\\"string\\\", \\\"purpose\\\": \\\"string\\\"}],\\n  \\\"compatibility\\\": {\\\"gumroad\\\": true, \\\"miricanvas\\\": true, \\\"notes\\\": \\\"string\\\"},\\n  \\\"license\\\": \\\"string\\\",\\n  \\\"prompt_version\\\": \\\"string\\\"\\n}\"\n  },\n  \"qa_ai\": {\n    \"id\": \"qa_ai\",\n    \"title\": \"QA AI\",\n    \"purpose\": \"Gate the product before anything is uploaded to a marketplace.\",\n    \"system\": \"You are QA AI, the last line of defence before a product is published. You are\\ndeliberately strict: it is cheaper to regenerate than to get a shop suspended.\\n\\nFail the product (`passed: false`) if ANY of these are true:\\n- Title over 140 chars, or tag count != 13, or any tag over 20 chars.\\n- Any trademarked name, brand, franchise, celebrity, or licensed character.\\n- Placeholder text, empty pages, duplicated pages, or truncated sentences.\\n- Claims about health, income, legal or therapeutic outcomes.\\n- Description does not disclose that it is a digital download.\\n- Page count differs from the brief by more than 2.\\n- Content that is unsafe for a general audience, or targets children with anything\\n  other than age-appropriate material.\\n\\nScore each dimension 0-10. `passed` requires every score >= 7 and zero blockers.\\nOutput valid JSON only.\",\n    \"user_template\": \"BRIEF: {{idea_json}}\\nCONTENT: {{content_json}}\\nSEO: {{seo_json}}\\nMETADATA: {{metadata_json}}\\nFILE MANIFEST: {{file_manifest}}\\n\\nReview the product. Answer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"passed\\\": true,\\n  \\\"scores\\\": {\\\"content\\\": 0, \\\"seo\\\": 0, \\\"compliance\\\": 0, \\\"completeness\\\": 0, \\\"design\\\": 0},\\n  \\\"blockers\\\": [\\\"string\\\"],\\n  \\\"warnings\\\": [\\\"string\\\"],\\n  \\\"fix_instructions\\\": [\\\"string\\\"],\\n  \\\"summary\\\": \\\"string\\\"\\n}\"\n  }\n};\n\nreturn $input.all().map((item) => ({\n  json: { ...item.json, prompt_version: PROMPT_VERSION, prompts: PROMPTS },\n}));\n"
+        "jsCode": "// Central prompt library. Every OpenAI agent used by this workflow lives\n// here so prompts are versioned with the workflow itself and can be\n// diffed in git (mirrored in prompts/*.md).\nconst PROMPT_VERSION = $env.PROMPT_VERSION || 'v1.0.0';\nconst PROMPTS = {\n  \"idea_ai\": {\n    \"id\": \"idea_ai\",\n    \"title\": \"Idea AI\",\n    \"purpose\": \"Expand a research concept into a concrete, buildable product specification.\",\n    \"system\": \"You are Idea AI, a digital product designer. You convert a validated market concept\\ninto a production brief that a content writer and an image generator can execute\\nwithout asking questions.\\n\\nRules:\\n- Respect the FACTORY PROFILE limits exactly (page count, page size, output formats).\\n- The product must be deliverable as static files. Never propose interactivity,\\n  fillable-PDF scripting, video, or anything requiring a runtime.\\n- `product_name` is a shop-facing name, max 60 characters, no emoji, no ALL CAPS.\\n- `sections` describes the real structure of the deliverable, in order.\\n- `visual_direction` must be one coherent art direction reused across every image.\\n- Never reference a real brand, celebrity, franchise, or trademarked style.\\n- Output valid JSON only.\",\n    \"user_template\": \"RESEARCH CONCEPT:\\n{{research_json}}\\n\\nFACTORY PROFILE:\\n{{factory_profile_json}}\\n\\nDesign the product. Answer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"product_name\\\": \\\"string\\\",\\n  \\\"one_liner\\\": \\\"string\\\",\\n  \\\"promise\\\": \\\"string\\\",\\n  \\\"sections\\\": [{\\\"title\\\": \\\"string\\\", \\\"purpose\\\": \\\"string\\\", \\\"page_count\\\": 0}],\\n  \\\"visual_direction\\\": {\\n    \\\"style\\\": \\\"string\\\",\\n    \\\"palette\\\": [\\\"#RRGGBB\\\"],\\n    \\\"typography\\\": \\\"string\\\",\\n    \\\"mood\\\": \\\"string\\\"\\n  },\\n  \\\"bonus_items\\\": [\\\"string\\\"],\\n  \\\"estimated_total_pages\\\": 0\\n}\"\n  },\n  \"writer_ai\": {\n    \"id\": \"writer_ai\",\n    \"title\": \"Writer AI\",\n    \"purpose\": \"Write the actual page-by-page content that goes inside the product file.\",\n    \"system\": \"You are Writer AI. You write the finished copy that will be typeset directly into\\nthe product PDF. Everything you write ships to a paying customer as-is.\\n\\nRules:\\n- Write in clear US English at a 7th-grade reading level.\\n- Every page must be self-contained and useful on its own.\\n- `lines` are already-wrapped display lines, max 92 characters each, no markdown\\n  syntax, no bullet characters other than \\\"- \\\".\\n- Do not write filler, lorem ipsum, or \\\"insert text here\\\" placeholders.\\n- Never claim medical, legal, financial, or therapeutic outcomes.\\n- Respect the requested page count within +/- 1 page.\\n- Output valid JSON only.\",\n    \"user_template\": \"PRODUCT BRIEF:\\n{{idea_json}}\\n\\nFACTORY PROFILE:\\n{{factory_profile_json}}\\n\\nCONTENT SCHEMA REQUIRED BY THIS FACTORY:\\n{{content_schema}}\\n\\nWrite the complete product content. Answer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"cover_title\\\": \\\"string\\\",\\n  \\\"cover_subtitle\\\": \\\"string\\\",\\n  \\\"pages\\\": [\\n    {\\\"page_number\\\": 0, \\\"title\\\": \\\"string\\\", \\\"lines\\\": [\\\"string\\\"], \\\"needs_image\\\": true}\\n  ],\\n  \\\"intro_text\\\": \\\"string\\\",\\n  \\\"usage_instructions\\\": [\\\"string\\\"],\\n  \\\"credits\\\": \\\"string\\\"\\n}\"\n  },\n  \"designer_ai\": {\n    \"id\": \"designer_ai\",\n    \"title\": \"Designer AI\",\n    \"purpose\": \"Author the image prompt set (and SVG source when applicable).\",\n    \"system\": \"You are Designer AI, an art director who writes prompts for the OpenAI Image API.\\n\\nRules:\\n- Every prompt must be fully self-contained: subject, composition, palette,\\n  lighting, medium, background, and negative guidance in one paragraph.\\n- Reuse the visual direction across every prompt so the set looks like one product.\\n- Never name a living artist, brand, franchise, or copyrighted character.\\n- Never request text, lettering, words, numbers, watermarks, or logos inside the\\n  image - typography is added later by the PDF engine.\\n- `cover` is a portrait hero image, `thumbnail` is a square shop icon, `previews`\\n  are 3 lifestyle/mockup shots, `pages` are the in-product illustrations.\\n- When `svg_required` is true, also return `svg_markup`: a single valid, standalone\\n  <svg> element, viewBox=\\\"0 0 1024 1024\\\", flat vector shapes only, no <script>,\\n  no <foreignObject>, no external references, no base64 images.\\n- Output valid JSON only.\",\n    \"user_template\": \"PRODUCT BRIEF:\\n{{idea_json}}\\n\\nPAGES NEEDING ART:\\n{{image_page_list}}\\n\\nFACTORY PROFILE:\\n{{factory_profile_json}}\\n\\nSVG REQUIRED: {{svg_required}}\\n\\nAuthor the image plan. Answer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"cover\\\": {\\\"prompt\\\": \\\"string\\\"},\\n  \\\"thumbnail\\\": {\\\"prompt\\\": \\\"string\\\"},\\n  \\\"previews\\\": [{\\\"prompt\\\": \\\"string\\\"}],\\n  \\\"pages\\\": [{\\\"page_number\\\": 0, \\\"prompt\\\": \\\"string\\\"}],\\n  \\\"svg_markup\\\": \\\"string|null\\\"\\n}\"\n  },\n  \"seo_ai\": {\n    \"id\": \"seo_ai\",\n    \"title\": \"SEO AI\",\n    \"purpose\": \"Produce Etsy-compliant title, description and tags.\",\n    \"system\": \"You are SEO AI, an Etsy search optimisation specialist.\\n\\nHard Etsy limits you must never break:\\n- Title: max 140 characters, primary keyword inside the first 40 characters,\\n  no ALL CAPS words, no more than one \\\"|\\\" separator group per phrase.\\n- Tags: exactly 13 tags, each max 20 characters, lowercase, letters/numbers/spaces\\n  only, no duplicates, no single-word repeats of the same stem more than twice.\\n- Description: 5 short paragraphs - hook, what's included, how to use it,\\n  file/delivery details, policy note that it is an instant digital download with\\n  no physical item shipped.\\n- Never promise refunds, never mention competitors, never use trademarked terms.\\n- Output valid JSON only.\",\n    \"user_template\": \"TASK: {{seo_task}}\\n\\nRESEARCH CONCEPT:\\n{{research_json}}\\n\\nPRODUCT BRIEF:\\n{{idea_json}}\\n\\nDELIVERABLE FILES:\\n{{file_manifest}}\\n\\nAnswer with the exact JSON contract for this task.\",\n    \"output_contract\": \"title  -> {\\\"title\\\": \\\"string\\\", \\\"char_count\\\": 0}\\ndescription -> {\\\"description\\\": \\\"string\\\", \\\"paragraph_count\\\": 0}\\ntags -> {\\\"tags\\\": [\\\"string\\\"], \\\"materials\\\": [\\\"string\\\"]}\\nkeywords -> {\\\"primary\\\": \\\"string\\\", \\\"sub_keywords\\\": [\\\"string\\\"], \\\"long_tail\\\": [\\\"string\\\"]}\"\n  },\n  \"metadata_ai\": {\n    \"id\": \"metadata_ai\",\n    \"title\": \"Metadata AI\",\n    \"purpose\": \"Emit the machine-readable metadata record that travels with the product.\",\n    \"system\": \"You are Metadata AI. You produce the canonical metadata record stored beside the\\nproduct in Google Drive and in the products database.\\n\\nRules:\\n- Copy values verbatim from the inputs. Never invent a value that was supplied.\\n- `price_usd` must be a number with at most 2 decimals, between 1 and 500.\\n- `taxonomy_hint` is a plain-English Etsy category path, not an id.\\n- `compatibility.gumroad` and `compatibility.miricanvas` are booleans with a short\\n  reason string in `compatibility.notes`.\\n- Output valid JSON only.\",\n    \"user_template\": \"RESEARCH: {{research_json}}\\nBRIEF: {{idea_json}}\\nSEO: {{seo_json}}\\nFILES: {{file_manifest}}\\nFACTORY PROFILE: {{factory_profile_json}}\\n\\nAnswer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"product_name\\\": \\\"string\\\",\\n  \\\"factory\\\": \\\"string\\\",\\n  \\\"category\\\": \\\"string\\\",\\n  \\\"taxonomy_hint\\\": \\\"string\\\",\\n  \\\"price_usd\\\": 0,\\n  \\\"currency\\\": \\\"USD\\\",\\n  \\\"keywords\\\": [\\\"string\\\"],\\n  \\\"tags\\\": [\\\"string\\\"],\\n  \\\"files\\\": [{\\\"name\\\": \\\"string\\\", \\\"format\\\": \\\"string\\\", \\\"purpose\\\": \\\"string\\\"}],\\n  \\\"compatibility\\\": {\\\"gumroad\\\": true, \\\"miricanvas\\\": true, \\\"notes\\\": \\\"string\\\"},\\n  \\\"license\\\": \\\"string\\\",\\n  \\\"prompt_version\\\": \\\"string\\\"\\n}\"\n  },\n  \"qa_ai\": {\n    \"id\": \"qa_ai\",\n    \"title\": \"QA AI\",\n    \"purpose\": \"Gate the product before anything is uploaded to a marketplace.\",\n    \"system\": \"You are QA AI, the last line of defence before a product is published. You are\\ndeliberately strict: it is cheaper to regenerate than to get a shop suspended.\\n\\nFail the product (`passed: false`) if ANY of these are true:\\n- Title over 140 chars, or tag count != 13, or any tag over 20 chars.\\n- Any trademarked name, brand, franchise, celebrity, or licensed character.\\n- Placeholder text, empty pages, duplicated pages, or truncated sentences.\\n- Claims about health, income, legal or therapeutic outcomes.\\n- Description does not disclose that it is a digital download.\\n- Page count differs from the brief by more than 2.\\n- Content that is unsafe for a general audience, or targets children with anything\\n  other than age-appropriate material.\\n\\nScore each dimension 0-10. `passed` requires every score >= 7 and zero blockers.\\nOutput valid JSON only.\",\n    \"user_template\": \"BRIEF: {{idea_json}}\\nCONTENT: {{content_json}}\\nSEO: {{seo_json}}\\nMETADATA: {{metadata_json}}\\nFILE MANIFEST: {{file_manifest}}\\n\\nReview the product. Answer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"passed\\\": true,\\n  \\\"scores\\\": {\\\"content\\\": 0, \\\"seo\\\": 0, \\\"compliance\\\": 0, \\\"completeness\\\": 0, \\\"design\\\": 0},\\n  \\\"blockers\\\": [\\\"string\\\"],\\n  \\\"warnings\\\": [\\\"string\\\"],\\n  \\\"fix_instructions\\\": [\\\"string\\\"],\\n  \\\"summary\\\": \\\"string\\\"\\n}\"\n  },\n  \"design_qa_ai\": {\n    \"id\": \"design_qa_ai\",\n    \"title\": \"Design QA AI\",\n    \"purpose\": \"QA stage 3 - judge layout, typography, margins and resolution.\",\n    \"system\": \"You are Design QA AI. You review the DESIGN SPECIFICATION of a print-ready\\ndigital product - page geometry, text density, image placement and resolution -\\nnot the prose. You never see the rendered file, so you reason from the numbers.\\n\\nFail (`passed: false`) when any of these is true:\\n- Any page would carry more text than fits: lines x leading exceeds the usable\\n  height of the page box.\\n- Margins under 10mm on a printable product, or text within 5mm of the trim.\\n- An image is supplied at less than 150 DPI for its placed size\\n  (DPI = pixel width / (placed width in inches)).\\n- Aspect ratio of a wall-art page does not match a standard print ratio\\n  (2:3, 3:4, 4:5, ISO) within 2%.\\n- Fewer than 60% of pages have any visual structure at all (a wall of text).\\n- The page count differs from the brief by more than 2.\\n\\nScore each dimension 0-10. Output valid JSON only.\",\n    \"user_template\": \"FACTORY PROFILE (page geometry, in points):\\n{{factory_profile_json}}\\n\\nPAGE PLAN (per page: title, line count, longest line, has_image):\\n{{page_plan_json}}\\n\\nIMAGE SET (per image: role, pixel size, placed size in points):\\n{{image_specs_json}}\\n\\nReview the design. Answer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"passed\\\": true,\\n  \\\"scores\\\": {\\\"layout\\\": 0, \\\"typography\\\": 0, \\\"margins\\\": 0, \\\"resolution\\\": 0},\\n  \\\"blockers\\\": [\\\"string\\\"],\\n  \\\"warnings\\\": [\\\"string\\\"],\\n  \\\"summary\\\": \\\"string\\\"\\n}\"\n  },\n  \"content_qa_ai\": {\n    \"id\": \"content_qa_ai\",\n    \"title\": \"Content QA AI\",\n    \"purpose\": \"QA stage 4 - grammar, spelling, copyright and sensitive content.\",\n    \"system\": \"You are Content QA AI. You proofread and risk-check the exact copy that ships to\\na paying customer. You are the last reader before it is sold.\\n\\nFail (`passed: false`) when any of these is true:\\n- Any spelling or grammar error a native reader would notice.\\n- Truncated sentences, duplicated paragraphs, placeholder text, or a page whose\\n  content does not match its title.\\n- A brand, franchise, celebrity, song lyric, licensed character, or any phrase\\n  likely to be trademarked.\\n- Text copied from an identifiable source rather than written for this product.\\n- Medical, legal, financial or therapeutic claims.\\n- Content unsuitable for a general audience; for kids' products, anything that\\n  is not age-appropriate for 3-8 year olds.\\n- Any instruction to the reader that could cause harm (choking hazards in kids'\\n  crafts, unsafe tools, etc.).\\n\\nList every issue with the page number. Output valid JSON only.\",\n    \"user_template\": \"PRODUCT: {{product_name}}\\nAUDIENCE: {{target_customer}}\\n\\nCONTENT (page by page):\\n{{content_json}}\\n\\nMARKETPLACE COPY:\\n{{seo_json}}\\n\\nProofread and risk-check. Answer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"passed\\\": true,\\n  \\\"scores\\\": {\\\"grammar\\\": 0, \\\"spelling\\\": 0, \\\"copyright\\\": 0, \\\"safety\\\": 0},\\n  \\\"issues\\\": [{\\\"page\\\": 0, \\\"type\\\": \\\"grammar|spelling|copyright|sensitive\\\", \\\"detail\\\": \\\"string\\\", \\\"fix\\\": \\\"string\\\"}],\\n  \\\"blockers\\\": [\\\"string\\\"],\\n  \\\"warnings\\\": [\\\"string\\\"],\\n  \\\"summary\\\": \\\"string\\\"\\n}\"\n  }\n};\n\nreturn $input.all().map((item) => ({\n  json: { ...item.json, prompt_version: PROMPT_VERSION, prompts: PROMPTS },\n}));\n"
       },
       "id": "adpf03-prompt-library",
       "name": "Prompt Library",
@@ -31,7 +31,7 @@
         300,
         570
       ],
-      "notes": "Versioned prompts for the six agents used on the production line.",
+      "notes": "Versioned prompts for the eight agents used on the production line.",
       "notesInFlow": true
     },
     {
@@ -1030,6 +1030,22 @@
     },
     {
       "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Section 7: collect stages 1, 2, 3, 4 and 6 into one verdict. Stage 5 (export)\n// runs later because it needs bytes that do not exist yet.\n// Fail closed: every stage must pass.\nconst base = $('Merge: Factory Profiles').first().json;\nconst marketplace = $('Parse QA Report').first().json.qa;\n\nconst stage = (nodeName) => {\n  try { return $(nodeName).first().json; } catch (e) { return null; }\n};\n\nconst stages = [\n  stage('QA Stage 1 Research'),\n  stage('QA Stage 2 Idea'),\n  stage('QA Stage 3 Design'),\n  stage('QA Stage 4 Content'),\n  {\n    stage: 'marketplace', stage_no: 6, checked_by: 'openai',\n    passed: marketplace.passed === true,\n    score: marketplace.lowest_score,\n    blockers: marketplace.blockers || [],\n    warnings: marketplace.warnings || [],\n  },\n].filter(Boolean);\n\nconst failed = stages.filter((s) => !s.passed);\nconst blockers = stages.flatMap((s) => (s.blockers || []).map((b) => `[${s.stage}] ${b}`));\nconst warnings = stages.flatMap((s) => (s.warnings || []).map((w) => `[${s.stage}] ${w}`));\nconst scores = stages.map((s) => Number(s.score)).filter((n) => !Number.isNaN(n));\n\nreturn [{\n  json: {\n    run_id: base.run_id,\n    qa_stages: stages,\n    qa_passed: failed.length === 0,\n    failed_stages: failed.map((s) => s.stage),\n    qa_blockers: blockers,\n    qa_warnings: warnings,\n    qa_average_score: scores.length\n      ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : 0,\n    qa_lowest_score: scores.length ? Math.min(...scores) : 0,\n  },\n}];"
+      },
+      "id": "adpf03-aggregate-qa-gate",
+      "name": "Aggregate QA Gate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9300,
+        380
+      ],
+      "notes": "Section 7. Collects QA stages 1, 2, 3, 4 and 6 into one verdict. Stage 5 runs after export, when the bytes exist.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
         "conditions": {
           "options": {
             "caseSensitive": true,
@@ -1040,7 +1056,7 @@
           "conditions": [
             {
               "id": "cond-1",
-              "leftValue": "={{ $json.qa.passed }}",
+              "leftValue": "={{ $json.qa_passed }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -1059,23 +1075,23 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        9300,
+        9600,
         380
       ],
-      "notes": "Fail closed: a rejected product never reaches the Publish Engine.",
+      "notes": "Fail closed: every stage must pass before anything is built or published.",
       "notesInFlow": true
     },
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Business rejection, not a technical error: return ok=false so 01 logs it and\n// stops cleanly instead of raising a workflow exception.\nconst base = $('Merge: Factory Profiles').first().json;\nconst qa = $('Parse QA Report').first().json.qa;\nconst idea = $('Parse Idea JSON').first().json.idea;\n\nreturn [{\n  json: {\n    ok: false,\n    run_id: base.run_id,\n    factory: base.factory,\n    product_name: idea.product_name,\n    failure_reason: `QA gate rejected the product: ${(qa.blockers || []).join('; ') || qa.summary}`,\n    qa,\n  },\n}];"
+        "jsCode": "// Business rejection, not a technical error: return ok=false so 01 logs it and\n// stops cleanly instead of raising a workflow exception.\nconst base = $('Merge: Factory Profiles').first().json;\nconst gate = $('Aggregate QA Gate').first().json;\nconst idea = $('Parse Idea JSON').first().json.idea;\n\nreturn [{\n  json: {\n    ok: false,\n    run_id: base.run_id,\n    factory: base.factory,\n    product_name: idea.product_name,\n    failure_reason: `QA rejected the product at stage(s) ${gate.failed_stages.join(', ')}: `\n      + (gate.qa_blockers.join('; ') || 'no blocker detail'),\n    qa: {\n      passed: false,\n      stages: gate.qa_stages,\n      blockers: gate.qa_blockers,\n      warnings: gate.qa_warnings,\n      average_score: gate.qa_average_score,\n      summary: `blocked at ${gate.failed_stages.join(', ')}`,\n    },\n  },\n}];"
       },
       "id": "adpf03-build-qa-failure-result",
       "name": "Build QA Failure Result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        9600,
+        9900,
         570
       ],
       "notes": "Returns ok=false (business rejection) rather than raising an error.",
@@ -1091,7 +1107,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        9600,
+        9900,
         190
       ],
       "notes": "Dependency-free PDF writer: Helvetica text pages plus JPEG images embedded as /DCTDecode. No external service, no npm package.",
@@ -1107,10 +1123,42 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        9900,
+        10200,
         190
       ],
       "notes": "Builds the deliverable manifest: PDF, PNG, JPG, SVG, JSON and TXT.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// QA stage 5 - Export: the files themselves. Every deliverable is opened and\n// its magic bytes checked, so a corrupt PDF can never reach a customer.\nconst exported = $input.first().json;\nconst profile = $('Merge: Factory Profiles').first().json.profile;\n\nconst blockers = [];\nconst warnings = [];\n\nconst MAGIC = {\n  PDF: (buf) => buf.slice(0, 5).toString('latin1') === '%PDF-',\n  PNG: (buf) => buf.slice(0, 8).toString('hex') === '89504e470d0a1a0a',\n  JPG: (buf) => buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff,\n  SVG: (buf) => /<svg[\\s>]/i.test(buf.slice(0, 400).toString('utf8')),\n  JSON: (buf) => { try { JSON.parse(buf.toString('utf8')); return true; } catch (e) { return false; } },\n  TXT: (buf) => buf.length > 0,\n};\n\nconst checked = [];\nfor (const file of exported.files || []) {\n  const buffer = Buffer.from(file.b64, 'base64');\n  const verify = MAGIC[file.format];\n  const valid = verify ? verify(buffer) : buffer.length > 0;\n\n  if (!valid) blockers.push(`${file.file_name} is not a valid ${file.format} file`);\n  if (buffer.length < 64) blockers.push(`${file.file_name} is only ${buffer.length} bytes`);\n  if (file.format === 'PDF' && buffer.length < 20000) {\n    warnings.push(`${file.file_name} is unusually small for a ${exported.stats.pdf_pages}-page PDF`);\n  }\n  checked.push({ file: file.file_name, format: file.format, bytes: buffer.length, valid });\n}\n\n// Every format the factory profile promises must actually be present.\nconst produced = new Set((exported.files || []).map((f) => f.format));\nfor (const format of profile.output_formats) {\n  if (format === 'ZIP') continue;   // the bundle is assembled by the marketplace\n  if (!produced.has(format)) blockers.push(`profile promises ${format} but no ${format} file was exported`);\n}\n\nif (exported.stats?.placeholder_images) {\n  warnings.push('product contains dry-run placeholder art - do not publish');\n}\n\nconst score = blockers.length ? 0 : (warnings.length ? 8 : 10);\n\nreturn [{\n  json: {\n    ...exported,\n    export_qa: {\n      stage: 'export', stage_no: 5, checked_by: 'code',\n      passed: blockers.length === 0,\n      score, blockers, warnings, files_checked: checked,\n    },\n  },\n}];"
+      },
+      "id": "adpf03-qa-stage-5-export",
+      "name": "QA Stage 5 Export",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10500,
+        190
+      ],
+      "notes": "Section 7 stage 5. Opens every exported file and checks its magic bytes, so a corrupt PDF can never reach a customer.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Attach the QA record, the version and the duplicate-detection fingerprints to\n// the package that 01 will store.\nconst exported = $input.first().json;\nconst gate = $('Aggregate QA Gate').first().json;\nconst dedupe = $('Duplicate Gate').first().json;\nconst exportQa = exported.export_qa;\n\nconst allStages = [...gate.qa_stages, exportQa];\nconst passed = gate.qa_passed && exportQa.passed;\n\nreturn [{\n  json: {\n    ...exported,\n    ok: passed,\n    failure_reason: passed ? null\n      : `QA failed at: ${[...gate.failed_stages, exportQa.passed ? null : 'export']\n          .filter(Boolean).join(', ')}`,\n    qa: {\n      passed,\n      stages: allStages,\n      blockers: [...gate.qa_blockers, ...exportQa.blockers.map((b) => `[export] ${b}`)],\n      warnings: [...gate.qa_warnings, ...exportQa.warnings.map((w) => `[export] ${w}`)],\n      average_score: Math.round(\n        ((gate.qa_average_score * gate.qa_stages.length + exportQa.score) /\n         (gate.qa_stages.length + 1)) * 10) / 10,\n      summary: passed ? 'all six QA stages passed' : `blocked at ${gate.failed_stages.join(', ') || 'export'}`,\n    },\n    // Section 12 + 13\n    version: dedupe.version,\n    is_revision: dedupe.is_revision,\n    title_norm: dedupe.title_norm,\n    keyword_set: dedupe.keyword_set,\n    duplicate_similarity: dedupe.similarity,\n  },\n}];"
+      },
+      "id": "adpf03-finalize-product-package",
+      "name": "Finalize Product Package",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        10800,
+        190
+      ],
+      "notes": "Attaches the six-stage QA record, the version and the dedupe fingerprints.",
       "notesInFlow": true
     },
     {
@@ -1120,10 +1168,257 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        10200,
+        11100,
         380
       ],
       "notes": "Terminal node - its item is the sub-workflow return value.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// QA stage 1 - Research: is the concept worth building at all?\n// Deterministic: these are arithmetic checks on the research package, and a\n// model adds nothing but variance.\nconst base = $('Merge: Factory Profiles').first().json;\nconst research = base.research || {};\nconst market = base.market || {};\n\nconst blockers = [];\nconst warnings = [];\n\nif (!research.keyword) blockers.push('no primary keyword');\nif ((research.sub_keywords || []).length < 5) blockers.push('fewer than 5 sub keywords');\nif ((research.selling_points || []).length < 3) blockers.push('fewer than 3 selling points');\n\nconst competitors = Number(market.competitor_count || 0);\nif (competitors === 0) warnings.push('no competitor data - market signal unavailable');\nif (competitors > 90) warnings.push(`very crowded keyword (${competitors} competitors sampled)`);\n\nconst median = Number(market?.price_usd?.median || 0);\nif (median > 0 && median < 2) blockers.push(`median price ${median} USD is below a viable floor`);\n\nif (research.difficulty === 'hard' && competitors > 80) {\n  warnings.push('hard difficulty in a crowded niche - low expected return');\n}\n\n// Score: keyword quality, signal quality, headroom.\nconst keywordScore = Math.min(10, (research.sub_keywords || []).length);\nconst signalScore = market.signal_quality === 'good' ? 10 : market.signal_quality === 'thin' ? 6 : 3;\nconst demandScore = competitors > 0 ? Math.max(3, 10 - Math.floor(competitors / 20)) : 5;\nconst score = Math.round(((keywordScore + signalScore + demandScore) / 3) * 10) / 10;\n\nreturn [{\n  json: {\n    stage: 'research', stage_no: 1, checked_by: 'code',\n    passed: blockers.length === 0 && score >= 5,\n    score, blockers, warnings,\n    detail: { competitors, median_price_usd: median, difficulty: research.difficulty },\n  },\n}];"
+      },
+      "id": "adpf03-qa-stage-1-research",
+      "name": "QA Stage 1 Research",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        380
+      ],
+      "notes": "Section 7 stage 1. Deterministic checks on the research package - arithmetic, so no model is involved.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "-- Section 12 + 13. One round trip answers both questions: is this a duplicate,\n-- and if it is a legitimate revision, what version number is next?\nWITH candidate AS (SELECT $1::text AS title_norm, $2::text AS keyword_set),\nexact AS (\n  SELECT run_id, product_name, created_at, version\n  FROM adpf_products, candidate\n  WHERE adpf_products.title_norm = candidate.title_norm\n  ORDER BY created_at DESC LIMIT 1\n),\n-- \"similar\" is a reserved word in PostgreSQL (SIMILAR TO), hence the suffix.\nsimilar_titles AS (\n  SELECT product_name, title_norm, keyword_set, created_at\n  FROM adpf_products\n  WHERE title_norm IS NOT NULL AND status <> 'failed'\n  ORDER BY created_at DESC LIMIT 300\n)\nSELECT\n  (SELECT row_to_json(exact) FROM exact) AS exact_match,\n  COALESCE((SELECT max(version) FROM adpf_products, candidate\n            WHERE adpf_products.title_norm = candidate.title_norm), 0) AS max_version,\n  COALESCE((SELECT json_agg(row_to_json(similar_titles)) FROM similar_titles), '[]'::json) AS recent;",
+        "options": {
+          "queryReplacement": "={{ [$('Parse Idea JSON').first().json.idea.product_name.toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\\s+/g,' ').trim(), ($('Merge: Factory Profiles').first().json.research.sub_keywords || []).slice(0,15).sort().join(',')] }}"
+        }
+      },
+      "id": "adpf03-postgres-check-existing-product",
+      "name": "Postgres: Check Existing Product",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2700,
+        760
+      ],
+      "notes": "Sections 12 + 13. One round trip: exact match, next version, recent titles.",
+      "notesInFlow": true,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Section 13 Duplicate Detector, at product level. The idea funnel already\n// filtered on titles; this catches the case where two runs converge on the same\n// product from different ideas.\nconst base = $('Merge: Factory Profiles').first().json;\nconst idea = $('Parse Idea JSON').first().json.idea;\nconst row = $input.first().json || {};\n\nconst THRESHOLD = Number($env.DUPLICATE_SIMILARITY_THRESHOLD || 0.62);\nconst ALLOW_REVISION = String($env.ALLOW_PRODUCT_REVISION || 'false') === 'true';\n\nconst asArray = (value) => {\n  if (Array.isArray(value)) return value;\n  if (typeof value === 'string') { try { return JSON.parse(value); } catch (e) { return []; } }\n  return value || [];\n};\nconst parse = (value) => {\n  if (!value) return null;\n  if (typeof value === 'string') { try { return JSON.parse(value); } catch (e) { return null; } }\n  return value;\n};\n\nconst titleNorm = idea.product_name.toLowerCase().replace(/[^a-z0-9 ]/g, ' ')\n  .replace(/\\s+/g, ' ').trim();\nconst keywordSet = (base.research.sub_keywords || []).slice(0, 15).sort().join(',');\n\nconst tokenise = (text) => new Set(String(text).split(' ').filter((w) => w.length > 2));\nconst jaccard = (a, b) => {\n  if (!a.size || !b.size) return 0;\n  let shared = 0;\n  for (const token of a) if (b.has(token)) shared += 1;\n  return shared / (a.size + b.size - shared);\n};\n\nconst tokens = tokenise(titleNorm);\nlet similarity = 0;\nlet similarTo = null;\nfor (const existing of asArray(row.recent)) {\n  const score = jaccard(tokens, tokenise(existing.title_norm || ''));\n  if (score > similarity) { similarity = score; similarTo = existing.product_name; }\n}\n\nconst exactMatch = parse(row.exact_match);\nconst nextVersion = Number(row.max_version || 0) + 1;\n\nlet duplicate = false;\nlet reason = null;\n\nif (exactMatch && !ALLOW_REVISION) {\n  duplicate = true;\n  reason = `\"${idea.product_name}\" already exists (run ${exactMatch.run_id})`;\n} else if (similarity >= THRESHOLD) {\n  duplicate = true;\n  reason = `too similar to existing product \"${similarTo}\" (similarity ${Math.round(similarity * 100) / 100} >= ${THRESHOLD})`;\n}\n\nreturn [{\n  json: {\n    run_id: base.run_id,\n    is_duplicate: duplicate,\n    duplicate_reason: reason,\n    similarity: Math.round(similarity * 100) / 100,\n    similar_to: similarTo,\n    title_norm: titleNorm,\n    keyword_set: keywordSet,\n    // Section 12: a revision of an existing product increments the version.\n    version: exactMatch && ALLOW_REVISION ? nextVersion : 1,\n    is_revision: Boolean(exactMatch && ALLOW_REVISION),\n  },\n}];"
+      },
+      "id": "adpf03-duplicate-gate",
+      "name": "Duplicate Gate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3000,
+        760
+      ],
+      "notes": "Section 13. Jaccard similarity against recent products. ALLOW_PRODUCT_REVISION=true turns an exact match into version N+1.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ !$json.is_duplicate }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "adpf03-check-not-duplicate",
+      "name": "Check: Not Duplicate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3300,
+        760
+      ],
+      "notes": "A duplicate stops here - before a single image is generated.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Section 13: a duplicate is a business decision, not an error. Return ok=false\n// so 01 records it and moves on to the next idea.\nconst base = $('Merge: Factory Profiles').first().json;\nconst idea = $('Parse Idea JSON').first().json.idea;\nconst dedupe = $('Duplicate Gate').first().json;\n\nreturn [{\n  json: {\n    ok: false,\n    run_id: base.run_id,\n    factory: base.factory,\n    product_name: idea.product_name,\n    failure_reason: `Duplicate rejected: ${dedupe.duplicate_reason}`,\n    duplicate: {\n      similarity: dedupe.similarity,\n      similar_to: dedupe.similar_to,\n      reason: dedupe.duplicate_reason,\n    },\n  },\n}];"
+      },
+      "id": "adpf03-build-duplicate-rejection",
+      "name": "Build Duplicate Rejection",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        950
+      ],
+      "notes": "Returns ok=false with the similarity evidence. Not an error.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// QA stage 2 - Idea: does the economics work before a cent is spent on images?\nconst base = $('Merge: Factory Profiles').first().json;\nconst idea = $('Parse Idea JSON').first().json.idea;\nconst research = base.research || {};\nconst market = base.market || {};\nconst profile = base.profile;\n\nconst blockers = [];\nconst warnings = [];\n\nconst IMAGE_UNIT = Number($env.OPENAI_IMAGE_UNIT_COST_USD || 0.19);\nconst CHAT_RUN = Number($env.OPENAI_CHAT_RUN_COST_USD || 0.12);\nconst images = 2 + profile.preview_count + profile.image_pages;\nconst estCost = Math.round((images * IMAGE_UNIT + CHAT_RUN) * 100) / 100;\n\nconst [minPrice, maxPrice] = profile.price_range_usd;\nconst price = Math.min(maxPrice, Math.max(minPrice,\n  Number(research.price_suggestion_usd || minPrice)));\nconst estProfit = Math.round((price - estCost) * 100) / 100;\nconst marginPct = price > 0 ? Math.round((estProfit / price) * 1000) / 10 : 0;\n\nif (estProfit <= 0) {\n  blockers.push(`unit economics negative: ${price} USD price vs ${estCost} USD production`);\n}\nif (marginPct < 30 && estProfit > 0) {\n  warnings.push(`thin margin (${marginPct}%) - one refund wipes out several sales`);\n}\nif (!idea.sections || idea.sections.length < 2) blockers.push('brief has fewer than 2 sections');\nif (!idea.visual_direction || !idea.visual_direction.style) {\n  warnings.push('no visual direction - images will not look like a set');\n}\n\nconst median = Number(market?.price_usd?.median || 0);\nif (median > 0 && price > median * 2.5) {\n  warnings.push(`price ${price} is far above the market median ${median}`);\n}\n\nconst profitScore = Math.max(0, Math.min(10, marginPct / 8));\nconst competitionScore = Math.max(0, Math.min(10, 10 - Number(market.competitor_count || 0) / 12));\nconst seoScore = Math.min(10, (research.sub_keywords || []).length * 0.8);\nconst marketScore = median > 0 ? 8 : 5;\nconst score = Math.round(((profitScore + competitionScore + seoScore + marketScore) / 4) * 10) / 10;\n\nreturn [{\n  json: {\n    stage: 'idea', stage_no: 2, checked_by: 'code',\n    passed: blockers.length === 0 && score >= 5,\n    score, blockers, warnings,\n    economics: { est_api_cost_usd: estCost, price_usd: price,\n                 est_profit_usd: estProfit, margin_pct: marginPct, images },\n  },\n}];"
+      },
+      "id": "adpf03-qa-stage-2-idea",
+      "name": "QA Stage 2 Idea",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        760
+      ],
+      "notes": "Section 7 stage 2. Unit economics gate: price vs production cost, computed before any image is paid for.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Mustache-style renderer for the {{placeholders}} in the prompt templates.\nconst render = (template, vars) =>\n  String(template).replace(/\\{\\{\\s*(\\w+)\\s*\\}\\}/g, (_, key) =>\n    vars[key] === undefined || vars[key] === null ? '' : String(vars[key]));\n\nconst base = $('Merge: Factory Profiles').first().json;\nconst content = $('Parse Content JSON').first().json.content;\nconst images = $('Collect Generated Images').first().json.images;\nconst agent = $('Prompt Library').first().json.prompts.design_qa_ai;\nconst profile = base.profile;\n\n// The QA agent never sees pixels, so it is handed the geometry instead.\nconst pagePlan = content.pages.map((page) => ({\n  page_number: page.page_number,\n  title: page.title,\n  line_count: page.lines.length,\n  longest_line: page.lines.reduce((max, l) => Math.max(max, l.length), 0),\n  has_image: page.needs_image,\n}));\n\nconst parseSize = (size) => {\n  const [w, h] = String(size || '1024x1024').split('x').map(Number);\n  return { width: w || 1024, height: h || 1024 };\n};\n\nconst imageSpecs = [\n  { role: 'cover', ...parseSize(profile.cover_size) },\n  { role: 'thumbnail', ...parseSize(profile.thumbnail_size) },\n  ...(images.previews || []).map((p) => ({ role: `preview_${p.index}`, ...parseSize(profile.preview_size) })),\n  ...(images.pages || []).map((p) => ({ role: `page_${p.page_number}`, ...parseSize(profile.image_size) })),\n].map((spec) => ({\n  ...spec,\n  placed_width_pt: profile.page_width_pt,\n  placed_height_pt: profile.page_height_pt,\n  effective_dpi: Math.round(spec.width / (profile.page_width_pt / 72)),\n}));\n\nreturn [{\n  json: {\n    run_id: base.run_id,\n    design_qa_prompt: render(agent.user_template, {\n      factory_profile_json: JSON.stringify({\n        page_size: profile.page_size,\n        page_width_pt: profile.page_width_pt,\n        page_height_pt: profile.page_height_pt,\n        margin_pt: 56, body_size_pt: 11, leading_pt: 16,\n        target_pages: profile.target_pages,\n      }, null, 2),\n      page_plan_json: JSON.stringify(pagePlan, null, 2),\n      image_specs_json: JSON.stringify(imageSpecs, null, 2),\n    }),\n  },\n}];"
+      },
+      "id": "adpf03-build-design-qa-prompt",
+      "name": "Build Design QA Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5400,
+        0
+      ],
+      "notes": "Hands the QA agent page geometry and image DPI - it never sees pixels.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $env.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.1, max_tokens: 1500, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.design_qa_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.design_qa_ai.output_contract) }, { role: 'user', content: $json.design_qa_prompt } ] }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "adpf03-openai-design-qa-ai",
+      "name": "OpenAI: Design QA AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5700,
+        0
+      ],
+      "notes": "Agent 12/13. QA stage 3: layout, typography, margins, resolution.",
+      "notesInFlow": true,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// QA stage 3 - Design. Model verdict plus a deterministic geometry re-check,\n// because \"will this text fit on the page\" is arithmetic, not judgement.\nconst base = $('Merge: Factory Profiles').first().json;\nconst content = $('Parse Content JSON').first().json.content;\nconst profile = base.profile;\nconst response = $input.first().json;\n\nlet report;\ntry {\n  report = JSON.parse(response?.choices?.[0]?.message?.content || '{}');\n} catch (e) {\n  report = { passed: false, blockers: [`Design QA AI returned invalid JSON: ${e.message}`] };\n}\n\nconst blockers = [...(report.blockers || [])];\nconst warnings = [...(report.warnings || [])];\n\n// Deterministic re-check of the two things that actually break a PDF.\nconst MARGIN_PT = 56;                       // matches the PDF writer\nconst LEADING_PT = 16;\nconst usableHeight = profile.page_height_pt - MARGIN_PT * 2;\nconst maxLines = Math.floor(usableHeight / LEADING_PT);\n\nfor (const page of content.pages) {\n  if (page.lines.length > maxLines * 3) {\n    warnings.push(`page ${page.page_number} spans more than 3 physical pages (${page.lines.length} lines)`);\n  }\n}\nif (MARGIN_PT / 2.835 < 10) blockers.push('page margin is below 10mm');\n\nconst minDpi = Math.round(1024 / (profile.page_width_pt / 72));\nif (minDpi < 150) {\n  warnings.push(`generated art is ~${minDpi} DPI at full page width - acceptable on screen, soft in print`);\n}\n\nconst scores = report.scores || {};\nconst values = Object.values(scores).map(Number).filter((n) => !Number.isNaN(n));\nconst score = values.length ? Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) / 10 : 5;\n\nreturn [{\n  json: {\n    stage: 'design', stage_no: 3, checked_by: 'openai',\n    passed: report.passed === true && blockers.length === 0,\n    score, blockers, warnings, summary: report.summary || null,\n  },\n}];"
+      },
+      "id": "adpf03-qa-stage-3-design",
+      "name": "QA Stage 3 Design",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6000,
+        0
+      ],
+      "notes": "Model verdict plus a deterministic geometry re-check.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Mustache-style renderer for the {{placeholders}} in the prompt templates.\nconst render = (template, vars) =>\n  String(template).replace(/\\{\\{\\s*(\\w+)\\s*\\}\\}/g, (_, key) =>\n    vars[key] === undefined || vars[key] === null ? '' : String(vars[key]));\n\nconst base = $('Merge: Factory Profiles').first().json;\nconst idea = $('Parse Idea JSON').first().json.idea;\nconst content = $('Parse Content JSON').first().json.content;\nconst seo = $('Validate SEO Package').first().json.seo;\nconst agent = $('Prompt Library').first().json.prompts.content_qa_ai;\n\nreturn [{\n  json: {\n    run_id: base.run_id,\n    content_qa_prompt: render(agent.user_template, {\n      product_name: idea.product_name,\n      target_customer: base.research.target_customer || '',\n      content_json: JSON.stringify({\n        cover_title: content.cover_title,\n        cover_subtitle: content.cover_subtitle,\n        intro_text: content.intro_text,\n        usage_instructions: content.usage_instructions,\n        pages: content.pages.map((p) => ({\n          page_number: p.page_number, title: p.title, lines: p.lines,\n        })),\n      }, null, 2),\n      seo_json: JSON.stringify(seo, null, 2),\n    }),\n  },\n}];"
+      },
+      "id": "adpf03-build-content-qa-prompt",
+      "name": "Build Content QA Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7500,
+        570
+      ],
+      "notes": "Sends the exact copy that ships to the customer.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $env.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.1, max_tokens: 3000, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.content_qa_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.content_qa_ai.output_contract) }, { role: 'user', content: $json.content_qa_prompt } ] }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "adpf03-openai-content-qa-ai",
+      "name": "OpenAI: Content QA AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        7800,
+        570
+      ],
+      "notes": "Agent 13/13. QA stage 4: grammar, spelling, copyright, sensitive content.",
+      "notesInFlow": true,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// QA stage 4 - Content: grammar, spelling, copyright, sensitive material.\nconst response = $input.first().json;\nconst content = $('Parse Content JSON').first().json.content;\n\nlet report;\ntry {\n  report = JSON.parse(response?.choices?.[0]?.message?.content || '{}');\n} catch (e) {\n  report = { passed: false, blockers: [`Content QA AI returned invalid JSON: ${e.message}`] };\n}\n\nconst blockers = [...(report.blockers || [])];\nconst warnings = [...(report.warnings || [])];\n\n// Deterministic backstop for the failures a proofreader would never miss but a\n// model sometimes waves through.\nconst PLACEHOLDER = /(lorem ipsum|insert (text|your)|tbd|todo|xxx+|\\[.*?\\])/i;\nconst seen = new Set();\nfor (const page of content.pages) {\n  const body = page.lines.join(' ');\n  if (PLACEHOLDER.test(body) || PLACEHOLDER.test(page.title)) {\n    blockers.push(`page ${page.page_number} contains placeholder text`);\n  }\n  if (!body.trim()) blockers.push(`page ${page.page_number} is empty`);\n  const fingerprint = body.slice(0, 120).toLowerCase();\n  if (fingerprint && seen.has(fingerprint)) {\n    blockers.push(`page ${page.page_number} duplicates an earlier page`);\n  }\n  seen.add(fingerprint);\n}\n\nconst issues = report.issues || [];\nconst scores = report.scores || {};\nconst values = Object.values(scores).map(Number).filter((n) => !Number.isNaN(n));\nconst score = values.length ? Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) / 10 : 5;\n\nreturn [{\n  json: {\n    stage: 'content', stage_no: 4, checked_by: 'openai',\n    passed: report.passed === true && blockers.length === 0,\n    score, blockers, warnings,\n    issues: issues.slice(0, 30),\n    summary: report.summary || null,\n  },\n}];"
+      },
+      "id": "adpf03-qa-stage-4-content",
+      "name": "QA Stage 4 Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8100,
+        570
+      ],
+      "notes": "Adds deterministic placeholder / empty page / duplicate page detection.",
       "notesInFlow": true
     }
   ],
@@ -1331,6 +1626,17 @@
       "main": [
         [
           {
+            "node": "QA Stage 1 Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "QA Stage 1 Research": {
+      "main": [
+        [
+          {
             "node": "Build Idea Prompt",
             "type": "main",
             "index": 0
@@ -1361,6 +1667,68 @@
       ]
     },
     "Parse Idea JSON": {
+      "main": [
+        [
+          {
+            "node": "Postgres: Check Existing Product",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres: Check Existing Product": {
+      "main": [
+        [
+          {
+            "node": "Duplicate Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Duplicate Gate": {
+      "main": [
+        [
+          {
+            "node": "Check: Not Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Not Duplicate": {
+      "main": [
+        [
+          {
+            "node": "QA Stage 2 Idea",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Duplicate Rejection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Duplicate Rejection": {
+      "main": [
+        [
+          {
+            "node": "Return: Product Package",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "QA Stage 2 Idea": {
       "main": [
         [
           {
@@ -1521,6 +1889,39 @@
       "main": [
         [
           {
+            "node": "Build Design QA Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Design QA Prompt": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: Design QA AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: Design QA AI": {
+      "main": [
+        [
+          {
+            "node": "QA Stage 3 Design",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "QA Stage 3 Design": {
+      "main": [
+        [
+          {
             "node": "Build SEO Title Prompt",
             "type": "main",
             "index": 0
@@ -1598,6 +1999,39 @@
       "main": [
         [
           {
+            "node": "Build Content QA Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Content QA Prompt": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: Content QA AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: Content QA AI": {
+      "main": [
+        [
+          {
+            "node": "QA Stage 4 Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "QA Stage 4 Content": {
+      "main": [
+        [
+          {
             "node": "Build Metadata Prompt",
             "type": "main",
             "index": 0
@@ -1664,6 +2098,17 @@
       "main": [
         [
           {
+            "node": "Aggregate QA Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate QA Gate": {
+      "main": [
+        [
+          {
             "node": "Check: QA Passed",
             "type": "main",
             "index": 0
@@ -1701,6 +2146,28 @@
       ]
     },
     "Export Files": {
+      "main": [
+        [
+          {
+            "node": "QA Stage 5 Export",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "QA Stage 5 Export": {
+      "main": [
+        [
+          {
+            "node": "Finalize Product Package",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finalize Product Package": {
       "main": [
         [
           {

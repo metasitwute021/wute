@@ -1,7 +1,7 @@
 # เอกสารระบบ: AI Digital Product Factory
 
 **เอกสารสำหรับตรวจสอบระบบ** — n8n Workflow Suite
-เวอร์ชัน `v1.0.0` · 6 workflow · 159 node
+เวอร์ชัน `v2.0.0` · **10 workflow · 254 node** · 13 OpenAI agents
 
 ---
 
@@ -16,7 +16,7 @@
 | Storage | Google Drive (OAuth2) |
 | Database | PostgreSQL (หลัก) / SQLite (สำรอง) |
 | หน่วยการทำงาน | **1 run = สินค้า 1 ชิ้น ครบวงจร** |
-| ขนาดระบบ | 6 workflow, 159 node, ทุก node มี comment |
+| ขนาดระบบ | 10 workflow, 254 node, ทุก node มี comment |
 | ความปลอดภัย | ไม่มี API key ใน JSON เลย — ใช้ n8n credential + environment variable |
 
 ---
@@ -26,19 +26,29 @@
 ```
                     กด 1 ครั้ง (Schedule / Webhook / Manual)
                                   |
-                        +---------v---------+
-                        | 01 MASTER         |  34 nodes
-                        | CONTROLLER        |  ตัวเดียวที่รู้ลำดับงาน
-                        +---------+---------+
-                                  | Execute Workflow x 7 จุด
-     +------------+------------+--+---------+------------+
-     v            v            v            v            v
-+---------+  +---------+  +---------+  +---------+  +---------+
-| 02      |->| 03      |->| 04      |->| 05      |->| 06      |
-| RESEARCH|  | PRODUCT |  | PUBLISH |  | BACKUP  |  | DATABASE|
-| 15 nodes|  | 48 nodes|  | 29 nodes|  | 24 nodes|  |  9 nodes|
-+---------+  +---------+  +---------+  +---------+  +---------+
+                        +---------v---------+        +--------------+
+                        | 01 MASTER         |<------>| 08 COST &    |
+                        | CONTROLLER        | budget | BUDGET       |
+                        | 47 nodes          | gate   |  9 nodes     |
+                        +---------+---------+        +--------------+
+                                  | Execute Workflow x 11 จุด
+   +----------+----------+--------+-------+----------+----------+
+   v          v          v                v          v          v
++--------+ +--------+ +--------+     +--------+ +--------+ +--------+
+| 02     |>| 07     |>| 03     |>    | 04     |>| 05     |>| 06     |
+|RESEARCH| |IDEA    | |PRODUCT |     |PUBLISH | |BACKUP  | |DATABASE|
+|15 nodes| |20 nodes| |63 nodes|     |29 nodes| |24 nodes| | 9 nodes|
++--------+ +--------+ +--------+     +--------+ +--------+ +--------+
+                                                     |
+                          +--------------+           v      +--------------+
+                          | 09 FEEDBACK  |<--- sales ------>| 10 DASHBOARD |
+                          | LEARNING     |  ทุกวันจันทร์ 04:00 |  8 nodes     |
+                          | 30 nodes     |                  | (webhook)    |
+                          +--------------+                  +--------------+
 ```
+
+**V1 (01–06)** คือสายการผลิต · **V2 (07–10)** คือสมองของโรงงาน:
+เลือกว่าจะผลิตอะไร (07), คุมงบ (08), เรียนรู้จากยอดขาย (09), แสดงสถานะ (10)
 
 **หลักการ:** 02–06 ไม่รู้จักกันเอง แต่ละตัวมี `Execute Workflow Trigger`
 (`inputSource: passthrough`) รับ JSON เข้า แล้วคืน JSON ออกเท่านั้น
@@ -49,6 +59,8 @@
 ```
 ADPF01MASTERCONTROL   ADPF02RESEARCHENGN   ADPF03PRODUCTENGIN
 ADPF04PUBLISHENGIN    ADPF05DRIVEBACKUPX   ADPF06DATABASELOGX
+ADPF07IDEAFACTORY     ADPF08COSTBUDGETX    ADPF09FEEDBACKLRN
+ADPF10DASHBOARDXX
 ```
 
 ---
@@ -483,6 +495,24 @@ DB_SQLITE_PATH=/home/node/.n8n/adpf.db
 PROMPT_VERSION=v1.0.0
 FACTORY_ROTATION=planner,printable,canva,wallart,resume,spreadsheet,kids,svg
 ALERT_WEBHOOK_URL=                      (optional)
+
+# ---- V2 ----
+IDEA_TARGET_COUNT=200                   จำนวนไอเดียต่อ run (บังคับอยู่ในช่วง 100-500)
+IDEA_BATCH_SIZE=25                      ไอเดียต่อ 1 call
+DUPLICATE_SIMILARITY_THRESHOLD=0.62     เกินนี้ = ตีว่าซ้ำ
+ALLOW_PRODUCT_REVISION=false            true = สินค้าชื่อซ้ำกลายเป็น version N+1
+
+BUDGET_DAILY_USD=20
+BUDGET_MONTHLY_USD=300
+BUDGET_RUN_RESERVE_USD=3                งบขั้นต่ำที่ต้องเหลือถึงจะเริ่ม run ได้
+OPENAI_IMAGE_UNIT_COST_USD=0.19         ราคาต่อภาพ ใช้คิดต้นทุนล่วงหน้า
+OPENAI_CHAT_RUN_COST_USD=0.12           ค่า chat โดยประมาณต่อ run
+OPENAI_PRICE_OVERRIDE_JSON={}           override ราคาต่อ model ได้โดยไม่ต้องแก้ workflow
+
+LEARNING_WINDOW_DAYS=30
+LEARNING_MIN_SAMPLE=15                  ต่ำกว่านี้ = ไม่ให้ AI เสนอแก้ prompt
+AB_MIN_VIEWS_PER_ARM=200
+AB_MIN_RELATIVE_LIFT=0.20               ต่ำกว่านี้ = ถือว่าเป็น noise
 ```
 
 **Credentials 4 ตัว**
@@ -498,6 +528,125 @@ Etsy OAuth2 scope: `listings_r listings_w listings_d shops_r shops_w email_r`
 
 ---
 
+## 9B. V2 — ระบบเพิ่มเติม 22 หัวข้อ
+
+ตารางนี้ตอบว่าแต่ละข้อในสเปก V2 ถูก implement ที่ไหน
+
+| # | ระบบ | อยู่ที่ | หมายเหตุ |
+|---|---|---|---|
+| 1 | Idea Generator | 07 `OpenAI: Idea Generator AI` | 100–500 ไอเดีย แบ่งเป็น batch ละ 25 |
+| 2 | Idea Scoring Engine | 07 `Score Ideas` | **คิดด้วยโค้ด ไม่ใช่ AI** |
+| 3 | Inventory Checker | 07 `Postgres: Load Inventory` + `Parse Inventory Snapshot` | 1 query ได้ครบ |
+| 4 | Diversity Controller | 07 `Score Ideas` (diversity_score) | โบนัสหมวดที่ขาด ลงโทษหมวดที่ล้น |
+| 5 | Final Idea Score | 07 `Score Ideas` (final_score) | idea + diversity − saturation |
+| 6 | Top Idea Selector | 07 `Select Idea Funnel` | 500→50→20→5 |
+| 7 | Multi-Stage QA (6 ด่าน) | 03 `QA Stage 1..5` + `OpenAI: QA AI` | ดูตาราง QA ด้านล่าง |
+| 8 | ROI Database | 08 `Postgres: Rollup ROI` | เขียนลงแถวสินค้าโดยตรง |
+| 9 | API Cost Tracker | 08 `Postgres: Insert Cost` | ตาราง `adpf_costs` |
+| 10 | Budget Manager | 08 `check_budget` + 01 `Check: Budget OK` | งบหมด = หยุดก่อนใช้เงิน |
+| 11 | Factory Priority | `adpf_category_targets.priority` + 10 Dashboard | ★1–5 |
+| 12 | Product Versioning | 03 `Duplicate Gate` + 06 `product_version` | ตาราง `adpf_product_versions` |
+| 13 | Duplicate Detector | 07 `Duplicate Detector` + 03 `Duplicate Gate` | Jaccard 2 ชั้น |
+| 14 | Feedback Learning | 09 ทั้ง workflow | รันทุกวันจันทร์ 04:00 |
+| 15 | Prompt Evolution | 09 `Postgres: Update Prompt Stats` | เวอร์ชันใหม่ = **inactive** |
+| 16 | Trend Memory | 09 `Postgres: Upsert Trends` | ตาราง `adpf_trends` |
+| 17 | Sales Learning | 09 `Etsy: Get Shop Receipts` + `Parse Listing Stats` | views/favorites/sales |
+| 18 | Category Balancer | 07 (ตอนเลือก) + 10 (ตอนแสดง) | ตาราง `adpf_category_targets` |
+| 19 | Dashboard | 10 ทั้ง workflow | HTML + `?format=json` |
+| 20 | Error Recovery | 01 error funnel + retry ทุก node | มีอยู่แล้วตั้งแต่ V1 |
+| 21 | A/B Testing Engine | 09 `Evaluate A/B Tests` + `OpenAI: A/B Test AI` | ตาราง `adpf_ab_tests` |
+| 22 | Marketplace Learning | 09 `SQL_PERFORMANCE` (`by_marketplace`) | แยกผลตาม marketplace |
+
+### 9B.1 สูตรคะแนน (ข้อ 2 + 5)
+
+```
+Idea Score  = 0.25*demand − 0.20*competition + 0.15*trend + 0.15*seo
+            + 0.20*profit − 0.05*production − 0.10*difficulty + 0.10*evergreen
+              (ช่วงดิบ −35..85 → normalize เป็น 0–100)
+
+Final Score = 0.70*ideaScore + 0.20*diversity − 0.25*saturation
+              (normalize เป็น 0–100)
+
+saturation  = (สัดส่วนจริงของหมวด / สัดส่วนเป้าหมาย) × 50
+diversity   = 50 + (เป้าหมาย − จริง) × 4
+```
+
+**ทำไมคิดด้วยโค้ดไม่ใช่ AI:** โมเดลที่ทั้งคิดไอเดียเองและให้คะแนนตัวเองตรวจสอบไม่ได้
+คะแนนแกว่งทุก run และมักให้คะแนนสิ่งที่ตัวเองเขียนก่อนสูงกว่า
+ระบบนี้จึงให้ AI **ประเมินสัญญาณดิบ** (demand/competition/trend/seo) แล้ว **โค้ดคำนวณคะแนน**
+
+### 9B.2 QA 6 ด่าน (ข้อ 7)
+
+| ด่าน | ชื่อ | ตรวจอะไร | ตรวจโดย |
+|---|---|---|---|
+| 1 | Research | keyword ครบ, คู่แข่ง, ราคากลาง | **โค้ด** |
+| 2 | Idea | ราคา vs ต้นทุน, margin, section | **โค้ด** |
+| 3 | Design | layout, typography, margin, DPI | AI + โค้ดตรวจ geometry ซ้ำ |
+| 4 | Content | grammar, spelling, copyright, sensitive | AI + โค้ดตรวจ placeholder/หน้าซ้ำ |
+| 5 | Export | magic bytes ของ PDF/PNG/JPG/SVG/JSON | **โค้ด** |
+| 6 | Marketplace | title, description, tags, price, thumbnail | AI + โค้ดตรวจลิมิต Etsy |
+
+ด่าน 1–4 และ 6 รวมกันที่ `Aggregate QA Gate` → ถ้าไม่ผ่านหยุดก่อนสร้าง PDF
+ด่าน 5 ต้องรอไฟล์จริง จึงรันหลัง `Export Files` แล้วสรุปที่ `Finalize Product Package`
+**ทุกด่านต้องผ่านหมด** ตกด่านเดียว = คืน `ok:false` ไม่ขึ้น Etsy
+
+### 9B.3 ลำดับใหม่ใน 01 (V2)
+
+```
+Init → Validate Env → Select Factory
+  → Prepare Budget Check → Run: Budget Check (08) → Check: Budget OK
+      ไม่ผ่าน → Stage Failed: Budget → error funnel (ไม่ใช้เงินเลย)
+  → Log: Run Started (06)
+  → Run: Research Engine (02) → Check
+  → Compose Idea Request → Run: Idea Factory (07) → Check: Ideas OK
+  → Compose Product Request   ← ใช้ไอเดียที่ชนะ ไม่ใช่ research ดิบ
+  → Run: Product Engine (03) → Check
+  → Run: Publish Engine (04) → Check
+  → Run: Drive Backup (05)
+  → Save: Product Record (06)
+  → Run: Cost Rollup (08)      ← คิด ROI
+  → Save: Product Version (06) ← บันทึกเวอร์ชัน
+  → Build Success Summary
+```
+
+### 9B.4 ตารางฐานข้อมูล V2
+
+| ตาราง | เก็บอะไร |
+|---|---|
+| `adpf_ideas` | idea pool ทุกใบพร้อมคะแนนย่อยทุกตัว + stage + เหตุผลที่ถูกตัด |
+| `adpf_costs` | ทุก API call (provider/model/kind/tokens/cost) |
+| `adpf_budget` | limit + spent ต่อวัน/ต่อเดือน |
+| `adpf_qa_results` | ผล QA ทั้ง 6 ด่าน แยกแถว |
+| `adpf_product_versions` | ประวัติเวอร์ชันสินค้า |
+| `adpf_prompt_versions` | success rate / avg sales / avg QA ต่อ prompt version |
+| `adpf_trends` | trend memory รายเดือน/ฤดูกาล |
+| `adpf_sales` | views/clicks/favorites/sales/revenue ต่อ listing ต่อ marketplace |
+| `adpf_ab_tests` | variant A/B + ผลลัพธ์ |
+| `adpf_category_targets` | สัดส่วนเป้าหมายต่อหมวด + priority |
+
+`adpf_products` เพิ่มคอลัมน์: `idea_uid, version, priority, title_norm, content_hash,
+keyword_set, api_cost_usd, price_usd, revenue_usd, profit_usd, margin_pct, roi_pct`
+
+### 9B.5 ข้อขัดแย้งกับข้อกำหนดเดิม
+
+สเปก V2 ข้อ 9 ให้ track **Claude Cost / Gemini Cost** แต่ข้อกำหนดหลักคือ
+**OpenAI เท่านั้น ห้ามมี Claude / Gemini**
+
+ทางออกที่ใช้: ตาราง `adpf_costs` มีคอลัมน์ `provider` แบบ generic (รองรับอนาคตโดยไม่ต้อง
+migrate) แต่ **ค่าที่เขียนจริงมีแค่ `openai`** เท่านั้น — ไม่มี node ไหนเรียก Claude หรือ Gemini
+ถ้าวันหนึ่งต้องการเพิ่ม provider จริง ให้เพิ่มราคาใน `OPENAI_PRICE_OVERRIDE_JSON`
+และเพิ่ม node เรียก API นั้น โครงฐานข้อมูลรองรับอยู่แล้ว
+
+### 9B.6 สิ่งที่ V2 **ไม่** ทำอัตโนมัติ (โดยเจตนา)
+
+1. **ไม่แก้ prompt เอง** — 09 เสนอได้ บันทึกได้ แต่ version ใหม่เป็น `active=false`
+   คนต้องกดเปิดเอง (โมเดลที่แก้คำสั่งตัวเองโดยไม่มีคนดู = โรงงานเพี้ยนแบบเงียบ ๆ)
+2. **ไม่เสนอแก้ถ้า sample เล็ก** — ต่ำกว่า `LEARNING_MIN_SAMPLE` (15 ชิ้น) จะบังคับเป็น `no_change`
+3. **ไม่ตัดสิน A/B ถ้า traffic น้อย** — ต้องมี 200 views ต่อ arm และ lift ≥ 20%
+4. **ไม่อัปโหลด Gumroad / MiriCanvas** — ตามข้อกำหนดเดิม
+
+---
+
 ## 10. ข้อจำกัดที่รู้อยู่แล้ว (ไม่ใช่บั๊ก)
 
 1. **PDF ไม่รองรับภาษาไทย** — base-14 font ไม่มี glyph ไทย ต้อง embed TrueType ถึงจะได้
@@ -505,9 +654,10 @@ Etsy OAuth2 scope: `listings_r listings_w listings_d shops_r shops_w email_r`
 3. `factory=auto` หมุน**ตามวัน** ไม่ใช่ตามการกด (กด 3 ครั้งในวันเดียว = โรงงานเดิม)
 4. Gumroad / MiriCanvas เตรียม manifest เท่านั้น ไม่อัปโหลด (ตามข้อกำหนดของโจทย์)
 5. SQLite ใช้ได้เฉพาะ self-hosted (ต้องมี `sqlite3` CLI และ node Execute Command)
-6. ไม่มี feedback loop จากยอดขายกลับมาปรับ prompt
-7. ไม่มีการ dedupe สินค้าข้าม run (กันซ้ำได้แค่ระดับ keyword)
-8. ภาพสร้างทีละใบ ไม่ขนาน (เจตนา: กัน rate limit และใบเดียวพังไม่ล้มทั้งชุด)
+   และ **V2 module 07–10 ต้องใช้ PostgreSQL** (ใช้ CTE / JSON functions / window functions)
+6. ภาพสร้างทีละใบ ไม่ขนาน (เจตนา: กัน rate limit และใบเดียวพังไม่ล้มทั้งชุด)
+7. Etsy ไม่มี metric "clicks" ใน API ที่ใช้ — ระบบเก็บ favorites แทนและติดป้ายไว้ตรง ๆ
+8. A/B test บันทึกและตัดสินได้ แต่ **ยังไม่ push variant กลับขึ้น Etsy อัตโนมัติ**
 
 ---
 
@@ -535,10 +685,12 @@ Etsy OAuth2 scope: `listings_r listings_w listings_d shops_r shops_w email_r`
 
 | การทดสอบ | ผล |
 |---|---|
-| Code node ทั้ง 70 ตัวผ่าน `node --check` | ผ่าน |
+| Code node ทั้ง 119 ตัวผ่าน `node --check` | ผ่าน |
 | สร้าง PDF จริงและเดิน xref table ทีละ entry | ผ่าน (9 หน้า, JPEG ฝัง 2 ใบ, offset ตรงทุกตัว) |
 | ตรวจ secret ในไฟล์ JSON | ไม่พบ |
-| ตรวจโครงสร้าง workflow (ชื่อซ้ำ / connection / orphan / comment) | ผ่านทั้ง 6 ไฟล์ |
+| ตรวจโครงสร้าง workflow (ชื่อซ้ำ / connection / orphan / comment) | ผ่านทั้ง 10 ไฟล์ |
+| Parse SQL ทุก statement ด้วย libpg_query (parser ตัวจริงของ PostgreSQL) | ผ่าน 18/18 (เจอบั๊ก reserved word `similar` แล้วแก้) |
+| รัน `db/schema.sqlite.sql` จริงบน SQLite | ผ่าน 8 ตาราง |
 | ทดสอบเชื่อมต่อ Etsy / Drive / OpenAI จริง | **ยังไม่ได้ทดสอบ** (ไม่มี credential ใน environment ที่สร้าง) |
 
 ---

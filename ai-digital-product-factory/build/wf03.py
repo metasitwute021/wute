@@ -3,9 +3,9 @@
 import json
 
 from common import (
-    RETRY, T_CODE, T_EXEC_TRIGGER, T_HTTP, T_IF, T_LOOP, T_NOOP, T_SET, T_SWITCH,
-    Workflow, code, if_bool, loop_node, openai_chat, openai_image, pos,
-    switch_equals,
+    RETRY, T_CODE, T_EXEC_TRIGGER, T_HTTP, T_IF, T_LOOP, T_NOOP, T_POSTGRES,
+    T_SET, T_SWITCH, Workflow, code, if_bool, loop_node, openai_chat,
+    openai_image, pos, switch_equals,
 )
 from js_pdf import PDF_LIB_JS
 from prompts import RENDER_HELPER, library_js
@@ -873,7 +873,7 @@ JS_QA_FAILED = r"""
 // Business rejection, not a technical error: return ok=false so 01 logs it and
 // stops cleanly instead of raising a workflow exception.
 const base = $('Merge: Factory Profiles').first().json;
-const qa = $('Parse QA Report').first().json.qa;
+const gate = $('Aggregate QA Gate').first().json;
 const idea = $('Parse Idea JSON').first().json.idea;
 
 return [{
@@ -882,8 +882,16 @@ return [{
     run_id: base.run_id,
     factory: base.factory,
     product_name: idea.product_name,
-    failure_reason: `QA gate rejected the product: ${(qa.blockers || []).join('; ') || qa.summary}`,
-    qa,
+    failure_reason: `QA rejected the product at stage(s) ${gate.failed_stages.join(', ')}: `
+      + (gate.qa_blockers.join('; ') || 'no blocker detail'),
+    qa: {
+      passed: false,
+      stages: gate.qa_stages,
+      blockers: gate.qa_blockers,
+      warnings: gate.qa_warnings,
+      average_score: gate.qa_average_score,
+      summary: `blocked at ${gate.failed_stages.join(', ')}`,
+    },
   },
 }];
 """.strip()
@@ -1109,6 +1117,544 @@ return [{
 """.strip()
 
 
+# ==========================================================================
+# V2 additions: multi-stage QA (section 7), duplicate detection (13),
+# versioning (12).
+# ==========================================================================
+
+SQL_CHECK_DUPLICATE = """
+-- Section 12 + 13. One round trip answers both questions: is this a duplicate,
+-- and if it is a legitimate revision, what version number is next?
+WITH candidate AS (SELECT $1::text AS title_norm, $2::text AS keyword_set),
+exact AS (
+  SELECT run_id, product_name, created_at, version
+  FROM adpf_products, candidate
+  WHERE adpf_products.title_norm = candidate.title_norm
+  ORDER BY created_at DESC LIMIT 1
+),
+-- "similar" is a reserved word in PostgreSQL (SIMILAR TO), hence the suffix.
+similar_titles AS (
+  SELECT product_name, title_norm, keyword_set, created_at
+  FROM adpf_products
+  WHERE title_norm IS NOT NULL AND status <> 'failed'
+  ORDER BY created_at DESC LIMIT 300
+)
+SELECT
+  (SELECT row_to_json(exact) FROM exact) AS exact_match,
+  COALESCE((SELECT max(version) FROM adpf_products, candidate
+            WHERE adpf_products.title_norm = candidate.title_norm), 0) AS max_version,
+  COALESCE((SELECT json_agg(row_to_json(similar_titles)) FROM similar_titles), '[]'::json) AS recent;
+""".strip()
+
+JS_DUPLICATE_GATE = r"""
+// Section 13 Duplicate Detector, at product level. The idea funnel already
+// filtered on titles; this catches the case where two runs converge on the same
+// product from different ideas.
+const base = $('Merge: Factory Profiles').first().json;
+const idea = $('Parse Idea JSON').first().json.idea;
+const row = $input.first().json || {};
+
+const THRESHOLD = Number($env.DUPLICATE_SIMILARITY_THRESHOLD || 0.62);
+const ALLOW_REVISION = String($env.ALLOW_PRODUCT_REVISION || 'false') === 'true';
+
+const asArray = (value) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') { try { return JSON.parse(value); } catch (e) { return []; } }
+  return value || [];
+};
+const parse = (value) => {
+  if (!value) return null;
+  if (typeof value === 'string') { try { return JSON.parse(value); } catch (e) { return null; } }
+  return value;
+};
+
+const titleNorm = idea.product_name.toLowerCase().replace(/[^a-z0-9 ]/g, ' ')
+  .replace(/\s+/g, ' ').trim();
+const keywordSet = (base.research.sub_keywords || []).slice(0, 15).sort().join(',');
+
+const tokenise = (text) => new Set(String(text).split(' ').filter((w) => w.length > 2));
+const jaccard = (a, b) => {
+  if (!a.size || !b.size) return 0;
+  let shared = 0;
+  for (const token of a) if (b.has(token)) shared += 1;
+  return shared / (a.size + b.size - shared);
+};
+
+const tokens = tokenise(titleNorm);
+let similarity = 0;
+let similarTo = null;
+for (const existing of asArray(row.recent)) {
+  const score = jaccard(tokens, tokenise(existing.title_norm || ''));
+  if (score > similarity) { similarity = score; similarTo = existing.product_name; }
+}
+
+const exactMatch = parse(row.exact_match);
+const nextVersion = Number(row.max_version || 0) + 1;
+
+let duplicate = false;
+let reason = null;
+
+if (exactMatch && !ALLOW_REVISION) {
+  duplicate = true;
+  reason = `"${idea.product_name}" already exists (run ${exactMatch.run_id})`;
+} else if (similarity >= THRESHOLD) {
+  duplicate = true;
+  reason = `too similar to existing product "${similarTo}" (similarity ${Math.round(similarity * 100) / 100} >= ${THRESHOLD})`;
+}
+
+return [{
+  json: {
+    run_id: base.run_id,
+    is_duplicate: duplicate,
+    duplicate_reason: reason,
+    similarity: Math.round(similarity * 100) / 100,
+    similar_to: similarTo,
+    title_norm: titleNorm,
+    keyword_set: keywordSet,
+    // Section 12: a revision of an existing product increments the version.
+    version: exactMatch && ALLOW_REVISION ? nextVersion : 1,
+    is_revision: Boolean(exactMatch && ALLOW_REVISION),
+  },
+}];
+""".strip()
+
+JS_QA_STAGE_1 = r"""
+// QA stage 1 - Research: is the concept worth building at all?
+// Deterministic: these are arithmetic checks on the research package, and a
+// model adds nothing but variance.
+const base = $('Merge: Factory Profiles').first().json;
+const research = base.research || {};
+const market = base.market || {};
+
+const blockers = [];
+const warnings = [];
+
+if (!research.keyword) blockers.push('no primary keyword');
+if ((research.sub_keywords || []).length < 5) blockers.push('fewer than 5 sub keywords');
+if ((research.selling_points || []).length < 3) blockers.push('fewer than 3 selling points');
+
+const competitors = Number(market.competitor_count || 0);
+if (competitors === 0) warnings.push('no competitor data - market signal unavailable');
+if (competitors > 90) warnings.push(`very crowded keyword (${competitors} competitors sampled)`);
+
+const median = Number(market?.price_usd?.median || 0);
+if (median > 0 && median < 2) blockers.push(`median price ${median} USD is below a viable floor`);
+
+if (research.difficulty === 'hard' && competitors > 80) {
+  warnings.push('hard difficulty in a crowded niche - low expected return');
+}
+
+// Score: keyword quality, signal quality, headroom.
+const keywordScore = Math.min(10, (research.sub_keywords || []).length);
+const signalScore = market.signal_quality === 'good' ? 10 : market.signal_quality === 'thin' ? 6 : 3;
+const demandScore = competitors > 0 ? Math.max(3, 10 - Math.floor(competitors / 20)) : 5;
+const score = Math.round(((keywordScore + signalScore + demandScore) / 3) * 10) / 10;
+
+return [{
+  json: {
+    stage: 'research', stage_no: 1, checked_by: 'code',
+    passed: blockers.length === 0 && score >= 5,
+    score, blockers, warnings,
+    detail: { competitors, median_price_usd: median, difficulty: research.difficulty },
+  },
+}];
+""".strip()
+
+JS_QA_STAGE_2 = r"""
+// QA stage 2 - Idea: does the economics work before a cent is spent on images?
+const base = $('Merge: Factory Profiles').first().json;
+const idea = $('Parse Idea JSON').first().json.idea;
+const research = base.research || {};
+const market = base.market || {};
+const profile = base.profile;
+
+const blockers = [];
+const warnings = [];
+
+const IMAGE_UNIT = Number($env.OPENAI_IMAGE_UNIT_COST_USD || 0.19);
+const CHAT_RUN = Number($env.OPENAI_CHAT_RUN_COST_USD || 0.12);
+const images = 2 + profile.preview_count + profile.image_pages;
+const estCost = Math.round((images * IMAGE_UNIT + CHAT_RUN) * 100) / 100;
+
+const [minPrice, maxPrice] = profile.price_range_usd;
+const price = Math.min(maxPrice, Math.max(minPrice,
+  Number(research.price_suggestion_usd || minPrice)));
+const estProfit = Math.round((price - estCost) * 100) / 100;
+const marginPct = price > 0 ? Math.round((estProfit / price) * 1000) / 10 : 0;
+
+if (estProfit <= 0) {
+  blockers.push(`unit economics negative: ${price} USD price vs ${estCost} USD production`);
+}
+if (marginPct < 30 && estProfit > 0) {
+  warnings.push(`thin margin (${marginPct}%) - one refund wipes out several sales`);
+}
+if (!idea.sections || idea.sections.length < 2) blockers.push('brief has fewer than 2 sections');
+if (!idea.visual_direction || !idea.visual_direction.style) {
+  warnings.push('no visual direction - images will not look like a set');
+}
+
+const median = Number(market?.price_usd?.median || 0);
+if (median > 0 && price > median * 2.5) {
+  warnings.push(`price ${price} is far above the market median ${median}`);
+}
+
+const profitScore = Math.max(0, Math.min(10, marginPct / 8));
+const competitionScore = Math.max(0, Math.min(10, 10 - Number(market.competitor_count || 0) / 12));
+const seoScore = Math.min(10, (research.sub_keywords || []).length * 0.8);
+const marketScore = median > 0 ? 8 : 5;
+const score = Math.round(((profitScore + competitionScore + seoScore + marketScore) / 4) * 10) / 10;
+
+return [{
+  json: {
+    stage: 'idea', stage_no: 2, checked_by: 'code',
+    passed: blockers.length === 0 && score >= 5,
+    score, blockers, warnings,
+    economics: { est_api_cost_usd: estCost, price_usd: price,
+                 est_profit_usd: estProfit, margin_pct: marginPct, images },
+  },
+}];
+""".strip()
+
+JS_BUILD_DESIGN_QA_PROMPT = RENDER_HELPER + r"""
+const base = $('Merge: Factory Profiles').first().json;
+const content = $('Parse Content JSON').first().json.content;
+const images = $('Collect Generated Images').first().json.images;
+const agent = $('Prompt Library').first().json.prompts.design_qa_ai;
+const profile = base.profile;
+
+// The QA agent never sees pixels, so it is handed the geometry instead.
+const pagePlan = content.pages.map((page) => ({
+  page_number: page.page_number,
+  title: page.title,
+  line_count: page.lines.length,
+  longest_line: page.lines.reduce((max, l) => Math.max(max, l.length), 0),
+  has_image: page.needs_image,
+}));
+
+const parseSize = (size) => {
+  const [w, h] = String(size || '1024x1024').split('x').map(Number);
+  return { width: w || 1024, height: h || 1024 };
+};
+
+const imageSpecs = [
+  { role: 'cover', ...parseSize(profile.cover_size) },
+  { role: 'thumbnail', ...parseSize(profile.thumbnail_size) },
+  ...(images.previews || []).map((p) => ({ role: `preview_${p.index}`, ...parseSize(profile.preview_size) })),
+  ...(images.pages || []).map((p) => ({ role: `page_${p.page_number}`, ...parseSize(profile.image_size) })),
+].map((spec) => ({
+  ...spec,
+  placed_width_pt: profile.page_width_pt,
+  placed_height_pt: profile.page_height_pt,
+  effective_dpi: Math.round(spec.width / (profile.page_width_pt / 72)),
+}));
+
+return [{
+  json: {
+    run_id: base.run_id,
+    design_qa_prompt: render(agent.user_template, {
+      factory_profile_json: JSON.stringify({
+        page_size: profile.page_size,
+        page_width_pt: profile.page_width_pt,
+        page_height_pt: profile.page_height_pt,
+        margin_pt: 56, body_size_pt: 11, leading_pt: 16,
+        target_pages: profile.target_pages,
+      }, null, 2),
+      page_plan_json: JSON.stringify(pagePlan, null, 2),
+      image_specs_json: JSON.stringify(imageSpecs, null, 2),
+    }),
+  },
+}];
+""".rstrip()
+
+JS_PARSE_DESIGN_QA = r"""
+// QA stage 3 - Design. Model verdict plus a deterministic geometry re-check,
+// because "will this text fit on the page" is arithmetic, not judgement.
+const base = $('Merge: Factory Profiles').first().json;
+const content = $('Parse Content JSON').first().json.content;
+const profile = base.profile;
+const response = $input.first().json;
+
+let report;
+try {
+  report = JSON.parse(response?.choices?.[0]?.message?.content || '{}');
+} catch (e) {
+  report = { passed: false, blockers: [`Design QA AI returned invalid JSON: ${e.message}`] };
+}
+
+const blockers = [...(report.blockers || [])];
+const warnings = [...(report.warnings || [])];
+
+// Deterministic re-check of the two things that actually break a PDF.
+const MARGIN_PT = 56;                       // matches the PDF writer
+const LEADING_PT = 16;
+const usableHeight = profile.page_height_pt - MARGIN_PT * 2;
+const maxLines = Math.floor(usableHeight / LEADING_PT);
+
+for (const page of content.pages) {
+  if (page.lines.length > maxLines * 3) {
+    warnings.push(`page ${page.page_number} spans more than 3 physical pages (${page.lines.length} lines)`);
+  }
+}
+if (MARGIN_PT / 2.835 < 10) blockers.push('page margin is below 10mm');
+
+const minDpi = Math.round(1024 / (profile.page_width_pt / 72));
+if (minDpi < 150) {
+  warnings.push(`generated art is ~${minDpi} DPI at full page width - acceptable on screen, soft in print`);
+}
+
+const scores = report.scores || {};
+const values = Object.values(scores).map(Number).filter((n) => !Number.isNaN(n));
+const score = values.length ? Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) / 10 : 5;
+
+return [{
+  json: {
+    stage: 'design', stage_no: 3, checked_by: 'openai',
+    passed: report.passed === true && blockers.length === 0,
+    score, blockers, warnings, summary: report.summary || null,
+  },
+}];
+""".strip()
+
+JS_BUILD_CONTENT_QA_PROMPT = RENDER_HELPER + r"""
+const base = $('Merge: Factory Profiles').first().json;
+const idea = $('Parse Idea JSON').first().json.idea;
+const content = $('Parse Content JSON').first().json.content;
+const seo = $('Validate SEO Package').first().json.seo;
+const agent = $('Prompt Library').first().json.prompts.content_qa_ai;
+
+return [{
+  json: {
+    run_id: base.run_id,
+    content_qa_prompt: render(agent.user_template, {
+      product_name: idea.product_name,
+      target_customer: base.research.target_customer || '',
+      content_json: JSON.stringify({
+        cover_title: content.cover_title,
+        cover_subtitle: content.cover_subtitle,
+        intro_text: content.intro_text,
+        usage_instructions: content.usage_instructions,
+        pages: content.pages.map((p) => ({
+          page_number: p.page_number, title: p.title, lines: p.lines,
+        })),
+      }, null, 2),
+      seo_json: JSON.stringify(seo, null, 2),
+    }),
+  },
+}];
+""".rstrip()
+
+JS_PARSE_CONTENT_QA = r"""
+// QA stage 4 - Content: grammar, spelling, copyright, sensitive material.
+const response = $input.first().json;
+const content = $('Parse Content JSON').first().json.content;
+
+let report;
+try {
+  report = JSON.parse(response?.choices?.[0]?.message?.content || '{}');
+} catch (e) {
+  report = { passed: false, blockers: [`Content QA AI returned invalid JSON: ${e.message}`] };
+}
+
+const blockers = [...(report.blockers || [])];
+const warnings = [...(report.warnings || [])];
+
+// Deterministic backstop for the failures a proofreader would never miss but a
+// model sometimes waves through.
+const PLACEHOLDER = /(lorem ipsum|insert (text|your)|tbd|todo|xxx+|\[.*?\])/i;
+const seen = new Set();
+for (const page of content.pages) {
+  const body = page.lines.join(' ');
+  if (PLACEHOLDER.test(body) || PLACEHOLDER.test(page.title)) {
+    blockers.push(`page ${page.page_number} contains placeholder text`);
+  }
+  if (!body.trim()) blockers.push(`page ${page.page_number} is empty`);
+  const fingerprint = body.slice(0, 120).toLowerCase();
+  if (fingerprint && seen.has(fingerprint)) {
+    blockers.push(`page ${page.page_number} duplicates an earlier page`);
+  }
+  seen.add(fingerprint);
+}
+
+const issues = report.issues || [];
+const scores = report.scores || {};
+const values = Object.values(scores).map(Number).filter((n) => !Number.isNaN(n));
+const score = values.length ? Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) / 10 : 5;
+
+return [{
+  json: {
+    stage: 'content', stage_no: 4, checked_by: 'openai',
+    passed: report.passed === true && blockers.length === 0,
+    score, blockers, warnings,
+    issues: issues.slice(0, 30),
+    summary: report.summary || null,
+  },
+}];
+""".strip()
+
+JS_AGGREGATE_QA = r"""
+// Section 7: collect stages 1, 2, 3, 4 and 6 into one verdict. Stage 5 (export)
+// runs later because it needs bytes that do not exist yet.
+// Fail closed: every stage must pass.
+const base = $('Merge: Factory Profiles').first().json;
+const marketplace = $('Parse QA Report').first().json.qa;
+
+const stage = (nodeName) => {
+  try { return $(nodeName).first().json; } catch (e) { return null; }
+};
+
+const stages = [
+  stage('QA Stage 1 Research'),
+  stage('QA Stage 2 Idea'),
+  stage('QA Stage 3 Design'),
+  stage('QA Stage 4 Content'),
+  {
+    stage: 'marketplace', stage_no: 6, checked_by: 'openai',
+    passed: marketplace.passed === true,
+    score: marketplace.lowest_score,
+    blockers: marketplace.blockers || [],
+    warnings: marketplace.warnings || [],
+  },
+].filter(Boolean);
+
+const failed = stages.filter((s) => !s.passed);
+const blockers = stages.flatMap((s) => (s.blockers || []).map((b) => `[${s.stage}] ${b}`));
+const warnings = stages.flatMap((s) => (s.warnings || []).map((w) => `[${s.stage}] ${w}`));
+const scores = stages.map((s) => Number(s.score)).filter((n) => !Number.isNaN(n));
+
+return [{
+  json: {
+    run_id: base.run_id,
+    qa_stages: stages,
+    qa_passed: failed.length === 0,
+    failed_stages: failed.map((s) => s.stage),
+    qa_blockers: blockers,
+    qa_warnings: warnings,
+    qa_average_score: scores.length
+      ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : 0,
+    qa_lowest_score: scores.length ? Math.min(...scores) : 0,
+  },
+}];
+""".strip()
+
+JS_QA_STAGE_5 = r"""
+// QA stage 5 - Export: the files themselves. Every deliverable is opened and
+// its magic bytes checked, so a corrupt PDF can never reach a customer.
+const exported = $input.first().json;
+const profile = $('Merge: Factory Profiles').first().json.profile;
+
+const blockers = [];
+const warnings = [];
+
+const MAGIC = {
+  PDF: (buf) => buf.slice(0, 5).toString('latin1') === '%PDF-',
+  PNG: (buf) => buf.slice(0, 8).toString('hex') === '89504e470d0a1a0a',
+  JPG: (buf) => buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff,
+  SVG: (buf) => /<svg[\s>]/i.test(buf.slice(0, 400).toString('utf8')),
+  JSON: (buf) => { try { JSON.parse(buf.toString('utf8')); return true; } catch (e) { return false; } },
+  TXT: (buf) => buf.length > 0,
+};
+
+const checked = [];
+for (const file of exported.files || []) {
+  const buffer = Buffer.from(file.b64, 'base64');
+  const verify = MAGIC[file.format];
+  const valid = verify ? verify(buffer) : buffer.length > 0;
+
+  if (!valid) blockers.push(`${file.file_name} is not a valid ${file.format} file`);
+  if (buffer.length < 64) blockers.push(`${file.file_name} is only ${buffer.length} bytes`);
+  if (file.format === 'PDF' && buffer.length < 20000) {
+    warnings.push(`${file.file_name} is unusually small for a ${exported.stats.pdf_pages}-page PDF`);
+  }
+  checked.push({ file: file.file_name, format: file.format, bytes: buffer.length, valid });
+}
+
+// Every format the factory profile promises must actually be present.
+const produced = new Set((exported.files || []).map((f) => f.format));
+for (const format of profile.output_formats) {
+  if (format === 'ZIP') continue;   // the bundle is assembled by the marketplace
+  if (!produced.has(format)) blockers.push(`profile promises ${format} but no ${format} file was exported`);
+}
+
+if (exported.stats?.placeholder_images) {
+  warnings.push('product contains dry-run placeholder art - do not publish');
+}
+
+const score = blockers.length ? 0 : (warnings.length ? 8 : 10);
+
+return [{
+  json: {
+    ...exported,
+    export_qa: {
+      stage: 'export', stage_no: 5, checked_by: 'code',
+      passed: blockers.length === 0,
+      score, blockers, warnings, files_checked: checked,
+    },
+  },
+}];
+""".strip()
+
+JS_FINALIZE_PRODUCT = r"""
+// Attach the QA record, the version and the duplicate-detection fingerprints to
+// the package that 01 will store.
+const exported = $input.first().json;
+const gate = $('Aggregate QA Gate').first().json;
+const dedupe = $('Duplicate Gate').first().json;
+const exportQa = exported.export_qa;
+
+const allStages = [...gate.qa_stages, exportQa];
+const passed = gate.qa_passed && exportQa.passed;
+
+return [{
+  json: {
+    ...exported,
+    ok: passed,
+    failure_reason: passed ? null
+      : `QA failed at: ${[...gate.failed_stages, exportQa.passed ? null : 'export']
+          .filter(Boolean).join(', ')}`,
+    qa: {
+      passed,
+      stages: allStages,
+      blockers: [...gate.qa_blockers, ...exportQa.blockers.map((b) => `[export] ${b}`)],
+      warnings: [...gate.qa_warnings, ...exportQa.warnings.map((w) => `[export] ${w}`)],
+      average_score: Math.round(
+        ((gate.qa_average_score * gate.qa_stages.length + exportQa.score) /
+         (gate.qa_stages.length + 1)) * 10) / 10,
+      summary: passed ? 'all six QA stages passed' : `blocked at ${gate.failed_stages.join(', ') || 'export'}`,
+    },
+    // Section 12 + 13
+    version: dedupe.version,
+    is_revision: dedupe.is_revision,
+    title_norm: dedupe.title_norm,
+    keyword_set: dedupe.keyword_set,
+    duplicate_similarity: dedupe.similarity,
+  },
+}];
+""".strip()
+
+JS_DUPLICATE_REJECTED = r"""
+// Section 13: a duplicate is a business decision, not an error. Return ok=false
+// so 01 records it and moves on to the next idea.
+const base = $('Merge: Factory Profiles').first().json;
+const idea = $('Parse Idea JSON').first().json.idea;
+const dedupe = $('Duplicate Gate').first().json;
+
+return [{
+  json: {
+    ok: false,
+    run_id: base.run_id,
+    factory: base.factory,
+    product_name: idea.product_name,
+    failure_reason: `Duplicate rejected: ${dedupe.duplicate_reason}`,
+    duplicate: {
+      similarity: dedupe.similarity,
+      similar_to: dedupe.similar_to,
+      reason: dedupe.duplicate_reason,
+    },
+  },
+}];
+""".strip()
+
+
 def _profile_set_params(profile: dict) -> dict:
     """Set node that stamps one factory profile onto the running item."""
     payload = json.dumps({"profile": profile}, ensure_ascii=False, indent=2)
@@ -1123,8 +1669,8 @@ def build() -> Workflow:
            notes="Entry point. Called by 01 with the run context + research package.")
     wf.add("Prompt Library", T_CODE, pos(1, 3),
            code(library_js(["idea_ai", "writer_ai", "designer_ai", "seo_ai",
-                            "metadata_ai", "qa_ai"])),
-           notes="Versioned prompts for the six agents used on the production line.")
+                            "metadata_ai", "qa_ai", "design_qa_ai", "content_qa_ai"])),
+           notes="Versioned prompts for the eight agents used on the production line.")
     wf.add("Normalize Factory Input", T_CODE, pos(2, 3), code(JS_NORMALIZE),
            notes="Validates the research contract and resolves the factory key.")
 
@@ -1281,25 +1827,94 @@ def build() -> Workflow:
            **RETRY)
     wf.add("Parse QA Report", T_CODE, pos(30, 2), code(JS_PARSE_QA),
            notes="Adds deterministic Etsy limit checks on top of the model verdict.")
-    wf.add("Check: QA Passed", T_IF, pos(31, 2), if_bool("={{ $json.qa.passed }}"),
-           notes="Fail closed: a rejected product never reaches the Publish Engine.")
-    wf.add("Build QA Failure Result", T_CODE, pos(32, 3), code(JS_QA_FAILED),
+    wf.add("Aggregate QA Gate", T_CODE, pos(31, 2), code(JS_AGGREGATE_QA),
+           notes=("Section 7. Collects QA stages 1, 2, 3, 4 and 6 into one verdict. "
+                  "Stage 5 runs after export, when the bytes exist."))
+    wf.add("Check: QA Passed", T_IF, pos(32, 2), if_bool("={{ $json.qa_passed }}"),
+           notes="Fail closed: every stage must pass before anything is built or published.")
+    wf.add("Build QA Failure Result", T_CODE, pos(33, 3), code(JS_QA_FAILED),
            notes="Returns ok=false (business rejection) rather than raising an error.")
 
     # -- export ------------------------------------------------------------
-    wf.add("Build PDF Document", T_CODE, pos(32, 1), code(JS_BUILD_PDF),
+    wf.add("Build PDF Document", T_CODE, pos(33, 1), code(JS_BUILD_PDF),
            notes=("Dependency-free PDF writer: Helvetica text pages plus JPEG images "
                   "embedded as /DCTDecode. No external service, no npm package."))
-    wf.add("Export Files", T_CODE, pos(33, 1), code(JS_EXPORT_FILES),
+    wf.add("Export Files", T_CODE, pos(34, 1), code(JS_EXPORT_FILES),
            notes="Builds the deliverable manifest: PDF, PNG, JPG, SVG, JSON and TXT.")
-    wf.add("Return: Product Package", T_NOOP, pos(34, 2), {},
+    wf.add("QA Stage 5 Export", T_CODE, pos(35, 1), code(JS_QA_STAGE_5),
+           notes=("Section 7 stage 5. Opens every exported file and checks its magic "
+                  "bytes, so a corrupt PDF can never reach a customer."))
+    wf.add("Finalize Product Package", T_CODE, pos(36, 1), code(JS_FINALIZE_PRODUCT),
+           notes="Attaches the six-stage QA record, the version and the dedupe fingerprints.")
+    wf.add("Return: Product Package", T_NOOP, pos(37, 2), {},
            notes="Terminal node - its item is the sub-workflow return value.")
+
+    # -- V2: duplicate detection + versioning (sections 12, 13) ------------
+    wf.add("QA Stage 1 Research", T_CODE, pos(6, 2), code(JS_QA_STAGE_1),
+           notes=("Section 7 stage 1. Deterministic checks on the research package - "
+                  "arithmetic, so no model is involved."))
+    wf.add("Postgres: Check Existing Product", T_POSTGRES, pos(9, 4),
+           {
+               "operation": "executeQuery",
+               "query": SQL_CHECK_DUPLICATE,
+               "options": {"queryReplacement": (
+                   "={{ [$('Parse Idea JSON').first().json.idea.product_name"
+                   ".toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\\s+/g,' ').trim(), "
+                   "($('Merge: Factory Profiles').first().json.research.sub_keywords || [])"
+                   ".slice(0,15).sort().join(',')] }}"
+               )},
+           },
+           notes="Sections 12 + 13. One round trip: exact match, next version, recent titles.",
+           onError="continueRegularOutput", alwaysOutputData=True, **RETRY)
+    wf.add("Duplicate Gate", T_CODE, pos(10, 4), code(JS_DUPLICATE_GATE),
+           notes=("Section 13. Jaccard similarity against recent products. "
+                  "ALLOW_PRODUCT_REVISION=true turns an exact match into version N+1."))
+    wf.add("Check: Not Duplicate", T_IF, pos(11, 4),
+           if_bool("={{ !$json.is_duplicate }}"),
+           notes="A duplicate stops here - before a single image is generated.")
+    wf.add("Build Duplicate Rejection", T_CODE, pos(12, 5), code(JS_DUPLICATE_REJECTED),
+           notes="Returns ok=false with the similarity evidence. Not an error.")
+    wf.add("QA Stage 2 Idea", T_CODE, pos(12, 4), code(JS_QA_STAGE_2),
+           notes=("Section 7 stage 2. Unit economics gate: price vs production cost, "
+                  "computed before any image is paid for."))
+
+    # -- V2: design and content QA stages ---------------------------------
+    wf.add("Build Design QA Prompt", T_CODE, pos(18, 0), code(JS_BUILD_DESIGN_QA_PROMPT),
+           notes="Hands the QA agent page geometry and image DPI - it never sees pixels.")
+    wf.add("OpenAI: Design QA AI", T_HTTP, pos(19, 0),
+           openai_chat(
+               "($('Prompt Library').first().json.prompts.design_qa_ai.system + "
+               "'\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + "
+               "$('Prompt Library').first().json.prompts.design_qa_ai.output_contract)",
+               "$json.design_qa_prompt", temperature=0.1, max_tokens=1500),
+           notes="Agent 12/13. QA stage 3: layout, typography, margins, resolution.",
+           onError="continueRegularOutput", alwaysOutputData=True, **RETRY)
+    wf.add("QA Stage 3 Design", T_CODE, pos(20, 0), code(JS_PARSE_DESIGN_QA),
+           notes="Model verdict plus a deterministic geometry re-check.")
+
+    wf.add("Build Content QA Prompt", T_CODE, pos(25, 3), code(JS_BUILD_CONTENT_QA_PROMPT),
+           notes="Sends the exact copy that ships to the customer.")
+    wf.add("OpenAI: Content QA AI", T_HTTP, pos(26, 3),
+           openai_chat(
+               "($('Prompt Library').first().json.prompts.content_qa_ai.system + "
+               "'\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + "
+               "$('Prompt Library').first().json.prompts.content_qa_ai.output_contract)",
+               "$json.content_qa_prompt", temperature=0.1, max_tokens=3000),
+           notes="Agent 13/13. QA stage 4: grammar, spelling, copyright, sensitive content.",
+           onError="continueRegularOutput", alwaysOutputData=True, **RETRY)
+    wf.add("QA Stage 4 Content", T_CODE, pos(27, 3), code(JS_PARSE_CONTENT_QA),
+           notes="Adds deterministic placeholder / empty page / duplicate page detection.")
 
     # -- wiring ------------------------------------------------------------
     wf.chain("Receive Product Request", "Prompt Library", "Normalize Factory Input",
              "Route: Factory Type")
-    wf.chain("Merge: Factory Profiles", "Build Idea Prompt", "OpenAI: Idea AI",
-             "Parse Idea JSON", "Build Content Prompt", "OpenAI: Writer AI",
+    wf.chain("Merge: Factory Profiles", "QA Stage 1 Research", "Build Idea Prompt",
+             "OpenAI: Idea AI", "Parse Idea JSON",
+             "Postgres: Check Existing Product", "Duplicate Gate", "Check: Not Duplicate")
+    wf.link("Check: Not Duplicate", "QA Stage 2 Idea", 0)
+    wf.link("Check: Not Duplicate", "Build Duplicate Rejection", 1)
+    wf.link("Build Duplicate Rejection", "Return: Product Package")
+    wf.chain("QA Stage 2 Idea", "Build Content Prompt", "OpenAI: Writer AI",
              "Parse Content JSON", "Build Designer Prompt", "OpenAI: Designer AI",
              "Parse Image Plan", "Split: Image Jobs", "Loop: Image Jobs")
 
@@ -1311,15 +1926,20 @@ def build() -> Workflow:
     wf.link("Store Generated Image", "Loop: Image Jobs")
     wf.link("Use Placeholder Image", "Loop: Image Jobs")
 
-    wf.chain("Collect Generated Images", "Build SEO Title Prompt", "OpenAI: SEO AI Title",
+    wf.chain("Collect Generated Images",
+             "Build Design QA Prompt", "OpenAI: Design QA AI", "QA Stage 3 Design",
+             "Build SEO Title Prompt", "OpenAI: SEO AI Title",
              "Build SEO Description Prompt", "OpenAI: SEO AI Description",
              "Build SEO Tags Prompt", "OpenAI: SEO AI Etsy Tags", "Validate SEO Package",
+             "Build Content QA Prompt", "OpenAI: Content QA AI", "QA Stage 4 Content",
              "Build Metadata Prompt", "OpenAI: Metadata AI", "Parse Metadata JSON",
-             "Build QA Prompt", "OpenAI: QA AI", "Parse QA Report", "Check: QA Passed")
+             "Build QA Prompt", "OpenAI: QA AI", "Parse QA Report",
+             "Aggregate QA Gate", "Check: QA Passed")
 
     wf.link("Check: QA Passed", "Build PDF Document", 0)
     wf.link("Check: QA Passed", "Build QA Failure Result", 1)
-    wf.chain("Build PDF Document", "Export Files", "Return: Product Package")
+    wf.chain("Build PDF Document", "Export Files", "QA Stage 5 Export",
+             "Finalize Product Package", "Return: Product Package")
     wf.link("Build QA Failure Result", "Return: Product Package")
 
     return wf

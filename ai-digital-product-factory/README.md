@@ -5,27 +5,43 @@
 ใช้ **OpenAI API อย่างเดียว** ไม่มี provider อื่น
 
 ```
-01 Master Controller
-   └─ 02 Research Engine ──→ 03 Product Engine ──→ 04 Publish Engine
-                                                     └─ 05 Google Drive Backup
-                                                          └─ 06 Database Logger
+01 Master Controller ──(budget gate)──> 08 Cost and Budget
+   └─ 02 Research ─→ 07 Idea Factory ─→ 03 Product ─→ 04 Publish
+                                                        └─ 05 Drive Backup
+                                                             └─ 06 Database
+                                    09 Feedback Learning  (ทุกวันจันทร์)
+                                    10 Dashboard          (webhook)
 ```
+
+### V1 — สายการผลิต
 
 | Workflow | ไฟล์ | Nodes | หน้าที่ |
 |---|---|---:|---|
-| 01 Master Controller | `workflows/01_master_controller.json` | 34 | trigger, เลือกโรงงาน, สั่งงาน, error handling, logging |
+| 01 Master Controller | `workflows/01_master_controller.json` | 47 | trigger, budget gate, สั่งงาน, error handling, logging |
 | 02 Research Engine | `workflows/02_research_engine.json` | 15 | วิเคราะห์ Etsy → product concept |
-| 03 Product Engine | `workflows/03_product_engine.json` | 48 | 8 โรงงาน → เนื้อหา → ภาพ → SEO → QA → export ไฟล์ |
+| 03 Product Engine | `workflows/03_product_engine.json` | 63 | 8 โรงงาน → เนื้อหา → ภาพ → SEO → **QA 6 ด่าน** → export |
 | 04 Publish Engine | `workflows/04_publish_engine.json` | 29 | อัปโหลด Etsy + เตรียมแพ็ก Gumroad / MiriCanvas |
 | 05 Google Drive Backup | `workflows/05_google_drive_backup.json` | 24 | สร้างโฟลเดอร์อัตโนมัติ + อัปโหลดไฟล์ทั้งหมด |
 | 06 Database Logger | `workflows/06_database_logger.json` | 9 | PostgreSQL / SQLite |
+
+### V2 — สมองของโรงงาน
+
+| Workflow | ไฟล์ | Nodes | หน้าที่ |
+|---|---|---:|---|
+| 07 Idea Factory | `workflows/07_idea_factory.json` | 20 | 100–500 ไอเดีย → ให้คะแนน → dedupe → 500/50/20/5 |
+| 08 Cost and Budget | `workflows/08_cost_and_budget.json` | 9 | บันทึกค่า API, คุมงบวัน/เดือน, คิด ROI |
+| 09 Feedback Learning | `workflows/09_feedback_learning.json` | 30 | ดึงยอดขาย → trend memory → เสนอแก้ prompt → A/B test |
+| 10 Dashboard | `workflows/10_dashboard.json` | 8 | หน้า HTML สถานะโรงงาน (`?format=json` ได้ด้วย) |
+
+> **V2 (07–10) ต้องใช้ PostgreSQL** — ใช้ CTE, JSON functions และ window functions
+> ส่วน V1 (01–06) ยังรันบน SQLite ได้
 
 ---
 
 ## 1. ติดตั้ง
 
 ### 1.1 Import workflow
-Import ทั้ง 6 ไฟล์ใน `workflows/` เข้า n8n **เรียงจาก 06 ไป 01**
+Import ทั้ง 10 ไฟล์ใน `workflows/` เข้า n8n **เรียงจากเลขมากไปน้อย (10 → 01)**
 (สร้าง sub-workflow ให้เสร็จก่อน แล้วค่อย import ตัวที่เรียกใช้)
 
 > ไฟล์แต่ละตัวมี `id` คงที่ (เช่น `ADPF02RESEARCHENGN`) เพื่อให้ node
@@ -92,9 +108,9 @@ curl -X POST https://<n8n>/webhook/ai-digital-product-factory \
 ```
 ai-digital-product-factory/
 ├── workflows/          ← ไฟล์ที่ import เข้า n8n (deliverable)
-├── prompts/            ← prompt ทั้ง 8 agent ในรูป markdown สำหรับรีวิว
+├── prompts/            ← prompt ทั้ง 13 agent ในรูป markdown สำหรับรีวิว
 ├── db/                 ← schema PostgreSQL / SQLite
-├── docs/               ← เอกสารสถาปัตยกรรมภาษาไทย
+├── docs/               ← เอกสารสถาปัตยกรรม + สเปกระบบภาษาไทย (.md + .pdf)
 ├── build/              ← generator + ตัวตรวจ (source of truth)
 └── .env.example
 ```
@@ -104,18 +120,20 @@ ai-digital-product-factory/
 แล้วรัน
 
 ```bash
-python3 build/build.py     # สร้างใหม่ทั้ง 6 ไฟล์ + prompts + schema
-python3 build/verify.py    # ตรวจ syntax ของ Code node ทุกตัว + smoke test PDF จริง
+python3 build/build.py       # สร้างใหม่ทั้ง 10 ไฟล์ + prompts + schema
+python3 build/verify.py      # ตรวจ Code node ทุกตัว + parse SQL จริง + smoke test PDF
+python3 build/make_spec_pdf.py   # สร้าง docs/SYSTEM_SPEC_TH.pdf ใหม่
 ```
 
 `build.py` ตรวจให้อัตโนมัติว่า: ชื่อ node ไม่ซ้ำ, ทุก node มี comment, connection ชี้ไป node
 ที่มีจริง, ไม่มี node กำพร้า, และไม่มีร่องรอย secret ในไฟล์
-`verify.py` เอา `jsCode` ของทุก Code node ไปให้ `node --check` แล้วสร้าง PDF จริงหนึ่งไฟล์
-พร้อมเดิน xref table ทีละ entry
+`verify.py` ทำ 3 อย่าง: เอา `jsCode` ของทุก Code node ไปให้ `node --check`,
+parse ทุก SQL statement ด้วย **libpg_query** (parser ตัวจริงของ PostgreSQL ผ่าน `pglast`),
+และสร้าง PDF จริงหนึ่งไฟล์พร้อมเดิน xref table ทีละ entry
 
 ---
 
-## 4. OpenAI Agents (8 ตัว, prompt แยกกันจริง)
+## 4. OpenAI Agents (13 ตัว, prompt แยกกันจริง)
 
 | # | Agent | ใช้ใน | หน้าที่ |
 |---|---|---|---|
@@ -125,8 +143,17 @@ python3 build/verify.py    # ตรวจ syntax ของ Code node ทุก�
 | 4 | Designer AI | 03 | เขียน prompt ภาพทุกใบ + SVG source |
 | 5 | SEO AI | 02, 03 | keyword / title / description / tags |
 | 6 | Metadata AI | 03 | metadata record ที่เป็นความจริงของสินค้า |
-| 7 | QA AI | 03 | ด่านกันของเสียก่อนขึ้นร้าน |
+| 7 | QA AI | 03 | QA ด่าน 6 — marketplace |
 | 8 | Publisher AI | 04 | payload marketplace + ตัดสินความเข้ากันได้ |
+| 9 | **Idea Generator AI** | 07 | ผลิตไอเดียทีละ batch พร้อมประเมินสัญญาณดิบ |
+| 10 | **Learning AI** | 09 | อ่านยอดขายจริง → เสนอแก้ prompt แบบเจาะจง |
+| 11 | **A/B Test AI** | 09 | เขียน variant B ที่เปลี่ยนทีละอย่างเดียว |
+| 12 | **Design QA AI** | 03 | QA ด่าน 3 — layout / typography / margin / DPI |
+| 13 | **Content QA AI** | 03 | QA ด่าน 4 — grammar / copyright / sensitive |
+
+> **การให้คะแนนไอเดียไม่ใช้ AI** — agent 9 ประเมินแค่สัญญาณดิบ
+> (demand / competition / trend / seo) แล้ว `Score Ideas` คำนวณคะแนนด้วยโค้ด
+> เพื่อให้ตรวจสอบย้อนหลังได้และไม่แกว่งทุก run
 
 prompt ทุกตัวอยู่ใน node `Prompt Library` ของแต่ละ workflow (versioned ด้วย `PROMPT_VERSION`)
 และ mirror เป็นไฟล์ใน `prompts/` ให้ diff ได้

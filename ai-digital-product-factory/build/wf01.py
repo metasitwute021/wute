@@ -134,16 +134,117 @@ const logResult = $input.first() ? $input.first().json : {};
 return [{ json: { ...ctx, stage: 'research', run_log_id: logResult.record_id || null } }];
 """.strip()
 
-JS_COMPOSE_PRODUCT = r"""
-// Contract for 03 Product Engine: run context + the validated research package.
+JS_PREPARE_BUDGET_CHECK = r"""
+// V2 section 10: ask 08 whether there is budget before spending anything.
+const ctx = $input.first().json;
+return [{
+  json: {
+    op: 'check_budget',
+    run_id: ctx.run_id,
+    stage: 'preflight',
+    reserve_usd: Number($env.BUDGET_RUN_RESERVE_USD || 3),
+  },
+}];
+""".strip()
+
+JS_AFTER_BUDGET = r"""
+// Carry the budget verdict alongside the restored run context.
+const ctx = $('Select Product Factory').first().json;
+const budget = $input.first().json;
+return [{
+  json: {
+    ...ctx,
+    budget: {
+      allowed: budget.allowed !== false,
+      block_reason: budget.block_reason || null,
+      daily_remaining_usd: budget.daily?.remaining_usd ?? null,
+      monthly_remaining_usd: budget.monthly?.remaining_usd ?? null,
+    },
+    // A blocked run is a controlled stop, not a crash.
+    failure_reason: budget.allowed === false
+      ? `Budget manager stopped the run: ${budget.block_reason}` : null,
+  },
+}];
+""".strip()
+
+JS_COMPOSE_IDEA = r"""
+// V2 sections 1-6: hand the research package to the Idea Factory.
 const ctx = $('Restore Run Context').first().json;
 const research = $input.first().json;
 return [{
   json: {
     ...ctx,
-    stage: 'product',
+    stage: 'ideas',
     research: research.research || research,
     market: research.market || {},
+    idea_count: Number(ctx.idea_count || $env.IDEA_TARGET_COUNT || 200),
+  },
+}];
+""".strip()
+
+JS_COMPOSE_PRODUCT = r"""
+// Contract for 03 Product Engine. V2: the research package is now narrowed by
+// the Idea Factory, so the product is built from the winning idea rather than
+// from the raw research concept.
+const ctx = $('Restore Run Context').first().json;
+const ideaResult = $input.first().json;
+const research = $('Compose Idea Request').first().json.research;
+const selected = ideaResult.selected_idea;
+
+if (!selected) {
+  throw new Error('Idea Factory returned no shortlisted idea');
+}
+
+return [{
+  json: {
+    ...ctx,
+    stage: 'product',
+    // The winning idea overrides the generic concept: its title, category and
+    // customer are what the whole production line will build against.
+    factory: selected.factory || ctx.factory,
+    idea_uid: selected.idea_uid,
+    research: {
+      ...research,
+      product_type: selected.factory,
+      category: selected.category,
+      target_customer: selected.target_customer || research.target_customer,
+      keyword: (selected.keywords && selected.keywords[0]) || research.keyword,
+      sub_keywords: selected.keywords && selected.keywords.length
+        ? selected.keywords : research.sub_keywords,
+      price_suggestion_usd: selected.est_price_usd || research.price_suggestion_usd,
+      difficulty: selected.difficulty || research.difficulty,
+      idea_title: selected.title,
+    },
+    market: $('Compose Idea Request').first().json.market,
+    idea: selected,
+    idea_funnel: ideaResult.funnel,
+  },
+}];
+""".strip()
+
+JS_PREPARE_ROLLUP = r"""
+// V2 section 8: fold the measured API cost into the product row so ROI is one
+// column read, not a join at report time.
+const ctx = $('Restore Run Context').first().json;
+return [{ json: { op: 'rollup', run_id: ctx.run_id, stage: 'finalise' } }];
+""".strip()
+
+JS_PREPARE_VERSION = r"""
+// V2 section 12: append-only version history.
+const ctx = $('Restore Run Context').first().json;
+const product = $('Compose Publish Request').first().json.product;
+
+return [{
+  json: {
+    op: 'product_version',
+    run_id: ctx.run_id,
+    product_name: product.product_name,
+    version: Number(product.version || 1),
+    prompt_version: ctx.prompt_version,
+    change_note: product.is_revision
+      ? `revision of an existing product (similarity ${product.duplicate_similarity})`
+      : 'initial version',
+    qa_score: product.qa?.average_score ?? null,
   },
 }];
 """.strip()
@@ -200,6 +301,12 @@ return [{
       publish.gumroad_package_ready ? 'gumroad-prepared' : null,
       publish.miricanvas_package_ready ? 'miricanvas-prepared' : null,
     ].filter(Boolean).join(','),
+    // V2: fingerprints for duplicate detection and the version number
+    idea_uid: ctx.idea_uid || null,
+    version: product.version || 1,
+    title_norm: product.title_norm || null,
+    keyword_set: product.keyword_set || null,
+    price_usd: meta.price_usd || null,
     drive_folder_id: backup.drive_folder_id || null,
     etsy_listing_id: publish.etsy_listing_id || null,
     prompt_version: ctx.prompt_version,
@@ -232,6 +339,16 @@ return [{
     duration_seconds: Math.round((Date.now() - started) / 1000),
     finished_at: new Date().toISOString(),
     status: 'completed',
+    // V2
+    idea_funnel: (() => { try { return $('Compose Product Request').first().json.idea_funnel; }
+                          catch (e) { return null; } })(),
+    qa_stages: (() => { try {
+      return ($('Compose Publish Request').first().json.product.qa?.stages || [])
+        .map((s) => ({ stage: s.stage, passed: s.passed, score: s.score }));
+    } catch (e) { return []; } })(),
+    roi: (() => { try { return $('Run: Cost Rollup').first().json.roi; }
+                  catch (e) { return null; } })(),
+    budget_remaining_usd: ctx.budget?.daily_remaining_usd ?? null,
   },
 }];
 """.strip()
@@ -356,6 +473,18 @@ def build() -> Workflow:
            notes="Guard clause: aborts immediately when required env vars are missing.")
     wf.add("Select Product Factory", T_CODE, pos(3, 1), code(JS_SELECT_FACTORY),
            notes="Explicit factory wins, otherwise rotate deterministically per day.")
+    # -- V2 section 10: budget gate before anything is spent ---------------
+    wf.add("Prepare Budget Check", T_CODE, pos(3, 2), code(JS_PREPARE_BUDGET_CHECK),
+           notes="V2 section 10. Asks 08 whether today's and this month's budget allow a run.")
+    wf.add("Run: Budget Check", T_EXEC_WF, pos(3, 3), exec_workflow("08"),
+           notes="Calls 08 Cost and Budget, op=check_budget.",
+           onError="continueRegularOutput", alwaysOutputData=True, **RETRY)
+    wf.add("Apply Budget Verdict", T_CODE, pos(3, 4), code(JS_AFTER_BUDGET),
+           notes="Restores the run context and attaches the budget verdict.")
+    wf.add("Check: Budget OK", T_IF, pos(3, 5),
+           if_bool("={{ $json.budget.allowed }}"),
+           notes="Budget exhausted stops the run here - a controlled stop, not a crash.")
+
     wf.add("Prepare Run Start Log", T_CODE, pos(4, 1), code(JS_PREPARE_RUN_LOG),
            notes="Payload for 06 Database Logger, op=run_start.")
     wf.add(
@@ -374,8 +503,18 @@ def build() -> Workflow:
     )
     wf.add("Check: Research OK", T_IF, pos(8, 1), if_bool("={{ $json.ok }}"),
            notes="Research must return ok=true and a complete concept contract.")
+
+    # -- V2 sections 1-6: idea funnel between research and production ------
+    wf.add("Compose Idea Request", T_CODE, pos(8, 0), code(JS_COMPOSE_IDEA),
+           notes="V2. Input contract for 07 Idea Factory.")
+    wf.add("Run: Idea Factory", T_EXEC_WF, pos(9, 0), exec_workflow("07"),
+           notes="Calls 07 Idea Factory: 100-500 ideas scored and funnelled to a top 5.",
+           onError="continueErrorOutput", **RETRY)
+    wf.add("Check: Ideas OK", T_IF, pos(10, 0), if_bool("={{ $json.ok }}"),
+           notes="False when no idea survived scoring, dedupe and the category balancer.")
+
     wf.add("Compose Product Request", T_CODE, pos(9, 1), code(JS_COMPOSE_PRODUCT),
-           notes="Input contract for 03 Product Engine.")
+           notes="Input contract for 03 Product Engine, built from the winning idea.")
 
     # ---- stage 03 --------------------------------------------------------
     wf.add(
@@ -405,6 +544,18 @@ def build() -> Workflow:
         notes="Calls 05 Google Drive Backup (idempotent folder tree + file upload).",
         onError="continueErrorOutput", **RETRY,
     )
+    # -- V2 sections 8 + 12: ROI rollup and version history ----------------
+    wf.add("Prepare Cost Rollup", T_CODE, pos(17, 0), code(JS_PREPARE_ROLLUP),
+           notes="V2 section 8. Asks 08 to fold measured API cost into the product row.")
+    wf.add("Run: Cost Rollup", T_EXEC_WF, pos(18, 0), exec_workflow("08"),
+           notes="Calls 08 Cost and Budget, op=rollup. Never blocks the run.",
+           onError="continueRegularOutput", alwaysOutputData=True, **RETRY)
+    wf.add("Prepare Version Record", T_CODE, pos(19, 0), code(JS_PREPARE_VERSION),
+           notes="V2 section 12. Append-only version history for this product.")
+    wf.add("Save: Product Version", T_EXEC_WF, pos(20, 0), exec_workflow("06"),
+           notes="Calls 06 Database Logger, op=product_version.",
+           onError="continueRegularOutput", alwaysOutputData=True, **RETRY)
+
     wf.add("Prepare Product Record", T_CODE, pos(17, 1), code(JS_PREPARE_RECORD),
            notes="Final database row: ids, marketplace flags, prompt version, status.")
     wf.add(
@@ -419,7 +570,9 @@ def build() -> Workflow:
 
     # ---- error funnel ----------------------------------------------------
     stages = [
+        ("Stage Failed: Budget", "budget", 5),
         ("Stage Failed: Research", "research", 8),
+        ("Stage Failed: Ideas", "ideas", 10),
         ("Stage Failed: Product", "product", 11),
         ("Stage Failed: Publish", "publish", 14),
         ("Stage Failed: Backup", "backup", 17),
@@ -484,13 +637,25 @@ def build() -> Workflow:
 
     wf.chain(
         "Init Run Context", "Validate Environment", "Select Product Factory",
+        "Prepare Budget Check", "Run: Budget Check", "Apply Budget Verdict",
+        "Check: Budget OK",
+    )
+    wf.link("Check: Budget OK", "Prepare Run Start Log", 0)
+    wf.link("Check: Budget OK", "Stage Failed: Budget", 1)
+    wf.chain(
         "Prepare Run Start Log", "Log: Run Started", "Restore Run Context",
         "Run: Research Engine",
     )
     wf.link("Run: Research Engine", "Check: Research OK", 0)
     wf.link("Run: Research Engine", "Stage Failed: Research", 1)
-    wf.link("Check: Research OK", "Compose Product Request", 0)
+    wf.link("Check: Research OK", "Compose Idea Request", 0)
     wf.link("Check: Research OK", "Stage Failed: Research", 1)
+
+    wf.link("Compose Idea Request", "Run: Idea Factory")
+    wf.link("Run: Idea Factory", "Check: Ideas OK", 0)
+    wf.link("Run: Idea Factory", "Stage Failed: Ideas", 1)
+    wf.link("Check: Ideas OK", "Compose Product Request", 0)
+    wf.link("Check: Ideas OK", "Stage Failed: Ideas", 1)
 
     wf.link("Compose Product Request", "Run: Product Engine")
     wf.link("Run: Product Engine", "Check: Product OK", 0)
@@ -509,6 +674,8 @@ def build() -> Workflow:
     wf.link("Run: Drive Backup", "Stage Failed: Backup", 1)
     wf.chain(
         "Prepare Product Record", "Save: Product Record",
+        "Prepare Cost Rollup", "Run: Cost Rollup",
+        "Prepare Version Record", "Save: Product Version",
         "Build Success Summary", "Respond: Run Finished",
     )
 
