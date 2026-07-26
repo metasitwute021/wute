@@ -11,8 +11,8 @@ InpMomentumPct=30.0
 InpADXMin=20.0
 InpSL_ATRMult=1.5
 
-; ---- Risk (ปลอดภัยสำหรับ 100K, เวลา Unlimited ไม่ต้องรีบ) ----
-InpRiskPercent=0.6
+; ---- Risk (ผู้ใช้เลือกคง 1% เท่าเดิม) ----
+InpRiskPercent=1.0
 InpMaxPositions=1
 InpReentryCooldownBars=1
 InpMaxRiskCapPercent=1.7
