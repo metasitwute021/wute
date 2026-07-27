@@ -56,7 +56,7 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "Metasit XAUUSD Donchian EA - prop-safe build"
-#property version   "2.08"
+#property version   "2.20"
 #property strict
 
 #define EA_VERSION "2.20"
