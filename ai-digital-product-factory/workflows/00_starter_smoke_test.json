@@ -1,0 +1,323 @@
+{
+  "name": "ADPF 00 Starter Smoke Test",
+  "id": "ADPF00STARTERTEST",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "adpf00-trigger-manual-run",
+      "name": "Trigger: Manual Run",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        190
+      ],
+      "notes": "Press 'Test workflow'. Optionally pin input data with {\"test_openai\": false} to skip the paid call.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// STEP 1 - can this instance read environment variables at all?\n// This never throws: the whole point is to produce a readable report instead\n// of a red node with a cryptic message.\nconst read = (key) => {\n  try { return $env[key]; } catch (e) { return undefined; }\n};\n\nlet envAccessible = true;\ntry {\n  // Touching $env throws when N8N_BLOCK_ENV_ACCESS_IN_NODE is left at its default.\n  void $env.PATH;\n} catch (e) {\n  envAccessible = false;\n}\n\nconst GROUPS = {\n  'OpenAI (needed to generate anything)': ['OPENAI_MODEL_TEXT', 'OPENAI_MODEL_IMAGE'],\n  'Etsy (needed only to publish)': ['ETSY_API_BASE', 'ETSY_API_KEY', 'ETSY_SHOP_ID'],\n  'Google Drive (needed only to back up)': ['GDRIVE_ROOT_FOLDER_ID'],\n  'Database (needed for workflows 06-10)': ['DB_TYPE'],\n  'Factory settings': ['PROMPT_VERSION', 'FACTORY_ROTATION'],\n};\n\nconst report = {};\nfor (const [group, keys] of Object.entries(GROUPS)) {\n  report[group] = keys.map((key) => ({\n    key,\n    set: Boolean(read(key)),\n    value: key.includes('KEY') || key.includes('SECRET')\n      ? (read(key) ? '(set, hidden)' : null)\n      : (read(key) || null),\n  }));\n}\n\nconst input = $input.first() ? $input.first().json : {};\n\nconst blockers = [];\nif (!envAccessible) {\n  blockers.push(\n    'Cannot read $env. Start n8n with N8N_BLOCK_ENV_ACCESS_IN_NODE=false and restart it.'\n  );\n}\n\nreturn [{\n  json: {\n    step: 'check-setup',\n    env_accessible: envAccessible,\n    env_report: report,\n    blockers,\n    // Flip to false to test the PDF engine without spending anything on OpenAI.\n    test_openai: input.test_openai !== false && blockers.length === 0,\n    product_title: input.product_title || 'My First Test Product',\n    checked_at: new Date().toISOString(),\n  },\n}];"
+      },
+      "id": "adpf00-check-setup",
+      "name": "Check Setup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        190
+      ],
+      "notes": "Step 1+2. Reports which environment variables are set and whether $env is readable at all. Never throws - it produces a report.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ $json.test_openai }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "adpf00-check-test-openai",
+      "name": "Check: Test OpenAI",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        600,
+        190
+      ],
+      "notes": "Skips the paid call when env access is broken or test_openai=false.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// STEP 2 - the smallest possible real request. A few hundred tokens, so a\n// mistyped API key costs a fraction of a cent to discover.\nconst ctx = $input.first().json;\n\nreturn [{\n  json: {\n    ...ctx,\n    system_prompt:\n      'You are a setup test. Reply with valid JSON only, nothing else.',\n    user_prompt:\n      'Write one short marketing line for a printable product called \"' +\n      ctx.product_title + '\". ' +\n      'Answer exactly: {\"tagline\": \"...\", \"three_words\": [\"...\",\"...\",\"...\"]}',\n  },\n}];"
+      },
+      "id": "adpf00-build-test-prompt",
+      "name": "Build Test Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        0
+      ],
+      "notes": "The smallest useful request - a mistyped key costs a fraction of a cent.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $env.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.7, max_tokens: 200, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: $json.system_prompt }, { role: 'user', content: $json.user_prompt } ] }) }}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "adpf00-openai-connection-test",
+      "name": "OpenAI: Connection Test",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        0
+      ],
+      "notes": "Uses the OpenAI credential, exactly like the real workflows. Errors are captured, not thrown, so the report still renders.",
+      "notesInFlow": true,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// STEP 3 - did OpenAI answer, and is the answer parseable JSON?\n// Both halves matter: a working key that returns prose would break every\n// downstream workflow, so the parse is part of the test.\nconst ctx = $('Build Test Prompt').first().json;\nconst response = $input.first().json;\n\nconst problems = [];\nlet parsed = null;\n\nconst content = response?.choices?.[0]?.message?.content;\nif (response?.error) {\n  problems.push(`OpenAI error: ${response.error.message || JSON.stringify(response.error)}`);\n} else if (!content) {\n  problems.push('OpenAI returned no content - check the credential and your account credit');\n} else {\n  try {\n    parsed = JSON.parse(content);\n  } catch (e) {\n    problems.push(`OpenAI replied but not with JSON: ${e.message}`);\n  }\n}\n\nconst usage = response?.usage || {};\n// Rough cost at gpt-4.1 list price, just so the number is not a mystery.\nconst costUsd = ((usage.prompt_tokens || 0) / 1e6) * 2\n  + ((usage.completion_tokens || 0) / 1e6) * 8;\n\nreturn [{\n  json: {\n    ...ctx,\n    openai_ok: problems.length === 0,\n    openai_problems: problems,\n    openai_reply: parsed,\n    openai_usage: {\n      prompt_tokens: usage.prompt_tokens || 0,\n      completion_tokens: usage.completion_tokens || 0,\n      approx_cost_usd: Math.round(costUsd * 1e6) / 1e6,\n    },\n  },\n}];"
+      },
+      "id": "adpf00-parse-openai-reply",
+      "name": "Parse OpenAI Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1500,
+        0
+      ],
+      "notes": "Step 3. Checks the key works AND that JSON mode parses - a key that returns prose would break every downstream workflow.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// OpenAI was skipped on purpose - carry on to the PDF test.\nconst ctx = $input.first().json;\nreturn [{\n  json: {\n    ...ctx,\n    openai_ok: null,\n    openai_problems: [],\n    openai_reply: null,\n    openai_skipped: true,\n    skip_reason: ctx.blockers.length\n      ? 'blocked: ' + ctx.blockers.join('; ')\n      : 'test_openai was set to false',\n  },\n}];"
+      },
+      "id": "adpf00-skip-openai-test",
+      "name": "Skip OpenAI Test",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        380
+      ],
+      "notes": "Records why the call was skipped and continues to the PDF test.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// ---------------------------------------------------------------------------\n// Minimal PDF 1.4 writer (no external dependencies).\n// ---------------------------------------------------------------------------\nconst PDF_FONT = { regular: 'F1', bold: 'F2' };\n\n// Strip anything Helvetica/WinAnsi cannot show, then escape PDF string syntax.\nfunction pdfEscape(text) {\n  return String(text === undefined || text === null ? '' : text)\n    .replace(/[‘’]/g, \"'\")\n    .replace(/[“”]/g, '\"')\n    .replace(/[–—]/g, '-')\n    .replace(/…/g, '...')\n    .replace(/[^\\x20-\\x7E\\xA1-\\xFF]/g, '')\n    .replace(/\\\\/g, '\\\\\\\\')\n    .replace(/\\(/g, '\\\\(')\n    .replace(/\\)/g, '\\\\)');\n}\n\n// Read width/height/components out of a JPEG SOF marker.\nfunction jpegInfo(buffer) {\n  let i = 2;\n  while (i < buffer.length - 9) {\n    if (buffer[i] !== 0xff) { i += 1; continue; }\n    const marker = buffer[i + 1];\n    if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {\n      i += 2;\n      continue;\n    }\n    const length = buffer.readUInt16BE(i + 2);\n    const isSOF = marker >= 0xc0 && marker <= 0xcf &&\n      marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;\n    if (isSOF) {\n      return {\n        height: buffer.readUInt16BE(i + 5),\n        width: buffer.readUInt16BE(i + 7),\n        components: buffer[i + 9],\n      };\n    }\n    i += 2 + length;\n  }\n  return { width: 1024, height: 1024, components: 3 };\n}\n\n// Greedy word wrap. Helvetica averages ~0.5em per character, which is accurate\n// enough for body copy at 10-12pt.\nfunction wrapText(text, fontSize, usableWidth) {\n  const maxChars = Math.max(20, Math.floor(usableWidth / (fontSize * 0.5)));\n  const out = [];\n  for (const rawLine of String(text).split('\\n')) {\n    let line = '';\n    for (const word of rawLine.split(/\\s+/)) {\n      if (!word) continue;\n      if (!line.length) { line = word; continue; }\n      if ((line + ' ' + word).length <= maxChars) { line += ' ' + word; }\n      else { out.push(line); line = word; }\n    }\n    out.push(line);\n  }\n  return out;\n}\n\nfunction buildPdf(spec) {\n  const PW = spec.width || 595.28;   // A4 portrait by default\n  const PH = spec.height || 841.89;\n  const margin = spec.margin || 56;\n  const bodySize = spec.body_size || 11;\n  const leading = Math.round(bodySize * 1.5);\n  const usableWidth = PW - margin * 2;\n\n  // Object ids 1-5 are reserved: catalog, page tree, 2 fonts, document info.\n  const objects = [null, null, null, null, null];\n  const push = (content) => { objects.push(content); return objects.length; };\n  const pageIds = [];\n\n  const addPage = (contentStream, extraResources) => {\n    const contentId = push(\n      `<< /Length ${Buffer.byteLength(contentStream, 'latin1')} >>\\n` +\n      `stream\\n${contentStream}\\nendstream`\n    );\n    const resources =\n      `/Font << /F1 3 0 R /F2 4 0 R >>` + (extraResources ? ' ' + extraResources : '');\n    pageIds.push(push(\n      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PW.toFixed(2)} ${PH.toFixed(2)}]` +\n      ` /Resources << ${resources} >> /Contents ${contentId} 0 R >>`\n    ));\n  };\n\n  const footer = (label) => {\n    if (!label) return '';\n    return `BT /${PDF_FONT.regular} 8 Tf 0.45 0.45 0.45 rg ` +\n      `${margin} ${(margin / 2).toFixed(2)} Td (${pdfEscape(label)}) Tj ET 0 0 0 rg\\n`;\n  };\n\n  for (const page of spec.pages || []) {\n    // ---- image page: fit the JPEG inside the page, centred -----------------\n    if (page.type === 'image' && page.jpeg_base64) {\n      const data = Buffer.from(page.jpeg_base64, 'base64');\n      const info = jpegInfo(data);\n      const bleed = page.full_bleed ? 0 : margin / 2;\n      const scale = Math.min(\n        (PW - bleed * 2) / info.width,\n        (PH - bleed * 2) / info.height\n      );\n      const w = info.width * scale;\n      const h = info.height * scale;\n      const x = (PW - w) / 2;\n      const y = (PH - h) / 2;\n      const imageId = push(Buffer.concat([\n        Buffer.from(\n          `<< /Type /XObject /Subtype /Image /Width ${info.width} /Height ${info.height}` +\n          ` /ColorSpace ${info.components === 1 ? '/DeviceGray' : '/DeviceRGB'}` +\n          ` /BitsPerComponent 8 /Filter /DCTDecode /Length ${data.length} >>\\nstream\\n`,\n          'latin1'\n        ),\n        data,\n        Buffer.from('\\nendstream', 'latin1'),\n      ]));\n      let stream = `q ${w.toFixed(2)} 0 0 ${h.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)} cm /Im0 Do Q\\n`;\n      if (page.caption) {\n        stream += `BT /${PDF_FONT.regular} 10 Tf ${margin} ${(y - 18).toFixed(2)} Td ` +\n          `(${pdfEscape(page.caption)}) Tj ET\\n`;\n      }\n      stream += footer(page.footer);\n      addPage(stream, `/XObject << /Im0 ${imageId} 0 R >>`);\n      continue;\n    }\n\n    // ---- text page: wrap, then break into as many pages as needed ---------\n    const titleSize = page.title_size || (page.cover ? 30 : 18);\n    const lines = [];\n    for (const raw of page.lines || []) {\n      for (const wrapped of wrapText(raw, bodySize, usableWidth)) lines.push(wrapped);\n    }\n\n    const firstTop = PH - margin - (page.title ? titleSize + 22 : 0);\n    const linesFirstPage = Math.max(1, Math.floor((firstTop - margin) / leading));\n    const linesNextPage = Math.max(1, Math.floor((PH - margin * 2) / leading));\n\n    let cursor = 0;\n    let chunkIndex = 0;\n    do {\n      const capacity = chunkIndex === 0 ? linesFirstPage : linesNextPage;\n      const chunk = lines.slice(cursor, cursor + capacity);\n      cursor += capacity;\n\n      let stream = '';\n      if (page.title && chunkIndex === 0) {\n        const titleY = PH - margin - titleSize;\n        stream += `BT /${PDF_FONT.bold} ${titleSize} Tf ${margin} ${titleY.toFixed(2)} Td ` +\n          `(${pdfEscape(page.title)}) Tj ET\\n`;\n        stream += `${margin} ${(titleY - 12).toFixed(2)} m ${(PW - margin).toFixed(2)} ` +\n          `${(titleY - 12).toFixed(2)} l 0.7 w 0.8 0.8 0.8 RG S 0 0 0 RG\\n`;\n      }\n      if (page.subtitle && chunkIndex === 0) {\n        stream += `BT /${PDF_FONT.regular} 13 Tf 0.35 0.35 0.35 rg ${margin} ` +\n          `${(PH - margin - titleSize - 34).toFixed(2)} Td (${pdfEscape(page.subtitle)}) Tj ET 0 0 0 rg\\n`;\n      }\n      if (chunk.length) {\n        const startY = (chunkIndex === 0 ? firstTop : PH - margin) -\n          (page.subtitle && chunkIndex === 0 ? 26 : 0);\n        stream += `BT /${PDF_FONT.regular} ${bodySize} Tf ${leading} TL ` +\n          `${margin} ${startY.toFixed(2)} Td\\n`;\n        for (const line of chunk) stream += `(${pdfEscape(line)}) Tj T*\\n`;\n        stream += 'ET\\n';\n      }\n      stream += footer(page.footer);\n      addPage(stream, null);\n      chunkIndex += 1;\n    } while (cursor < lines.length);\n  }\n\n  if (!pageIds.length) {\n    addPage(`BT /${PDF_FONT.regular} 12 Tf 56 780 Td (Empty document) Tj ET\\n`, null);\n  }\n\n  const info = spec.info || {};\n  objects[0] = '<< /Type /Catalog /Pages 2 0 R >>';\n  objects[1] = `<< /Type /Pages /Count ${pageIds.length} /Kids [` +\n    pageIds.map((id) => `${id} 0 R`).join(' ') + '] >>';\n  objects[2] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';\n  objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';\n  objects[4] = '<< /Title (' + pdfEscape(info.title || 'Digital Product') + ')' +\n    ' /Author (' + pdfEscape(info.author || 'AI Digital Product Factory') + ')' +\n    ' /Subject (' + pdfEscape(info.subject || '') + ')' +\n    ' /Keywords (' + pdfEscape(info.keywords || '') + ')' +\n    ' /Creator (AI Digital Product Factory) /Producer (n8n) >>';\n\n  // ---- serialise: header, objects, xref table, trailer --------------------\n  const chunks = [];\n  let offset = 0;\n  const write = (value) => {\n    const buf = Buffer.isBuffer(value) ? value : Buffer.from(String(value), 'latin1');\n    chunks.push(buf);\n    offset += buf.length;\n  };\n\n  write('%PDF-1.4\\n%\\xE2\\xE3\\xCF\\xD3\\n');\n  const offsets = [];\n  objects.forEach((obj, index) => {\n    offsets[index] = offset;\n    write(`${index + 1} 0 obj\\n`);\n    write(obj);\n    write('\\nendobj\\n');\n  });\n\n  const xrefOffset = offset;\n  write(`xref\\n0 ${objects.length + 1}\\n`);\n  write('0000000000 65535 f \\n');\n  for (const o of offsets) write(`${String(o).padStart(10, '0')} 00000 n \\n`);\n  write(\n    `trailer\\n<< /Size ${objects.length + 1} /Root 1 0 R /Info 5 0 R >>\\n` +\n    `startxref\\n${xrefOffset}\\n%%EOF\\n`\n  );\n\n  return { buffer: Buffer.concat(chunks), page_count: pageIds.length };\n}\n\n// ---------------------------------------------------------------------------\n// STEP 4 - build a real PDF with the same writer the product line uses.\n// No npm package, no external service: if this node is green, the factory can\n// produce sellable files on this machine.\n// ---------------------------------------------------------------------------\nconst ctx = $input.first().json;\nconst reply = ctx.openai_reply || {};\n\nconst envLines = [];\nfor (const [group, keys] of Object.entries(ctx.env_report)) {\n  envLines.push(group);\n  for (const entry of keys) {\n    envLines.push(`   ${entry.set ? '[OK]  ' : '[--]  '}${entry.key}` +\n      (entry.value ? ` = ${entry.value}` : ''));\n  }\n  envLines.push('');\n}\n\nconst pages = [\n  {\n    type: 'text',\n    cover: true,\n    title: 'Setup test passed',\n    subtitle: ctx.product_title,\n    lines: [\n      '',\n      'If you can read this page, the following all work on this machine:',\n      '',\n      '- n8n executes Code nodes',\n      `- environment variables are readable: ${ctx.env_accessible ? 'YES' : 'NO'}`,\n      `- OpenAI credential: ${ctx.openai_ok === null ? 'skipped' : (ctx.openai_ok ? 'YES' : 'FAILED')}`,\n      '- the PDF engine produces a real file (this document)',\n      '',\n      reply.tagline ? `OpenAI wrote: \"${reply.tagline}\"` : '',\n      Array.isArray(reply.three_words) ? `Keywords: ${reply.three_words.join(', ')}` : '',\n      '',\n      `Generated: ${new Date().toISOString()}`,\n    ].filter((line) => line !== ''),\n    footer: 'AI Digital Product Factory - setup test',\n  },\n  {\n    type: 'text',\n    title: 'Environment report',\n    lines: envLines,\n    footer: 'AI Digital Product Factory - setup test',\n  },\n  {\n    type: 'text',\n    title: 'What to do next',\n    lines: [\n      '1. Add the Postgres credential, then run workflow 06 once.',\n      '   Send: {\"op\":\"run_start\",\"run_id\":\"test-1\",\"status\":\"running\"}',\n      '',\n      '2. Add the OpenAI credential (if you have not), then run workflow 02.',\n      '   Send: {\"run_id\":\"test-2\",\"factory\":\"printable\"}',\n      '',\n      '3. Run workflow 01 with {\"factory\":\"printable\",\"dry_run\":true}.',\n      '   Images become 1x1 placeholders, so the rehearsal is nearly free.',\n      '',\n      '4. Only after all three are green, run a real product.',\n      '   {\"factory\":\"resume\",\"dry_run\":false} is the cheapest one.',\n      '',\n      'Etsy and Google Drive are needed only for steps 3 and 4.',\n      'Everything before that runs without them.',\n    ],\n    footer: 'AI Digital Product Factory - setup test',\n  },\n];\n\nconst result = buildPdf({\n  width: 595.28,\n  height: 841.89,\n  pages,\n  info: { title: 'ADPF setup test', subject: 'installation check' },\n});\n\nconst base64 = result.buffer.toString('base64');\n\nreturn [{\n  json: {\n    ...ctx,\n    pdf_pages: result.page_count,\n    pdf_bytes: result.buffer.length,\n    pdf_ok: result.buffer.length > 1000\n      && result.buffer.slice(0, 5).toString('latin1') === '%PDF-',\n  },\n  // Attaching it as binary means the file is downloadable straight from the\n  // n8n output panel - no database and no Drive needed to see the result.\n  binary: {\n    data: {\n      data: base64,\n      mimeType: 'application/pdf',\n      fileName: 'adpf-setup-test.pdf',\n      fileExtension: 'pdf',\n    },\n  },\n}];"
+      },
+      "id": "adpf00-build-test-pdf",
+      "name": "Build Test PDF",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        190
+      ],
+      "notes": "Step 4. Same dependency-free PDF writer the product line uses. The file is attached as binary - download it from the output panel.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// The verdict, in the shape of a checklist a human can read at a glance.\nconst ctx = $input.first().json;\n\nconst checks = [\n  { name: '1. n8n runs Code nodes', ok: true,\n    detail: 'this node executed' },\n  { name: '2. $env is readable', ok: ctx.env_accessible,\n    detail: ctx.env_accessible ? 'ok' : 'set N8N_BLOCK_ENV_ACCESS_IN_NODE=false and restart n8n' },\n  { name: '3. OpenAI credential works',\n    ok: ctx.openai_ok === null ? null : ctx.openai_ok,\n    detail: ctx.openai_ok === null ? (ctx.skip_reason || 'skipped')\n      : (ctx.openai_ok ? `ok, cost about $${ctx.openai_usage.approx_cost_usd}`\n                       : ctx.openai_problems.join('; ')) },\n  { name: '4. PDF engine works', ok: ctx.pdf_ok,\n    detail: ctx.pdf_ok ? `${ctx.pdf_pages} pages, ${ctx.pdf_bytes} bytes`\n                       : 'PDF was not produced' },\n];\n\nconst failed = checks.filter((c) => c.ok === false);\nconst skipped = checks.filter((c) => c.ok === null);\n\nconst missing = [];\nfor (const [group, keys] of Object.entries(ctx.env_report)) {\n  const absent = keys.filter((k) => !k.set).map((k) => k.key);\n  if (absent.length) missing.push(`${group}: ${absent.join(', ')}`);\n}\n\nreturn [{\n  json: {\n    ok: failed.length === 0,\n    verdict: failed.length === 0\n      ? (skipped.length ? 'PASSED (some checks skipped)' : 'PASSED - n8n is ready')\n      : `FAILED - ${failed.length} check(s) need attention`,\n    checks,\n    failed: failed.map((c) => `${c.name}: ${c.detail}`),\n    env_still_missing: missing,\n    next_step: failed.length === 0\n      ? 'Add the Postgres credential and run workflow 06 with {\"op\":\"run_start\",\"run_id\":\"test-1\",\"status\":\"running\"}'\n      : 'Fix the failed check above, then run this workflow again',\n    download: 'The test PDF is attached to the previous node - open the Binary tab to download it',\n    finished_at: new Date().toISOString(),\n  },\n  binary: $input.first().binary,\n}];"
+      },
+      "id": "adpf00-build-setup-report",
+      "name": "Build Setup Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2100,
+        190
+      ],
+      "notes": "Four checks with pass/fail and the exact next step.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {},
+      "id": "adpf00-setup-test-finished",
+      "name": "Setup Test Finished",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2400,
+        190
+      ],
+      "notes": "Terminal node. Green here means n8n is ready for the real workflows.",
+      "notesInFlow": true
+    }
+  ],
+  "connections": {
+    "Trigger: Manual Run": {
+      "main": [
+        [
+          {
+            "node": "Check Setup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Setup": {
+      "main": [
+        [
+          {
+            "node": "Check: Test OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Test OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Build Test Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip OpenAI Test",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Test Prompt": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: Connection Test",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: Connection Test": {
+      "main": [
+        [
+          {
+            "node": "Parse OpenAI Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse OpenAI Reply": {
+      "main": [
+        [
+          {
+            "node": "Build Test PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip OpenAI Test": {
+      "main": [
+        [
+          {
+            "node": "Build Test PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Test PDF": {
+      "main": [
+        [
+          {
+            "node": "Build Setup Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Setup Report": {
+      "main": [
+        [
+          {
+            "node": "Setup Test Finished",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "executionTimeout": 3600,
+    "timezone": "Asia/Bangkok"
+  },
+  "pinData": {},
+  "staticData": null,
+  "meta": {
+    "instanceId": "ai-digital-product-factory"
+  },
+  "tags": [
+    {
+      "name": "ai-digital-product-factory"
+    }
+  ],
+  "versionId": "v1.0.0"
+}

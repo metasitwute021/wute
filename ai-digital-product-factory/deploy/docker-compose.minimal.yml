@@ -1,0 +1,59 @@
+# AI Digital Product Factory - STEP 1 ONLY
+#
+# The smallest thing that runs: n8n on its own, no database, no Etsy, no Drive.
+# Enough to import and pass workflow 00 (the starter smoke test).
+#
+#   docker compose -f docker-compose.minimal.yml up -d
+#   open http://localhost:5678
+#
+# Add PostgreSQL later with docker-compose.full.yml, once step 1 is green.
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: adpf-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    volumes:
+      # Everything n8n owns lives here: workflows, credentials, encryption key.
+      # Delete this folder and you lose your credentials - back it up.
+      - ./n8n-data:/home/node/.n8n
+    environment:
+      # ------------------------------------------------------------------
+      # REQUIRED. Without this the factory cannot read a single setting and
+      # every run stops at "Validate Environment". This is the number one
+      # setup mistake.
+      # ------------------------------------------------------------------
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+
+      - GENERIC_TIMEZONE=Asia/Bangkok
+      - TZ=Asia/Bangkok
+
+      # Keep generated files (PDFs, images) on disk instead of in memory.
+      - N8N_DEFAULT_BINARY_DATA_MODE=filesystem
+
+      # Trim execution history so the disk does not fill up.
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=336          # hours = 14 days
+
+      # ------------------------------------------------------------------
+      # Factory settings. Only the OpenAI ones matter for step 1; the rest
+      # are here so you can fill them in without editing this file twice.
+      # ------------------------------------------------------------------
+      - OPENAI_MODEL_TEXT=gpt-4.1
+      - OPENAI_MODEL_IMAGE=gpt-image-1
+      - PROMPT_VERSION=v1.0.0
+
+      # Fill these in when you reach step 3 (publishing).
+      # - ETSY_API_BASE=https://openapi.etsy.com
+      # - ETSY_API_KEY=
+      # - ETSY_SHOP_ID=
+      # - ETSY_LISTING_STATE=draft
+      # - ETSY_TAXONOMY_ID=2078
+
+      # Fill this in when you reach step 4 (backup).
+      # - GDRIVE_ROOT_FOLDER_ID=root
+
+      # Fill this in when you add PostgreSQL.
+      # - DB_TYPE=postgres

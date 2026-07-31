@@ -24,12 +24,14 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
 import prompts  # noqa: E402
+import wf00  # noqa: E402  (starter smoke test)
 import wf01, wf02, wf03, wf04, wf05, wf06  # noqa: E402
 import wf07, wf08, wf09, wf10  # noqa: E402  (V2 modules)
 from wf06 import DDL_POSTGRES, DDL_SQLITE  # noqa: E402
 from schema_v2 import DDL_V2_POSTGRES, DDL_V2_SQLITE  # noqa: E402
 
 WORKFLOWS = [
+    ("00_starter_smoke_test.json", wf00.build),
     ("01_master_controller.json", wf01.build),
     ("02_research_engine.json", wf02.build),
     ("03_product_engine.json", wf03.build),

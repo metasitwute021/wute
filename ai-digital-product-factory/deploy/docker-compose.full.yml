@@ -1,0 +1,71 @@
+# AI Digital Product Factory - FULL STACK (n8n + PostgreSQL)
+#
+# Use this once workflow 00 passes on the minimal stack. It adds the database
+# the factory needs to remember what it made, what it cost and what sold.
+#
+#   docker compose -f docker-compose.full.yml up -d
+#
+# The n8n volume is the same folder, so your workflows and credentials carry
+# over from the minimal setup - nothing is lost.
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: adpf-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: adpf
+      POSTGRES_PASSWORD: change-me-before-you-start    # <-- CHANGE THIS
+      POSTGRES_DB: adpf
+    ports:
+      - "5432:5432"          # only needed if you want to connect with DBeaver
+    volumes:
+      # Without this line your data disappears on every restart.
+      - ./pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U adpf"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: adpf-n8n
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5678:5678"
+    volumes:
+      - ./n8n-data:/home/node/.n8n
+    environment:
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false     # REQUIRED
+      - GENERIC_TIMEZONE=Asia/Bangkok
+      - TZ=Asia/Bangkok
+      - N8N_DEFAULT_BINARY_DATA_MODE=filesystem
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=336
+
+      - OPENAI_MODEL_TEXT=gpt-4.1
+      - OPENAI_MODEL_IMAGE=gpt-image-1
+      - PROMPT_VERSION=v1.0.0
+
+      - ETSY_API_BASE=https://openapi.etsy.com
+      - ETSY_API_KEY=fill-me-in
+      - ETSY_SHOP_ID=fill-me-in
+      - ETSY_LISTING_STATE=draft
+      - ETSY_TAXONOMY_ID=2078
+
+      - GDRIVE_ROOT_FOLDER_ID=root
+      - DB_TYPE=postgres
+
+      # Budget guard rails - start small.
+      - BUDGET_DAILY_USD=10
+      - BUDGET_MONTHLY_USD=100
+      - BUDGET_RUN_RESERVE_USD=3
+      - IDEA_TARGET_COUNT=100
+
+# In the n8n Postgres credential use:
+#   Host: postgres   (the service name - NOT localhost)
+#   Database: adpf   User: adpf   Port: 5432   SSL: Disable

@@ -15,6 +15,7 @@ import os
 # which lets the Execute Workflow nodes in 01 resolve their targets.
 # --------------------------------------------------------------------------
 WF_ID = {
+    "00": "ADPF00STARTERTEST",
     "01": "ADPF01MASTERCONTROL",
     "02": "ADPF02RESEARCHENGN",
     "03": "ADPF03PRODUCTENGIN",
@@ -29,6 +30,7 @@ WF_ID = {
 }
 
 WF_NAME = {
+    "00": "ADPF 00 Starter Smoke Test",
     "01": "ADPF 01 Master Controller",
     "02": "ADPF 02 Research Engine",
     "03": "ADPF 03 Product Engine",
