@@ -18,6 +18,9 @@ const runId = body.run_id || `adpf-${stamp}-${rand}`;
 
 return [{
   json: {
+    // cfg comes from the Factory Config node and rides along the whole run,
+    // so every sub-workflow inherits the settings edited here in 01.
+    cfg: incoming.cfg || {},
     run_id: runId,
     started_at: now.toISOString(),
     trigger_source: $execution.mode || 'trigger',
@@ -33,43 +36,35 @@ return [{
 """.strip()
 
 JS_VALIDATE_ENV = r"""
-// Fail fast and loudly when the instance is not configured. Nothing below this
-// node can succeed without these values, and a clear message here saves a very
-// confusing OAuth error twenty nodes later.
-const REQUIRED = ['ETSY_API_BASE', 'ETSY_API_KEY', 'ETSY_SHOP_ID'];
-const RECOMMENDED = [
-  'OPENAI_MODEL_TEXT',
-  'OPENAI_MODEL_IMAGE',
-  'GDRIVE_ROOT_FOLDER_ID',
-  'DB_TYPE',
-  'PROMPT_VERSION',
-];
+// Assess what this instance can do - it never throws any more. Cloud installs
+// have no environment variables, and a missing Etsy key should mean "build the
+// product but skip publishing", not a dead run.
+const ctx = $input.first().json;
+const cfg = $('Factory Config').first().json.cfg;
 
-const read = (key) => {
-  try { return $env[key]; } catch (e) { return undefined; }
-};
+const etsyMissing = ['ETSY_API_KEY', 'ETSY_SHOP_ID']
+  .filter((key) => !cfg[key] || String(cfg[key]).trim() === '');
+const etsyConfigured = etsyMissing.length === 0;
 
-const missing = REQUIRED.filter((key) => !read(key));
-if (missing.length) {
-  throw new Error(
-    'AI Digital Product Factory is not configured. Missing environment variables: ' +
-    missing.join(', ') +
-    '. Set them on the n8n instance and make sure N8N_BLOCK_ENV_ACCESS_IN_NODE=false.'
+const warnings = [];
+if (!etsyConfigured) {
+  warnings.push(
+    'Etsy is not configured yet (' + etsyMissing.join(', ') + ') - ' +
+    'the run will produce the product and record it, but skip publishing and backup.'
   );
 }
-
-const warnings = RECOMMENDED.filter((key) => !read(key));
-const ctx = $input.first().json;
 
 return [{
   json: {
     ...ctx,
-    stage: 'validate-environment',
+    stage: 'validate-config',
     env_warnings: warnings,
-    etsy_api_base: read('ETSY_API_BASE'),
-    etsy_shop_id: read('ETSY_SHOP_ID'),
-    db_type: (read('DB_TYPE') || 'postgres').toLowerCase(),
-    etsy_listing_state: (read('ETSY_LISTING_STATE') || 'draft').toLowerCase(),
+    etsy_configured: etsyConfigured,
+    skip_publish: !etsyConfigured,
+    etsy_api_base: cfg.ETSY_API_BASE,
+    etsy_shop_id: cfg.ETSY_SHOP_ID,
+    db_type: String(cfg.DB_TYPE || 'postgres').toLowerCase(),
+    etsy_listing_state: String(cfg.ETSY_LISTING_STATE || 'draft').toLowerCase(),
   },
 }];
 """.strip()
@@ -353,6 +348,59 @@ return [{
 }];
 """.strip()
 
+JS_PREPARE_RECORD_NO_PUBLISH = r"""
+// Etsy is not configured: record the finished product in the database anyway,
+// so nothing that was paid for is ever lost, then end the run cleanly.
+const ctx = $('Restore Run Context').first().json;
+const product = $input.first().json;
+const meta = product.metadata || {};
+
+return [{
+  json: {
+    op: 'product_upsert',
+    run_id: ctx.run_id,
+    factory: ctx.factory,
+    product_name: meta.product_name || product.product_name || 'unknown-product',
+    category: meta.category || null,
+    keywords: meta.keywords || meta.tags || [],
+    marketplace: 'none (etsy not configured)',
+    drive_folder_id: null,
+    etsy_listing_id: null,
+    prompt_version: ctx.prompt_version,
+    status: 'completed_no_publish',
+    error_log: null,
+  },
+}];
+""".strip()
+
+JS_NO_PUBLISH_SUMMARY = r"""
+// Success without publishing. The files live in this execution's output of
+// 03 Product Engine - open Run: Product Engine's output to download them.
+const ctx = $('Restore Run Context').first().json;
+const product = $('Check: Etsy Configured').first().json;
+const started = new Date(ctx.started_at).getTime();
+
+return [{
+  json: {
+    ok: true,
+    status: 'completed_without_publish',
+    run_id: ctx.run_id,
+    factory: ctx.factory,
+    product_name: product.product_name,
+    note: 'Etsy is not configured - the product was built and recorded, ' +
+      'but not published. Add ETSY_API_KEY and ETSY_SHOP_ID in the Factory ' +
+      'Config node of workflow 01 to enable publishing.',
+    files_produced: (product.manifest || []).map((f) => ({
+      file_name: f.file_name, format: f.format, bytes: f.bytes,
+    })),
+    where_to_download: "open this execution > node 'Run: Product Engine' > output > files[].b64",
+    qa_passed: product.qa ? product.qa.passed : null,
+    duration_seconds: Math.round((Date.now() - started) / 1000),
+    finished_at: new Date().toISOString(),
+  },
+}];
+""".strip()
+
 JS_BUILD_ERROR = r"""
 // Single funnel for every failed stage. Keeps one error shape for the database,
 // the alert webhook and the final Stop And Error message.
@@ -397,8 +445,14 @@ return [{
 
 JS_GLOBAL_ERROR = r"""
 // Catches crashes that escape the per-stage handling above (for example an
-// expression error). Wired to the Error Trigger, so it also fires for runs that
-// were started by another workflow.
+// expression error). Wired to the Error Trigger, so Factory Config has NOT run
+// on this path - settings are read defensively here, never via the config node.
+const readSetting = (key, fallback) => {
+  try { if (typeof $vars !== 'undefined' && $vars[key]) return $vars[key]; } catch (err) {}
+  try { if (typeof $env !== 'undefined' && $env[key]) return $env[key]; } catch (err) {}
+  return fallback;
+};
+
 const e = $input.first().json;
 const execution = e.execution || {};
 const workflow = e.workflow || {};
@@ -414,7 +468,7 @@ return [{
     marketplace: 'etsy',
     drive_folder_id: null,
     etsy_listing_id: null,
-    prompt_version: $env.PROMPT_VERSION || 'v1.0.0',
+    prompt_version: readSetting('PROMPT_VERSION', 'v1.0.0'),
     status: 'crashed',
     error_log: JSON.stringify({
       workflow: workflow.name || null,
@@ -524,6 +578,20 @@ def build() -> Workflow:
     )
     wf.add("Check: Product OK", T_IF, pos(11, 1), if_bool("={{ $json.ok }}"),
            notes="False when the QA agent rejected the product - nothing gets published.")
+    # -- Cloud path: no Etsy yet -> build + record, skip publish/backup -----
+    wf.add("Check: Etsy Configured", T_IF, pos(12, 0),
+           if_bool("={{ !$('Validate Environment').first().json.skip_publish }}"),
+           notes=("Etsy keys missing = build the product and record it, but skip "
+                  "publishing and backup instead of failing the run."))
+    wf.add("Prepare Record (No Publish)", T_CODE, pos(13, -1),
+           code(JS_PREPARE_RECORD_NO_PUBLISH),
+           notes="Records the finished product even though it was not published.")
+    wf.add("Save: Record (No Publish)", T_EXEC_WF, pos(14, -1), exec_workflow("06"),
+           notes="Calls 06 Database Logger, op=product_upsert, status=completed_no_publish.",
+           onError="continueRegularOutput", alwaysOutputData=True, **RETRY)
+    wf.add("Build No-Publish Summary", T_CODE, pos(15, -1), code(JS_NO_PUBLISH_SUMMARY),
+           notes="Success summary that tells the user exactly where to download the files.")
+
     wf.add("Compose Publish Request", T_CODE, pos(12, 1), code(JS_COMPOSE_PUBLISH),
            notes="Input contract for 04 Publish Engine.")
 
@@ -660,8 +728,12 @@ def build() -> Workflow:
     wf.link("Compose Product Request", "Run: Product Engine")
     wf.link("Run: Product Engine", "Check: Product OK", 0)
     wf.link("Run: Product Engine", "Stage Failed: Product", 1)
-    wf.link("Check: Product OK", "Compose Publish Request", 0)
+    wf.link("Check: Product OK", "Check: Etsy Configured", 0)
     wf.link("Check: Product OK", "Stage Failed: Product", 1)
+    wf.link("Check: Etsy Configured", "Compose Publish Request", 0)
+    wf.link("Check: Etsy Configured", "Prepare Record (No Publish)", 1)
+    wf.chain("Prepare Record (No Publish)", "Save: Record (No Publish)",
+             "Build No-Publish Summary", "Respond: Run Finished")
 
     wf.link("Compose Publish Request", "Run: Publish Engine")
     wf.link("Run: Publish Engine", "Check: Publish OK", 0)

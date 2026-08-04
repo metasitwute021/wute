@@ -27,6 +27,22 @@
     },
     {
       "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// =====================================================================\n// FACTORY CONFIG - ศูนย์รวมค่าตั้งค่าของโรงงานทั้งหมด\n//\n// วิธีแก้ค่า (เลือกอย่างใดอย่างหนึ่ง):\n//   1. แก้ตัวเลข/ข้อความใน DEFAULTS ข้างล่างนี้ตรง ๆ (ง่ายสุด ใช้ได้ทุกแพลน)\n//   2. หรือตั้งใน n8n Variables (Settings > Variables) ชื่อเดียวกัน - จะทับ DEFAULTS\n//   3. หรือตั้ง environment variable (เฉพาะ self-hosted) - จะทับ DEFAULTS เช่นกัน\n//\n// แก้ที่ workflow 01 ตัวเดียวพอ: sub-workflow ทุกตัวรับ cfg ต่อจากแม่อัตโนมัติ\n// =====================================================================\nconst DEFAULTS = {\n  \"OPENAI_MODEL_TEXT\": \"gpt-4.1\",\n  \"OPENAI_MODEL_IMAGE\": \"gpt-image-1\",\n  \"OPENAI_IMAGE_QUALITY\": \"high\",\n  \"PROMPT_VERSION\": \"v1.0.0\",\n  \"ETSY_API_BASE\": \"https://openapi.etsy.com\",\n  \"ETSY_API_KEY\": \"\",\n  \"ETSY_SHOP_ID\": \"\",\n  \"ETSY_LISTING_STATE\": \"draft\",\n  \"ETSY_TAXONOMY_ID\": 2078,\n  \"GDRIVE_ROOT_FOLDER_ID\": \"root\",\n  \"DB_TYPE\": \"postgres\",\n  \"DB_SQLITE_PATH\": \"/home/node/.n8n/adpf.db\",\n  \"FACTORY_ROTATION\": \"planner,printable,canva,wallart,resume,spreadsheet,kids,svg\",\n  \"ALERT_WEBHOOK_URL\": \"\",\n  \"IDEA_TARGET_COUNT\": 200,\n  \"IDEA_BATCH_SIZE\": 25,\n  \"DUPLICATE_SIMILARITY_THRESHOLD\": 0.62,\n  \"ALLOW_PRODUCT_REVISION\": \"false\",\n  \"BUDGET_DAILY_USD\": 20,\n  \"BUDGET_MONTHLY_USD\": 300,\n  \"BUDGET_RUN_RESERVE_USD\": 3,\n  \"OPENAI_IMAGE_UNIT_COST_USD\": 0.19,\n  \"OPENAI_CHAT_RUN_COST_USD\": 0.12,\n  \"OPENAI_PRICE_OVERRIDE_JSON\": \"{}\",\n  \"LEARNING_WINDOW_DAYS\": 30,\n  \"LEARNING_MIN_SAMPLE\": 15,\n  \"AB_MIN_VIEWS_PER_ARM\": 200,\n  \"AB_MIN_RELATIVE_LIFT\": 0.2\n};\n\nconst first = $input.first();\nconst incoming = first && first.json ? first.json : {};\nconst parentCfg = incoming.cfg && typeof incoming.cfg === 'object' ? incoming.cfg : {};\n\n// ทั้ง $vars และ $env อาจไม่มีอยู่เลย (n8n Cloud) - แตะผ่าน try เท่านั้น\nconst readVars = (key) => {\n  try {\n    if (typeof $vars !== 'undefined' && $vars[key] !== undefined && $vars[key] !== '') {\n      return $vars[key];\n    }\n  } catch (e) { /* Variables not available on this plan */ }\n  return undefined;\n};\nconst readEnv = (key) => {\n  try {\n    if (typeof $env !== 'undefined' && $env[key] !== undefined && $env[key] !== '') {\n      return $env[key];\n    }\n  } catch (e) { /* env access blocked or not present */ }\n  return undefined;\n};\n\nconst cfg = {};\nconst sources = {};\nfor (const key of Object.keys(DEFAULTS)) {\n  if (parentCfg[key] !== undefined) { cfg[key] = parentCfg[key]; sources[key] = 'parent'; continue; }\n  const fromVars = readVars(key);\n  if (fromVars !== undefined) { cfg[key] = fromVars; sources[key] = 'variables'; continue; }\n  const fromEnv = readEnv(key);\n  if (fromEnv !== undefined) { cfg[key] = fromEnv; sources[key] = 'env'; continue; }\n  cfg[key] = DEFAULTS[key]; sources[key] = 'default';\n}\n\nreturn $input.all().map((item) => ({\n  json: { ...item.json, cfg, cfg_sources: sources },\n  binary: item.binary,\n}));\n"
+      },
+      "id": "adpf-adpf01mastercontrol-factory-config",
+      "name": "Factory Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        150,
+        -130
+      ],
+      "notes": "แก้ค่าตั้งค่าทั้งหมดที่ DEFAULTS ในโค้ดของ node นี้ (ดับเบิลคลิกเข้ามาแก้ได้เลย) รองรับ n8n Cloud - ไม่ต้องใช้ environment variable. Order: parent cfg > Variables > env > defaults.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
         "httpMethod": "POST",
         "path": "ai-digital-product-factory",
         "responseMode": "lastNode",
@@ -59,7 +75,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Normalise the three trigger shapes (schedule / webhook / manual) into a single\n// run context object that every downstream workflow can rely on.\nconst now = new Date();\nconst incoming = $input.first() ? $input.first().json : {};\nconst body = incoming.body || incoming.query || incoming;\n\nconst rand = Math.random().toString(36).slice(2, 8);\nconst stamp = now.toISOString().slice(0, 10).replace(/-/g, '');\nconst runId = body.run_id || `adpf-${stamp}-${rand}`;\n\nreturn [{\n  json: {\n    run_id: runId,\n    started_at: now.toISOString(),\n    trigger_source: $execution.mode || 'trigger',\n    requested_factory: String(body.factory || body.product_factory || 'auto').toLowerCase().trim(),\n    seed_keyword: String(body.seed_keyword || body.keyword || '').trim(),\n    dry_run: body.dry_run === true || String(body.dry_run).toLowerCase() === 'true',\n    prompt_version: $env.PROMPT_VERSION || 'v1.0.0',\n    marketplace: 'etsy',\n    status: 'running',\n    stage: 'init',\n  },\n}];"
+        "jsCode": "// Normalise the three trigger shapes (schedule / webhook / manual) into a single\n// run context object that every downstream workflow can rely on.\nconst now = new Date();\nconst incoming = $input.first() ? $input.first().json : {};\nconst body = incoming.body || incoming.query || incoming;\n\nconst rand = Math.random().toString(36).slice(2, 8);\nconst stamp = now.toISOString().slice(0, 10).replace(/-/g, '');\nconst runId = body.run_id || `adpf-${stamp}-${rand}`;\n\nreturn [{\n  json: {\n    // cfg comes from the Factory Config node and rides along the whole run,\n    // so every sub-workflow inherits the settings edited here in 01.\n    cfg: incoming.cfg || {},\n    run_id: runId,\n    started_at: now.toISOString(),\n    trigger_source: $execution.mode || 'trigger',\n    requested_factory: String(body.factory || body.product_factory || 'auto').toLowerCase().trim(),\n    seed_keyword: String(body.seed_keyword || body.keyword || '').trim(),\n    dry_run: body.dry_run === true || String(body.dry_run).toLowerCase() === 'true',\n    prompt_version: $('Factory Config').first().json.cfg.PROMPT_VERSION || 'v1.0.0',\n    marketplace: 'etsy',\n    status: 'running',\n    stage: 'init',\n  },\n}];"
       },
       "id": "adpf01-init-run-context",
       "name": "Init Run Context",
@@ -75,7 +91,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Fail fast and loudly when the instance is not configured. Nothing below this\n// node can succeed without these values, and a clear message here saves a very\n// confusing OAuth error twenty nodes later.\nconst REQUIRED = ['ETSY_API_BASE', 'ETSY_API_KEY', 'ETSY_SHOP_ID'];\nconst RECOMMENDED = [\n  'OPENAI_MODEL_TEXT',\n  'OPENAI_MODEL_IMAGE',\n  'GDRIVE_ROOT_FOLDER_ID',\n  'DB_TYPE',\n  'PROMPT_VERSION',\n];\n\nconst read = (key) => {\n  try { return $env[key]; } catch (e) { return undefined; }\n};\n\nconst missing = REQUIRED.filter((key) => !read(key));\nif (missing.length) {\n  throw new Error(\n    'AI Digital Product Factory is not configured. Missing environment variables: ' +\n    missing.join(', ') +\n    '. Set them on the n8n instance and make sure N8N_BLOCK_ENV_ACCESS_IN_NODE=false.'\n  );\n}\n\nconst warnings = RECOMMENDED.filter((key) => !read(key));\nconst ctx = $input.first().json;\n\nreturn [{\n  json: {\n    ...ctx,\n    stage: 'validate-environment',\n    env_warnings: warnings,\n    etsy_api_base: read('ETSY_API_BASE'),\n    etsy_shop_id: read('ETSY_SHOP_ID'),\n    db_type: (read('DB_TYPE') || 'postgres').toLowerCase(),\n    etsy_listing_state: (read('ETSY_LISTING_STATE') || 'draft').toLowerCase(),\n  },\n}];"
+        "jsCode": "// Assess what this instance can do - it never throws any more. Cloud installs\n// have no environment variables, and a missing Etsy key should mean \"build the\n// product but skip publishing\", not a dead run.\nconst ctx = $input.first().json;\nconst cfg = $('Factory Config').first().json.cfg;\n\nconst etsyMissing = ['ETSY_API_KEY', 'ETSY_SHOP_ID']\n  .filter((key) => !cfg[key] || String(cfg[key]).trim() === '');\nconst etsyConfigured = etsyMissing.length === 0;\n\nconst warnings = [];\nif (!etsyConfigured) {\n  warnings.push(\n    'Etsy is not configured yet (' + etsyMissing.join(', ') + ') - ' +\n    'the run will produce the product and record it, but skip publishing and backup.'\n  );\n}\n\nreturn [{\n  json: {\n    ...ctx,\n    stage: 'validate-config',\n    env_warnings: warnings,\n    etsy_configured: etsyConfigured,\n    skip_publish: !etsyConfigured,\n    etsy_api_base: cfg.ETSY_API_BASE,\n    etsy_shop_id: cfg.ETSY_SHOP_ID,\n    db_type: String(cfg.DB_TYPE || 'postgres').toLowerCase(),\n    etsy_listing_state: String(cfg.ETSY_LISTING_STATE || 'draft').toLowerCase(),\n  },\n}];"
       },
       "id": "adpf01-validate-environment",
       "name": "Validate Environment",
@@ -91,7 +107,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Pick which product factory runs. An explicit request always wins; \"auto\"\n// rotates deterministically through the enabled factories so an unattended daily\n// schedule covers the whole catalogue instead of hammering one niche.\nconst FACTORIES = [\n  'planner', 'printable', 'canva', 'wallart',\n  'resume', 'spreadsheet', 'kids', 'svg',\n];\n\nconst ctx = $input.first().json;\nlet factory = ctx.requested_factory;\n\nif (!factory || factory === 'auto') {\n  const rotation = String($env.FACTORY_ROTATION || FACTORIES.join(','))\n    .split(',')\n    .map((s) => s.trim().toLowerCase())\n    .filter((s) => FACTORIES.includes(s));\n  const pool = rotation.length ? rotation : FACTORIES;\n  const dayIndex = Math.floor(Date.now() / 86400000);\n  factory = pool[dayIndex % pool.length];\n}\n\nif (!FACTORIES.includes(factory)) {\n  throw new Error(\n    `Unknown product factory \"${factory}\". Expected one of: ${FACTORIES.join(', ')}`\n  );\n}\n\nreturn [{ json: { ...ctx, factory, stage: 'factory-selected' } }];"
+        "jsCode": "// Pick which product factory runs. An explicit request always wins; \"auto\"\n// rotates deterministically through the enabled factories so an unattended daily\n// schedule covers the whole catalogue instead of hammering one niche.\nconst FACTORIES = [\n  'planner', 'printable', 'canva', 'wallart',\n  'resume', 'spreadsheet', 'kids', 'svg',\n];\n\nconst ctx = $input.first().json;\nlet factory = ctx.requested_factory;\n\nif (!factory || factory === 'auto') {\n  const rotation = String($('Factory Config').first().json.cfg.FACTORY_ROTATION || FACTORIES.join(','))\n    .split(',')\n    .map((s) => s.trim().toLowerCase())\n    .filter((s) => FACTORIES.includes(s));\n  const pool = rotation.length ? rotation : FACTORIES;\n  const dayIndex = Math.floor(Date.now() / 86400000);\n  factory = pool[dayIndex % pool.length];\n}\n\nif (!FACTORIES.includes(factory)) {\n  throw new Error(\n    `Unknown product factory \"${factory}\". Expected one of: ${FACTORIES.join(', ')}`\n  );\n}\n\nreturn [{ json: { ...ctx, factory, stage: 'factory-selected' } }];"
       },
       "id": "adpf01-select-product-factory",
       "name": "Select Product Factory",
@@ -107,7 +123,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// V2 section 10: ask 08 whether there is budget before spending anything.\nconst ctx = $input.first().json;\nreturn [{\n  json: {\n    op: 'check_budget',\n    run_id: ctx.run_id,\n    stage: 'preflight',\n    reserve_usd: Number($env.BUDGET_RUN_RESERVE_USD || 3),\n  },\n}];"
+        "jsCode": "// V2 section 10: ask 08 whether there is budget before spending anything.\nconst ctx = $input.first().json;\nreturn [{\n  json: {\n    op: 'check_budget',\n    run_id: ctx.run_id,\n    stage: 'preflight',\n    reserve_usd: Number($('Factory Config').first().json.cfg.BUDGET_RUN_RESERVE_USD || 3),\n  },\n}];"
       },
       "id": "adpf01-prepare-budget-check",
       "name": "Prepare Budget Check",
@@ -331,7 +347,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// V2 sections 1-6: hand the research package to the Idea Factory.\nconst ctx = $('Restore Run Context').first().json;\nconst research = $input.first().json;\nreturn [{\n  json: {\n    ...ctx,\n    stage: 'ideas',\n    research: research.research || research,\n    market: research.market || {},\n    idea_count: Number(ctx.idea_count || $env.IDEA_TARGET_COUNT || 200),\n  },\n}];"
+        "jsCode": "// V2 sections 1-6: hand the research package to the Idea Factory.\nconst ctx = $('Restore Run Context').first().json;\nconst research = $input.first().json;\nreturn [{\n  json: {\n    ...ctx,\n    stage: 'ideas',\n    research: research.research || research,\n    market: research.market || {},\n    idea_count: Number(ctx.idea_count || $('Factory Config').first().json.cfg.IDEA_TARGET_COUNT || 200),\n  },\n}];"
       },
       "id": "adpf01-compose-idea-request",
       "name": "Compose Idea Request",
@@ -488,6 +504,104 @@
         190
       ],
       "notes": "False when the QA agent rejected the product - nothing gets published.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ !$('Validate Environment').first().json.skip_publish }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "adpf01-check-etsy-configured",
+      "name": "Check: Etsy Configured",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3600,
+        0
+      ],
+      "notes": "Etsy keys missing = build the product and record it, but skip publishing and backup instead of failing the run.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Etsy is not configured: record the finished product in the database anyway,\n// so nothing that was paid for is ever lost, then end the run cleanly.\nconst ctx = $('Restore Run Context').first().json;\nconst product = $input.first().json;\nconst meta = product.metadata || {};\n\nreturn [{\n  json: {\n    op: 'product_upsert',\n    run_id: ctx.run_id,\n    factory: ctx.factory,\n    product_name: meta.product_name || product.product_name || 'unknown-product',\n    category: meta.category || null,\n    keywords: meta.keywords || meta.tags || [],\n    marketplace: 'none (etsy not configured)',\n    drive_folder_id: null,\n    etsy_listing_id: null,\n    prompt_version: ctx.prompt_version,\n    status: 'completed_no_publish',\n    error_log: null,\n  },\n}];"
+      },
+      "id": "adpf01-prepare-record-no-publish",
+      "name": "Prepare Record (No Publish)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3900,
+        -190
+      ],
+      "notes": "Records the finished product even though it was not published.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "ADPF06DATABASELOGX",
+          "mode": "id",
+          "cachedResultName": "ADPF 06 Database Logger"
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "adpf01-save-record-no-publish",
+      "name": "Save: Record (No Publish)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        4200,
+        -190
+      ],
+      "notes": "Calls 06 Database Logger, op=product_upsert, status=completed_no_publish.",
+      "notesInFlow": true,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Success without publishing. The files live in this execution's output of\n// 03 Product Engine - open Run: Product Engine's output to download them.\nconst ctx = $('Restore Run Context').first().json;\nconst product = $('Check: Etsy Configured').first().json;\nconst started = new Date(ctx.started_at).getTime();\n\nreturn [{\n  json: {\n    ok: true,\n    status: 'completed_without_publish',\n    run_id: ctx.run_id,\n    factory: ctx.factory,\n    product_name: product.product_name,\n    note: 'Etsy is not configured - the product was built and recorded, ' +\n      'but not published. Add ETSY_API_KEY and ETSY_SHOP_ID in the Factory ' +\n      'Config node of workflow 01 to enable publishing.',\n    files_produced: (product.manifest || []).map((f) => ({\n      file_name: f.file_name, format: f.format, bytes: f.bytes,\n    })),\n    where_to_download: \"open this execution > node 'Run: Product Engine' > output > files[].b64\",\n    qa_passed: product.qa ? product.qa.passed : null,\n    duration_seconds: Math.round((Date.now() - started) / 1000),\n    finished_at: new Date().toISOString(),\n  },\n}];"
+      },
+      "id": "adpf01-build-no-publish-summary",
+      "name": "Build No-Publish Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4500,
+        -190
+      ],
+      "notes": "Success summary that tells the user exactly where to download the files.",
       "notesInFlow": true
     },
     {
@@ -884,7 +998,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Single funnel for every failed stage. Keeps one error shape for the database,\n// the alert webhook and the final Stop And Error message.\nconst item = $input.first().json;\nconst ctx = (() => {\n  try { return $('Select Product Factory').first().json; } catch (e) { return {}; }\n})();\n\nconst rawError = item.error || item.__error || {};\nconst message =\n  item.failure_reason ||\n  rawError.message ||\n  (typeof rawError === 'string' ? rawError : '') ||\n  item.message ||\n  'Unknown failure';\n\nreturn [{\n  json: {\n    op: 'error_log',\n    ok: false,\n    run_id: ctx.run_id || item.run_id || 'unknown-run',\n    factory: ctx.factory || item.factory || null,\n    stage: item.failed_stage || item.stage || 'unknown',\n    product_name: item.product_name || null,\n    category: item.category || null,\n    keywords: [],\n    marketplace: 'etsy',\n    drive_folder_id: null,\n    etsy_listing_id: item.etsy_listing_id || null,\n    prompt_version: ctx.prompt_version || $env.PROMPT_VERSION || 'v1.0.0',\n    status: 'failed',\n    error_log: JSON.stringify({\n      stage: item.failed_stage || item.stage || 'unknown',\n      message: String(message).slice(0, 4000),\n      details: rawError.description || rawError.stack || null,\n      at: new Date().toISOString(),\n    }),\n    error_message: String(message).slice(0, 500),\n  },\n}];"
+        "jsCode": "// Single funnel for every failed stage. Keeps one error shape for the database,\n// the alert webhook and the final Stop And Error message.\nconst item = $input.first().json;\nconst ctx = (() => {\n  try { return $('Select Product Factory').first().json; } catch (e) { return {}; }\n})();\n\nconst rawError = item.error || item.__error || {};\nconst message =\n  item.failure_reason ||\n  rawError.message ||\n  (typeof rawError === 'string' ? rawError : '') ||\n  item.message ||\n  'Unknown failure';\n\nreturn [{\n  json: {\n    op: 'error_log',\n    ok: false,\n    run_id: ctx.run_id || item.run_id || 'unknown-run',\n    factory: ctx.factory || item.factory || null,\n    stage: item.failed_stage || item.stage || 'unknown',\n    product_name: item.product_name || null,\n    category: item.category || null,\n    keywords: [],\n    marketplace: 'etsy',\n    drive_folder_id: null,\n    etsy_listing_id: item.etsy_listing_id || null,\n    prompt_version: ctx.prompt_version || $('Factory Config').first().json.cfg.PROMPT_VERSION || 'v1.0.0',\n    status: 'failed',\n    error_log: JSON.stringify({\n      stage: item.failed_stage || item.stage || 'unknown',\n      message: String(message).slice(0, 4000),\n      details: rawError.description || rawError.stack || null,\n      at: new Date().toISOString(),\n    }),\n    error_message: String(message).slice(0, 500),\n  },\n}];"
       },
       "id": "adpf01-build-error-payload",
       "name": "Build Error Payload",
@@ -929,7 +1043,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.ALERT_WEBHOOK_URL || 'https://localhost/disabled' }}",
+        "url": "={{ $('Factory Config').first().json.cfg.ALERT_WEBHOOK_URL || 'https://localhost/disabled' }}",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ text: '[ADPF] run ' + $('Build Error Payload').first().json.run_id + ' failed at stage ' + $('Build Error Payload').first().json.stage + ': ' + $('Build Error Payload').first().json.error_message }) }}",
@@ -984,7 +1098,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Catches crashes that escape the per-stage handling above (for example an\n// expression error). Wired to the Error Trigger, so it also fires for runs that\n// were started by another workflow.\nconst e = $input.first().json;\nconst execution = e.execution || {};\nconst workflow = e.workflow || {};\n\nreturn [{\n  json: {\n    op: 'error_log',\n    run_id: `crash-${execution.id || Date.now()}`,\n    factory: null,\n    product_name: null,\n    category: null,\n    keywords: [],\n    marketplace: 'etsy',\n    drive_folder_id: null,\n    etsy_listing_id: null,\n    prompt_version: $env.PROMPT_VERSION || 'v1.0.0',\n    status: 'crashed',\n    error_log: JSON.stringify({\n      workflow: workflow.name || null,\n      execution_id: execution.id || null,\n      execution_url: execution.url || null,\n      node: execution.lastNodeExecuted || null,\n      message: (execution.error && execution.error.message) || 'unhandled workflow error',\n      at: new Date().toISOString(),\n    }),\n  },\n}];"
+        "jsCode": "// Catches crashes that escape the per-stage handling above (for example an\n// expression error). Wired to the Error Trigger, so Factory Config has NOT run\n// on this path - settings are read defensively here, never via the config node.\nconst readSetting = (key, fallback) => {\n  try { if (typeof $vars !== 'undefined' && $vars[key]) return $vars[key]; } catch (err) {}\n  try { if (typeof $env !== 'undefined' && $env[key]) return $env[key]; } catch (err) {}\n  return fallback;\n};\n\nconst e = $input.first().json;\nconst execution = e.execution || {};\nconst workflow = e.workflow || {};\n\nreturn [{\n  json: {\n    op: 'error_log',\n    run_id: `crash-${execution.id || Date.now()}`,\n    factory: null,\n    product_name: null,\n    category: null,\n    keywords: [],\n    marketplace: 'etsy',\n    drive_folder_id: null,\n    etsy_listing_id: null,\n    prompt_version: readSetting('PROMPT_VERSION', 'v1.0.0'),\n    status: 'crashed',\n    error_log: JSON.stringify({\n      workflow: workflow.name || null,\n      execution_id: execution.id || null,\n      execution_url: execution.url || null,\n      node: execution.lastNodeExecuted || null,\n      message: (execution.error && execution.error.message) || 'unhandled workflow error',\n      at: new Date().toISOString(),\n    }),\n  },\n}];"
       },
       "id": "adpf01-format-global-error",
       "name": "Format Global Error",
@@ -1029,7 +1143,7 @@
       "main": [
         [
           {
-            "node": "Init Run Context",
+            "node": "Factory Config",
             "type": "main",
             "index": 0
           }
@@ -1040,7 +1154,7 @@
       "main": [
         [
           {
-            "node": "Init Run Context",
+            "node": "Factory Config",
             "type": "main",
             "index": 0
           }
@@ -1051,7 +1165,7 @@
       "main": [
         [
           {
-            "node": "Init Run Context",
+            "node": "Factory Config",
             "type": "main",
             "index": 0
           }
@@ -1291,7 +1405,7 @@
       "main": [
         [
           {
-            "node": "Compose Publish Request",
+            "node": "Check: Etsy Configured",
             "type": "main",
             "index": 0
           }
@@ -1299,6 +1413,57 @@
         [
           {
             "node": "Stage Failed: Product",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Etsy Configured": {
+      "main": [
+        [
+          {
+            "node": "Compose Publish Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Record (No Publish)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Record (No Publish)": {
+      "main": [
+        [
+          {
+            "node": "Save: Record (No Publish)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save: Record (No Publish)": {
+      "main": [
+        [
+          {
+            "node": "Build No-Publish Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build No-Publish Summary": {
+      "main": [
+        [
+          {
+            "node": "Respond: Run Finished",
             "type": "main",
             "index": 0
           }
@@ -1573,6 +1738,17 @@
         [
           {
             "node": "Log: Global Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Factory Config": {
+      "main": [
+        [
+          {
+            "node": "Init Run Context",
             "type": "main",
             "index": 0
           }

@@ -29,6 +29,7 @@ import wf01, wf02, wf03, wf04, wf05, wf06  # noqa: E402
 import wf07, wf08, wf09, wf10  # noqa: E402  (V2 modules)
 from wf06 import DDL_POSTGRES, DDL_SQLITE  # noqa: E402
 from schema_v2 import DDL_V2_POSTGRES, DDL_V2_SQLITE  # noqa: E402
+from common import CONFIG_EXEMPT_NODES, CONFIG_NODE_NAME, make_cloud_compatible  # noqa: E402
 
 WORKFLOWS = [
     ("00_starter_smoke_test.json", wf00.build),
@@ -104,6 +105,22 @@ def validate(document: dict, filename: str) -> list[str]:
         if pattern.search(blob):
             problems.append(f"possible hardcoded credential ({label})")
 
+    # ---- Cloud compatibility: no raw $env outside the exempt nodes --------
+    # This is the invariant that makes the suite run on n8n Cloud. A single
+    # leftover $env.X would reproduce the exact failure the user hit.
+    env_ref = re.compile(r"\$env[.\[]")
+    for node in document["nodes"]:
+        if node["name"] in CONFIG_EXEMPT_NODES:
+            continue
+        if env_ref.search(json.dumps(node["parameters"])):
+            problems.append(f"{node['name']}: raw $env reference survives cloudify")
+
+    if CONFIG_NODE_NAME not in names and any(
+        n["type"] in TRIGGER_TYPES and n["type"] != "n8n-nodes-base.errorTrigger"
+        for n in document["nodes"]
+    ):
+        problems.append("Factory Config node missing")
+
     return problems
 
 
@@ -119,9 +136,12 @@ def main() -> int:
 
     for filename, builder in WORKFLOWS:
         workflow = builder()
-        document = workflow.to_dict()
+        document = make_cloud_compatible(workflow.to_dict())
         problems = validate(document, filename)
-        path = workflow.write(workflows_dir, filename)
+        path = os.path.join(workflows_dir, filename)
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(document, fh, indent=2, ensure_ascii=False)
+            fh.write("\n")
         total_nodes += len(document["nodes"])
 
         status = "ok" if not problems else "FAILED"

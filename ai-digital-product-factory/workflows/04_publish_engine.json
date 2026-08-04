@@ -21,7 +21,23 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Central prompt library. Every OpenAI agent used by this workflow lives\n// here so prompts are versioned with the workflow itself and can be\n// diffed in git (mirrored in prompts/*.md).\nconst PROMPT_VERSION = $env.PROMPT_VERSION || 'v1.0.0';\nconst PROMPTS = {\n  \"publisher_ai\": {\n    \"id\": \"publisher_ai\",\n    \"title\": \"Publisher AI\",\n    \"purpose\": \"Build the marketplace payload and decide cross-platform compatibility.\",\n    \"system\": \"You are Publisher AI. You prepare the final marketplace payload for an Etsy digital\\nlisting and judge whether the same package can be reused on Gumroad and MiriCanvas.\\n\\nRules:\\n- Etsy listings created by this pipeline are ALWAYS drafts. Never set state active.\\n- `who_made` must be \\\"i_did\\\", `when_made` must be \\\"made_to_order\\\",\\n  `is_supply` must be false for finished digital products.\\n- Gumroad is compatible when the package contains at least one downloadable file\\n  and the licence permits resale outside Etsy.\\n- MiriCanvas is compatible only when an editable source (SVG or template spec)\\n  exists; a flattened PDF alone is NOT compatible.\\n- `approved` is false if anything in the QA report is unresolved.\\n- Output valid JSON only.\",\n    \"user_template\": \"METADATA: {{metadata_json}}\\nSEO: {{seo_json}}\\nQA REPORT: {{qa_json}}\\nFILE MANIFEST: {{file_manifest}}\\nFACTORY PROFILE: {{factory_profile_json}}\\n\\nAnswer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"approved\\\": true,\\n  \\\"reason\\\": \\\"string\\\",\\n  \\\"etsy\\\": {\\n    \\\"title\\\": \\\"string\\\",\\n    \\\"description\\\": \\\"string\\\",\\n    \\\"price\\\": 0,\\n    \\\"quantity\\\": 999,\\n    \\\"tags\\\": [\\\"string\\\"],\\n    \\\"materials\\\": [\\\"string\\\"],\\n    \\\"who_made\\\": \\\"i_did\\\",\\n    \\\"when_made\\\": \\\"made_to_order\\\",\\n    \\\"is_supply\\\": false,\\n    \\\"type\\\": \\\"download\\\",\\n    \\\"state\\\": \\\"draft\\\"\\n  },\\n  \\\"gumroad\\\": {\\\"compatible\\\": true, \\\"reason\\\": \\\"string\\\", \\\"suggested_price_usd\\\": 0},\\n  \\\"miricanvas\\\": {\\\"compatible\\\": true, \\\"reason\\\": \\\"string\\\", \\\"editable_source\\\": \\\"string\\\"}\\n}\"\n  }\n};\n\nreturn $input.all().map((item) => ({\n  json: { ...item.json, prompt_version: PROMPT_VERSION, prompts: PROMPTS },\n}));\n"
+        "jsCode": "// =====================================================================\n// FACTORY CONFIG - ศูนย์รวมค่าตั้งค่าของโรงงานทั้งหมด\n//\n// วิธีแก้ค่า (เลือกอย่างใดอย่างหนึ่ง):\n//   1. แก้ตัวเลข/ข้อความใน DEFAULTS ข้างล่างนี้ตรง ๆ (ง่ายสุด ใช้ได้ทุกแพลน)\n//   2. หรือตั้งใน n8n Variables (Settings > Variables) ชื่อเดียวกัน - จะทับ DEFAULTS\n//   3. หรือตั้ง environment variable (เฉพาะ self-hosted) - จะทับ DEFAULTS เช่นกัน\n//\n// แก้ที่ workflow 01 ตัวเดียวพอ: sub-workflow ทุกตัวรับ cfg ต่อจากแม่อัตโนมัติ\n// =====================================================================\nconst DEFAULTS = {\n  \"OPENAI_MODEL_TEXT\": \"gpt-4.1\",\n  \"OPENAI_MODEL_IMAGE\": \"gpt-image-1\",\n  \"OPENAI_IMAGE_QUALITY\": \"high\",\n  \"PROMPT_VERSION\": \"v1.0.0\",\n  \"ETSY_API_BASE\": \"https://openapi.etsy.com\",\n  \"ETSY_API_KEY\": \"\",\n  \"ETSY_SHOP_ID\": \"\",\n  \"ETSY_LISTING_STATE\": \"draft\",\n  \"ETSY_TAXONOMY_ID\": 2078,\n  \"GDRIVE_ROOT_FOLDER_ID\": \"root\",\n  \"DB_TYPE\": \"postgres\",\n  \"DB_SQLITE_PATH\": \"/home/node/.n8n/adpf.db\",\n  \"FACTORY_ROTATION\": \"planner,printable,canva,wallart,resume,spreadsheet,kids,svg\",\n  \"ALERT_WEBHOOK_URL\": \"\",\n  \"IDEA_TARGET_COUNT\": 200,\n  \"IDEA_BATCH_SIZE\": 25,\n  \"DUPLICATE_SIMILARITY_THRESHOLD\": 0.62,\n  \"ALLOW_PRODUCT_REVISION\": \"false\",\n  \"BUDGET_DAILY_USD\": 20,\n  \"BUDGET_MONTHLY_USD\": 300,\n  \"BUDGET_RUN_RESERVE_USD\": 3,\n  \"OPENAI_IMAGE_UNIT_COST_USD\": 0.19,\n  \"OPENAI_CHAT_RUN_COST_USD\": 0.12,\n  \"OPENAI_PRICE_OVERRIDE_JSON\": \"{}\",\n  \"LEARNING_WINDOW_DAYS\": 30,\n  \"LEARNING_MIN_SAMPLE\": 15,\n  \"AB_MIN_VIEWS_PER_ARM\": 200,\n  \"AB_MIN_RELATIVE_LIFT\": 0.2\n};\n\nconst first = $input.first();\nconst incoming = first && first.json ? first.json : {};\nconst parentCfg = incoming.cfg && typeof incoming.cfg === 'object' ? incoming.cfg : {};\n\n// ทั้ง $vars และ $env อาจไม่มีอยู่เลย (n8n Cloud) - แตะผ่าน try เท่านั้น\nconst readVars = (key) => {\n  try {\n    if (typeof $vars !== 'undefined' && $vars[key] !== undefined && $vars[key] !== '') {\n      return $vars[key];\n    }\n  } catch (e) { /* Variables not available on this plan */ }\n  return undefined;\n};\nconst readEnv = (key) => {\n  try {\n    if (typeof $env !== 'undefined' && $env[key] !== undefined && $env[key] !== '') {\n      return $env[key];\n    }\n  } catch (e) { /* env access blocked or not present */ }\n  return undefined;\n};\n\nconst cfg = {};\nconst sources = {};\nfor (const key of Object.keys(DEFAULTS)) {\n  if (parentCfg[key] !== undefined) { cfg[key] = parentCfg[key]; sources[key] = 'parent'; continue; }\n  const fromVars = readVars(key);\n  if (fromVars !== undefined) { cfg[key] = fromVars; sources[key] = 'variables'; continue; }\n  const fromEnv = readEnv(key);\n  if (fromEnv !== undefined) { cfg[key] = fromEnv; sources[key] = 'env'; continue; }\n  cfg[key] = DEFAULTS[key]; sources[key] = 'default';\n}\n\nreturn $input.all().map((item) => ({\n  json: { ...item.json, cfg, cfg_sources: sources },\n  binary: item.binary,\n}));\n"
+      },
+      "id": "adpf-adpf04publishengin-factory-config",
+      "name": "Factory Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        150,
+        250
+      ],
+      "notes": "แก้ค่าตั้งค่าทั้งหมดที่ DEFAULTS ในโค้ดของ node นี้ (ดับเบิลคลิกเข้ามาแก้ได้เลย) รองรับ n8n Cloud - ไม่ต้องใช้ environment variable. Order: parent cfg > Variables > env > defaults.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Central prompt library. Every OpenAI agent used by this workflow lives\n// here so prompts are versioned with the workflow itself and can be\n// diffed in git (mirrored in prompts/*.md).\nconst PROMPT_VERSION = $('Factory Config').first().json.cfg.PROMPT_VERSION || 'v1.0.0';\nconst PROMPTS = {\n  \"publisher_ai\": {\n    \"id\": \"publisher_ai\",\n    \"title\": \"Publisher AI\",\n    \"purpose\": \"Build the marketplace payload and decide cross-platform compatibility.\",\n    \"system\": \"You are Publisher AI. You prepare the final marketplace payload for an Etsy digital\\nlisting and judge whether the same package can be reused on Gumroad and MiriCanvas.\\n\\nRules:\\n- Etsy listings created by this pipeline are ALWAYS drafts. Never set state active.\\n- `who_made` must be \\\"i_did\\\", `when_made` must be \\\"made_to_order\\\",\\n  `is_supply` must be false for finished digital products.\\n- Gumroad is compatible when the package contains at least one downloadable file\\n  and the licence permits resale outside Etsy.\\n- MiriCanvas is compatible only when an editable source (SVG or template spec)\\n  exists; a flattened PDF alone is NOT compatible.\\n- `approved` is false if anything in the QA report is unresolved.\\n- Output valid JSON only.\",\n    \"user_template\": \"METADATA: {{metadata_json}}\\nSEO: {{seo_json}}\\nQA REPORT: {{qa_json}}\\nFILE MANIFEST: {{file_manifest}}\\nFACTORY PROFILE: {{factory_profile_json}}\\n\\nAnswer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"approved\\\": true,\\n  \\\"reason\\\": \\\"string\\\",\\n  \\\"etsy\\\": {\\n    \\\"title\\\": \\\"string\\\",\\n    \\\"description\\\": \\\"string\\\",\\n    \\\"price\\\": 0,\\n    \\\"quantity\\\": 999,\\n    \\\"tags\\\": [\\\"string\\\"],\\n    \\\"materials\\\": [\\\"string\\\"],\\n    \\\"who_made\\\": \\\"i_did\\\",\\n    \\\"when_made\\\": \\\"made_to_order\\\",\\n    \\\"is_supply\\\": false,\\n    \\\"type\\\": \\\"download\\\",\\n    \\\"state\\\": \\\"draft\\\"\\n  },\\n  \\\"gumroad\\\": {\\\"compatible\\\": true, \\\"reason\\\": \\\"string\\\", \\\"suggested_price_usd\\\": 0},\\n  \\\"miricanvas\\\": {\\\"compatible\\\": true, \\\"reason\\\": \\\"string\\\", \\\"editable_source\\\": \\\"string\\\"}\\n}\"\n  }\n};\n\nreturn $input.all().map((item) => ({\n  json: { ...item.json, prompt_version: PROMPT_VERSION, prompts: PROMPTS },\n}));\n"
       },
       "id": "adpf04-prompt-library",
       "name": "Prompt Library",
@@ -37,7 +53,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Unpack what 03 produced and refuse to publish anything that failed QA.\nconst ctx = $input.first().json;\nconst product = ctx.product || {};\n\nif (product.ok !== true) {\n  throw new Error(`04 Publish Engine received a product that did not pass QA: ${product.failure_reason || 'unknown'}`);\n}\n\nconst files = product.files || [];\nconst fileByKey = Object.fromEntries(files.map((f) => [f.key, f]));\n\nreturn [{\n  json: {\n    run_id: ctx.run_id,\n    factory: ctx.factory,\n    prompt_version: ctx.prompt_version,\n    dry_run: ctx.dry_run === true,\n    product_name: product.product_name,\n    slug: product.slug,\n    metadata: product.metadata,\n    seo: product.seo,\n    qa: product.qa,\n    profile: product.profile,\n    manifest: product.manifest,\n    file_keys: Object.keys(fileByKey),\n    listing_state: (ctx.etsy_listing_state || $env.ETSY_LISTING_STATE || 'draft').toLowerCase(),\n  },\n}];"
+        "jsCode": "// Unpack what 03 produced and refuse to publish anything that failed QA.\nconst ctx = $input.first().json;\nconst product = ctx.product || {};\n\nif (product.ok !== true) {\n  throw new Error(`04 Publish Engine received a product that did not pass QA: ${product.failure_reason || 'unknown'}`);\n}\n\nconst files = product.files || [];\nconst fileByKey = Object.fromEntries(files.map((f) => [f.key, f]));\n\nreturn [{\n  json: {\n    run_id: ctx.run_id,\n    factory: ctx.factory,\n    prompt_version: ctx.prompt_version,\n    dry_run: ctx.dry_run === true,\n    product_name: product.product_name,\n    slug: product.slug,\n    metadata: product.metadata,\n    seo: product.seo,\n    qa: product.qa,\n    profile: product.profile,\n    manifest: product.manifest,\n    file_keys: Object.keys(fileByKey),\n    listing_state: (ctx.etsy_listing_state || $('Factory Config').first().json.cfg.ETSY_LISTING_STATE || 'draft').toLowerCase(),\n  },\n}];"
       },
       "id": "adpf04-normalize-publish-input",
       "name": "Normalize Publish Input",
@@ -74,7 +90,7 @@
         "nodeCredentialType": "openAiApi",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $env.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.2, max_tokens: 2000, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.publisher_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.publisher_ai.output_contract) }, { role: 'user', content: $json.publisher_user_prompt } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ model: $('Factory Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.2, max_tokens: 2000, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.publisher_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.publisher_ai.output_contract) }, { role: 'user', content: $json.publisher_user_prompt } ] }) }}",
         "options": {
           "timeout": 180000
         }
@@ -149,7 +165,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Build the exact field set Etsy's createDraftListing expects. Everything is\n// clamped again here because Etsy rejects the whole call on a single bad field.\nconst ctx = $input.first().json;\nconst seo = ctx.seo;\nconst metadata = ctx.metadata;\n\nconst tags = (seo.tags || []).slice(0, 13).map((t) => String(t).slice(0, 20));\nconst materials = (seo.materials || []).slice(0, 13).map((t) => String(t).slice(0, 45));\n\nreturn [{\n  json: {\n    ...ctx,\n    etsy_payload: {\n      quantity: 999,\n      title: String(seo.title).slice(0, 140),\n      description: String(seo.description).slice(0, 12000),\n      price: metadata.price_usd,\n      who_made: 'i_did',\n      when_made: 'made_to_order',\n      taxonomy_id: Number($env.ETSY_TAXONOMY_ID || 2078),\n      listing_type: 'download',\n      is_supply: false,\n      state: ctx.listing_state,\n      tags: tags.join(','),\n      materials: materials.join(','),\n      should_auto_renew: false,\n      is_personalizable: false,\n    },\n  },\n}];"
+        "jsCode": "// Build the exact field set Etsy's createDraftListing expects. Everything is\n// clamped again here because Etsy rejects the whole call on a single bad field.\nconst ctx = $input.first().json;\nconst seo = ctx.seo;\nconst metadata = ctx.metadata;\n\nconst tags = (seo.tags || []).slice(0, 13).map((t) => String(t).slice(0, 20));\nconst materials = (seo.materials || []).slice(0, 13).map((t) => String(t).slice(0, 45));\n\nreturn [{\n  json: {\n    ...ctx,\n    etsy_payload: {\n      quantity: 999,\n      title: String(seo.title).slice(0, 140),\n      description: String(seo.description).slice(0, 12000),\n      price: metadata.price_usd,\n      who_made: 'i_did',\n      when_made: 'made_to_order',\n      taxonomy_id: Number($('Factory Config').first().json.cfg.ETSY_TAXONOMY_ID || 2078),\n      listing_type: 'download',\n      is_supply: false,\n      state: ctx.listing_state,\n      tags: tags.join(','),\n      materials: materials.join(','),\n      should_auto_renew: false,\n      is_personalizable: false,\n    },\n  },\n}];"
       },
       "id": "adpf04-build-etsy-listing-payload",
       "name": "Build Etsy Listing Payload",
@@ -165,7 +181,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.ETSY_API_BASE }}/v3/application/shops/{{ $env.ETSY_SHOP_ID }}/listings",
+        "url": "={{ $('Factory Config').first().json.cfg.ETSY_API_BASE }}/v3/application/shops/{{ $('Factory Config').first().json.cfg.ETSY_SHOP_ID }}/listings",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "sendHeaders": true,
@@ -173,7 +189,7 @@
           "parameters": [
             {
               "name": "x-api-key",
-              "value": "={{ $env.ETSY_API_KEY }}"
+              "value": "={{ $('Factory Config').first().json.cfg.ETSY_API_KEY }}"
             }
           ]
         },
@@ -345,7 +361,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.ETSY_API_BASE }}/v3/application/shops/{{ $env.ETSY_SHOP_ID }}/listings/{{ $json.listing_id }}/images",
+        "url": "={{ $('Factory Config').first().json.cfg.ETSY_API_BASE }}/v3/application/shops/{{ $('Factory Config').first().json.cfg.ETSY_SHOP_ID }}/listings/{{ $json.listing_id }}/images",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "sendHeaders": true,
@@ -353,7 +369,7 @@
           "parameters": [
             {
               "name": "x-api-key",
-              "value": "={{ $env.ETSY_API_KEY }}"
+              "value": "={{ $('Factory Config').first().json.cfg.ETSY_API_KEY }}"
             }
           ]
         },
@@ -427,7 +443,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.ETSY_API_BASE }}/v3/application/shops/{{ $env.ETSY_SHOP_ID }}/listings/{{ $json.etsy_listing_id }}/files",
+        "url": "={{ $('Factory Config').first().json.cfg.ETSY_API_BASE }}/v3/application/shops/{{ $('Factory Config').first().json.cfg.ETSY_SHOP_ID }}/listings/{{ $json.etsy_listing_id }}/files",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "sendHeaders": true,
@@ -435,7 +451,7 @@
           "parameters": [
             {
               "name": "x-api-key",
-              "value": "={{ $env.ETSY_API_KEY }}"
+              "value": "={{ $('Factory Config').first().json.cfg.ETSY_API_KEY }}"
             }
           ]
         },
@@ -712,7 +728,7 @@
       "main": [
         [
           {
-            "node": "Prompt Library",
+            "node": "Factory Config",
             "type": "main",
             "index": 0
           }
@@ -1052,6 +1068,17 @@
         [
           {
             "node": "Return: Publish Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Factory Config": {
+      "main": [
+        [
+          {
+            "node": "Prompt Library",
             "type": "main",
             "index": 0
           }

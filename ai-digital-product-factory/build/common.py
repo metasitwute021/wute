@@ -358,3 +358,206 @@ def exec_workflow(key: str, wait: bool = True) -> dict:
 
 def loop_node(batch_size: int = 1) -> dict:
     return {"batchSize": batch_size, "options": {"reset": False}}
+
+
+# ==========================================================================
+# Cloud compatibility: the Factory Config node.
+#
+# n8n Cloud cannot set environment variables, so `$env.X` (which the first
+# version of this suite used everywhere) fails there. Every workflow now gets
+# a `Factory Config` Code node right after its trigger that resolves every
+# setting once, in this order:
+#
+#     cfg passed in from the parent workflow   (so you edit 01 only)
+#   > n8n Variables ($vars)                    (Cloud UI, plan-dependent)
+#   > environment variables ($env)             (self-hosted)
+#   > the DEFAULTS below                       (always present)
+#
+# Everything downstream reads $('Factory Config').first().json.cfg.X, which
+# `make_cloud_compatible` rewrites mechanically from the legacy $env.X form.
+# ==========================================================================
+CONFIG_DEFAULTS: dict = {
+    # OpenAI
+    "OPENAI_MODEL_TEXT": "gpt-4.1",
+    "OPENAI_MODEL_IMAGE": "gpt-image-1",
+    "OPENAI_IMAGE_QUALITY": "high",
+    "PROMPT_VERSION": "v1.0.0",
+    # Etsy - empty means "not configured yet"; the run then skips publishing
+    "ETSY_API_BASE": "https://openapi.etsy.com",
+    "ETSY_API_KEY": "",
+    "ETSY_SHOP_ID": "",
+    "ETSY_LISTING_STATE": "draft",
+    "ETSY_TAXONOMY_ID": 2078,
+    # Google Drive
+    "GDRIVE_ROOT_FOLDER_ID": "root",
+    # Database
+    "DB_TYPE": "postgres",
+    "DB_SQLITE_PATH": "/home/node/.n8n/adpf.db",
+    # Factory behaviour
+    "FACTORY_ROTATION": "planner,printable,canva,wallart,resume,spreadsheet,kids,svg",
+    "ALERT_WEBHOOK_URL": "",
+    # V2 - idea factory
+    "IDEA_TARGET_COUNT": 200,
+    "IDEA_BATCH_SIZE": 25,
+    "DUPLICATE_SIMILARITY_THRESHOLD": 0.62,
+    "ALLOW_PRODUCT_REVISION": "false",
+    # V2 - budget
+    "BUDGET_DAILY_USD": 20,
+    "BUDGET_MONTHLY_USD": 300,
+    "BUDGET_RUN_RESERVE_USD": 3,
+    "OPENAI_IMAGE_UNIT_COST_USD": 0.19,
+    "OPENAI_CHAT_RUN_COST_USD": 0.12,
+    "OPENAI_PRICE_OVERRIDE_JSON": "{}",
+    # V2 - learning
+    "LEARNING_WINDOW_DAYS": 30,
+    "LEARNING_MIN_SAMPLE": 15,
+    "AB_MIN_VIEWS_PER_ARM": 200,
+    "AB_MIN_RELATIVE_LIFT": 0.20,
+}
+
+CONFIG_NODE_NAME = "Factory Config"
+
+# Nodes that are allowed to keep raw $env/$vars access: the config node itself
+# (it is the resolver) and the global error handler in 01, which runs on the
+# Error Trigger path where Factory Config has not executed.
+CONFIG_EXEMPT_NODES = {CONFIG_NODE_NAME, "Format Global Error"}
+
+
+def _factory_config_js() -> str:
+    defaults = json.dumps(CONFIG_DEFAULTS, ensure_ascii=False, indent=2)
+    return (
+        "// =====================================================================\n"
+        "// FACTORY CONFIG - ศูนย์รวมค่าตั้งค่าของโรงงานทั้งหมด\n"
+        "//\n"
+        "// วิธีแก้ค่า (เลือกอย่างใดอย่างหนึ่ง):\n"
+        "//   1. แก้ตัวเลข/ข้อความใน DEFAULTS ข้างล่างนี้ตรง ๆ (ง่ายสุด ใช้ได้ทุกแพลน)\n"
+        "//   2. หรือตั้งใน n8n Variables (Settings > Variables) ชื่อเดียวกัน - จะทับ DEFAULTS\n"
+        "//   3. หรือตั้ง environment variable (เฉพาะ self-hosted) - จะทับ DEFAULTS เช่นกัน\n"
+        "//\n"
+        "// แก้ที่ workflow 01 ตัวเดียวพอ: sub-workflow ทุกตัวรับ cfg ต่อจากแม่อัตโนมัติ\n"
+        "// =====================================================================\n"
+        f"const DEFAULTS = {defaults};\n"
+        "\n"
+        "const first = $input.first();\n"
+        "const incoming = first && first.json ? first.json : {};\n"
+        "const parentCfg = incoming.cfg && typeof incoming.cfg === 'object' ? incoming.cfg : {};\n"
+        "\n"
+        "// ทั้ง $vars และ $env อาจไม่มีอยู่เลย (n8n Cloud) - แตะผ่าน try เท่านั้น\n"
+        "const readVars = (key) => {\n"
+        "  try {\n"
+        "    if (typeof $vars !== 'undefined' && $vars[key] !== undefined && $vars[key] !== '') {\n"
+        "      return $vars[key];\n"
+        "    }\n"
+        "  } catch (e) { /* Variables not available on this plan */ }\n"
+        "  return undefined;\n"
+        "};\n"
+        "const readEnv = (key) => {\n"
+        "  try {\n"
+        "    if (typeof $env !== 'undefined' && $env[key] !== undefined && $env[key] !== '') {\n"
+        "      return $env[key];\n"
+        "    }\n"
+        "  } catch (e) { /* env access blocked or not present */ }\n"
+        "  return undefined;\n"
+        "};\n"
+        "\n"
+        "const cfg = {};\n"
+        "const sources = {};\n"
+        "for (const key of Object.keys(DEFAULTS)) {\n"
+        "  if (parentCfg[key] !== undefined) { cfg[key] = parentCfg[key]; sources[key] = 'parent'; continue; }\n"
+        "  const fromVars = readVars(key);\n"
+        "  if (fromVars !== undefined) { cfg[key] = fromVars; sources[key] = 'variables'; continue; }\n"
+        "  const fromEnv = readEnv(key);\n"
+        "  if (fromEnv !== undefined) { cfg[key] = fromEnv; sources[key] = 'env'; continue; }\n"
+        "  cfg[key] = DEFAULTS[key]; sources[key] = 'default';\n"
+        "}\n"
+        "\n"
+        "return $input.all().map((item) => ({\n"
+        "  json: { ...item.json, cfg, cfg_sources: sources },\n"
+        "  binary: item.binary,\n"
+        "}));\n"
+    )
+
+
+_ENV_REF = None  # compiled lazily to avoid importing re at module import in n8n docs
+
+
+def make_cloud_compatible(document: dict) -> dict:
+    """Insert the Factory Config node and rewrite every ``$env.X`` reference.
+
+    Rewiring: every normal trigger (schedule/webhook/manual/executeWorkflow)
+    now feeds Factory Config, which feeds the triggers' original first node.
+    The Error Trigger path is left untouched - Factory Config has not run
+    there, so its handler keeps its own safe inline reads.
+    """
+    import re as _re
+
+    global _ENV_REF
+    if _ENV_REF is None:
+        _ENV_REF = _re.compile(r"\$env\.([A-Z][A-Z0-9_]*)")
+
+    nodes = document["nodes"]
+    connections = document["connections"]
+    names = {n["name"] for n in nodes}
+
+    if CONFIG_NODE_NAME in names:
+        raise ValueError("Factory Config already present - cloudify ran twice?")
+
+    # ---- 1. rewrite $env.X -> $('Factory Config').first().json.cfg.X ------
+    replacement = f"$('{CONFIG_NODE_NAME}').first().json.cfg.\\1"
+    for node in nodes:
+        if node["name"] in CONFIG_EXEMPT_NODES:
+            continue
+        blob = json.dumps(node["parameters"], ensure_ascii=False)
+        new_blob = _ENV_REF.sub(replacement, blob)
+        if new_blob != blob:
+            node["parameters"] = json.loads(new_blob)
+
+    # ---- 2. find the trigger edges to rewire -------------------------------
+    rewire_types = {
+        "n8n-nodes-base.scheduleTrigger",
+        "n8n-nodes-base.webhook",
+        "n8n-nodes-base.manualTrigger",
+        "n8n-nodes-base.executeWorkflowTrigger",
+    }
+    trigger_nodes = [n for n in nodes if n["type"] in rewire_types]
+    if not trigger_nodes:
+        return document
+
+    targets = set()
+    for trigger in trigger_nodes:
+        for branch in connections.get(trigger["name"], {}).get("main", []):
+            for link in branch:
+                targets.add(link["node"])
+    if len(targets) != 1:
+        raise ValueError(
+            f"{document['name']}: triggers feed {len(targets)} different nodes "
+            f"({sorted(targets)}) - Factory Config insertion needs exactly one"
+        )
+    (first_node,) = targets
+
+    # ---- 3. insert the node and rewire -------------------------------------
+    anchor = min((n["position"] for n in trigger_nodes), key=lambda p: p[0])
+    config_node = {
+        "parameters": {"mode": "runOnceForAllItems", "jsCode": _factory_config_js()},
+        "id": f"adpf-{document['id'].lower()}-factory-config",
+        "name": CONFIG_NODE_NAME,
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [anchor[0] + 150, anchor[1] - 130],
+        "notes": (
+            "แก้ค่าตั้งค่าทั้งหมดที่ DEFAULTS ในโค้ดของ node นี้ (ดับเบิลคลิกเข้ามาแก้ได้เลย) "
+            "รองรับ n8n Cloud - ไม่ต้องใช้ environment variable. "
+            "Order: parent cfg > Variables > env > defaults."
+        ),
+        "notesInFlow": True,
+    }
+    nodes.insert(1, config_node)
+
+    for trigger in trigger_nodes:
+        connections[trigger["name"]] = {
+            "main": [[{"node": CONFIG_NODE_NAME, "type": "main", "index": 0}]]
+        }
+    connections[CONFIG_NODE_NAME] = {
+        "main": [[{"node": first_node, "type": "main", "index": 0}]]
+    }
+    return document

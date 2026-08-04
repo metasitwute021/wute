@@ -21,7 +21,23 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Central prompt library. Every OpenAI agent used by this workflow lives\n// here so prompts are versioned with the workflow itself and can be\n// diffed in git (mirrored in prompts/*.md).\nconst PROMPT_VERSION = $env.PROMPT_VERSION || 'v1.0.0';\nconst PROMPTS = {\n  \"research_ai\": {\n    \"id\": \"research_ai\",\n    \"title\": \"Research AI\",\n    \"purpose\": \"Turn raw Etsy marketplace signals into one validated product concept.\",\n    \"system\": \"You are Research AI, a senior Etsy marketplace analyst for a digital product studio.\\nYou only analyse digital (instant download) products. You never invent statistics:\\nevery number you output must be derived from the MARKET SIGNALS block supplied by\\nthe user, or explicitly marked as an estimate inside `_estimates`.\\n\\nMethod, in order:\\n1. Read the market signals (titles, tags, prices, listing ages, competitor counts).\\n2. Group listings into micro-niches and score each one on demand vs. saturation.\\n3. Reject niches that need trademarks, licensed characters, or real brand names.\\n4. Reject niches that a solo studio cannot produce as a printable/digital file.\\n5. Pick the single best remaining micro-niche and describe it precisely.\\n\\nRules:\\n- `keyword` must be a real buyer search phrase, 2-5 words, lowercase.\\n- `sub_keywords` must be 8-15 distinct long-tail phrases, lowercase, no duplicates,\\n  each <= 20 characters so they can be reused as Etsy tags.\\n- `difficulty` is one of \\\"easy\\\" | \\\"medium\\\" | \\\"hard\\\" and reflects competition, not\\n  production effort.\\n- `selling_points` are buyer-facing benefits, not feature lists.\\n- Output valid JSON only. No markdown, no commentary.\",\n    \"user_template\": \"FACTORY: {{factory}}\\nRUN ID: {{run_id}}\\nSEED KEYWORD: {{seed_keyword}}\\n\\nMARKET SIGNALS (from Etsy Open API v3):\\n{{market_signals_json}}\\n\\nProduce one product concept for the {{factory}} factory that fits the market gap\\nyou identified. Answer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"product_type\\\": \\\"string\\\",\\n  \\\"category\\\": \\\"string\\\",\\n  \\\"target_customer\\\": \\\"string\\\",\\n  \\\"keyword\\\": \\\"string\\\",\\n  \\\"sub_keywords\\\": [\\\"string\\\"],\\n  \\\"difficulty\\\": \\\"easy|medium|hard\\\",\\n  \\\"selling_points\\\": [\\\"string\\\"],\\n  \\\"price_suggestion_usd\\\": 0,\\n  \\\"market_gap\\\": \\\"string\\\",\\n  \\\"rejected_ideas\\\": [\\\"string\\\"]\\n}\"\n  },\n  \"seo_ai\": {\n    \"id\": \"seo_ai\",\n    \"title\": \"SEO AI\",\n    \"purpose\": \"Produce Etsy-compliant title, description and tags.\",\n    \"system\": \"You are SEO AI, an Etsy search optimisation specialist.\\n\\nHard Etsy limits you must never break:\\n- Title: max 140 characters, primary keyword inside the first 40 characters,\\n  no ALL CAPS words, no more than one \\\"|\\\" separator group per phrase.\\n- Tags: exactly 13 tags, each max 20 characters, lowercase, letters/numbers/spaces\\n  only, no duplicates, no single-word repeats of the same stem more than twice.\\n- Description: 5 short paragraphs - hook, what's included, how to use it,\\n  file/delivery details, policy note that it is an instant digital download with\\n  no physical item shipped.\\n- Never promise refunds, never mention competitors, never use trademarked terms.\\n- Output valid JSON only.\",\n    \"user_template\": \"TASK: {{seo_task}}\\n\\nRESEARCH CONCEPT:\\n{{research_json}}\\n\\nPRODUCT BRIEF:\\n{{idea_json}}\\n\\nDELIVERABLE FILES:\\n{{file_manifest}}\\n\\nAnswer with the exact JSON contract for this task.\",\n    \"output_contract\": \"title  -> {\\\"title\\\": \\\"string\\\", \\\"char_count\\\": 0}\\ndescription -> {\\\"description\\\": \\\"string\\\", \\\"paragraph_count\\\": 0}\\ntags -> {\\\"tags\\\": [\\\"string\\\"], \\\"materials\\\": [\\\"string\\\"]}\\nkeywords -> {\\\"primary\\\": \\\"string\\\", \\\"sub_keywords\\\": [\\\"string\\\"], \\\"long_tail\\\": [\\\"string\\\"]}\"\n  }\n};\n\nreturn $input.all().map((item) => ({\n  json: { ...item.json, prompt_version: PROMPT_VERSION, prompts: PROMPTS },\n}));\n"
+        "jsCode": "// =====================================================================\n// FACTORY CONFIG - ศูนย์รวมค่าตั้งค่าของโรงงานทั้งหมด\n//\n// วิธีแก้ค่า (เลือกอย่างใดอย่างหนึ่ง):\n//   1. แก้ตัวเลข/ข้อความใน DEFAULTS ข้างล่างนี้ตรง ๆ (ง่ายสุด ใช้ได้ทุกแพลน)\n//   2. หรือตั้งใน n8n Variables (Settings > Variables) ชื่อเดียวกัน - จะทับ DEFAULTS\n//   3. หรือตั้ง environment variable (เฉพาะ self-hosted) - จะทับ DEFAULTS เช่นกัน\n//\n// แก้ที่ workflow 01 ตัวเดียวพอ: sub-workflow ทุกตัวรับ cfg ต่อจากแม่อัตโนมัติ\n// =====================================================================\nconst DEFAULTS = {\n  \"OPENAI_MODEL_TEXT\": \"gpt-4.1\",\n  \"OPENAI_MODEL_IMAGE\": \"gpt-image-1\",\n  \"OPENAI_IMAGE_QUALITY\": \"high\",\n  \"PROMPT_VERSION\": \"v1.0.0\",\n  \"ETSY_API_BASE\": \"https://openapi.etsy.com\",\n  \"ETSY_API_KEY\": \"\",\n  \"ETSY_SHOP_ID\": \"\",\n  \"ETSY_LISTING_STATE\": \"draft\",\n  \"ETSY_TAXONOMY_ID\": 2078,\n  \"GDRIVE_ROOT_FOLDER_ID\": \"root\",\n  \"DB_TYPE\": \"postgres\",\n  \"DB_SQLITE_PATH\": \"/home/node/.n8n/adpf.db\",\n  \"FACTORY_ROTATION\": \"planner,printable,canva,wallart,resume,spreadsheet,kids,svg\",\n  \"ALERT_WEBHOOK_URL\": \"\",\n  \"IDEA_TARGET_COUNT\": 200,\n  \"IDEA_BATCH_SIZE\": 25,\n  \"DUPLICATE_SIMILARITY_THRESHOLD\": 0.62,\n  \"ALLOW_PRODUCT_REVISION\": \"false\",\n  \"BUDGET_DAILY_USD\": 20,\n  \"BUDGET_MONTHLY_USD\": 300,\n  \"BUDGET_RUN_RESERVE_USD\": 3,\n  \"OPENAI_IMAGE_UNIT_COST_USD\": 0.19,\n  \"OPENAI_CHAT_RUN_COST_USD\": 0.12,\n  \"OPENAI_PRICE_OVERRIDE_JSON\": \"{}\",\n  \"LEARNING_WINDOW_DAYS\": 30,\n  \"LEARNING_MIN_SAMPLE\": 15,\n  \"AB_MIN_VIEWS_PER_ARM\": 200,\n  \"AB_MIN_RELATIVE_LIFT\": 0.2\n};\n\nconst first = $input.first();\nconst incoming = first && first.json ? first.json : {};\nconst parentCfg = incoming.cfg && typeof incoming.cfg === 'object' ? incoming.cfg : {};\n\n// ทั้ง $vars และ $env อาจไม่มีอยู่เลย (n8n Cloud) - แตะผ่าน try เท่านั้น\nconst readVars = (key) => {\n  try {\n    if (typeof $vars !== 'undefined' && $vars[key] !== undefined && $vars[key] !== '') {\n      return $vars[key];\n    }\n  } catch (e) { /* Variables not available on this plan */ }\n  return undefined;\n};\nconst readEnv = (key) => {\n  try {\n    if (typeof $env !== 'undefined' && $env[key] !== undefined && $env[key] !== '') {\n      return $env[key];\n    }\n  } catch (e) { /* env access blocked or not present */ }\n  return undefined;\n};\n\nconst cfg = {};\nconst sources = {};\nfor (const key of Object.keys(DEFAULTS)) {\n  if (parentCfg[key] !== undefined) { cfg[key] = parentCfg[key]; sources[key] = 'parent'; continue; }\n  const fromVars = readVars(key);\n  if (fromVars !== undefined) { cfg[key] = fromVars; sources[key] = 'variables'; continue; }\n  const fromEnv = readEnv(key);\n  if (fromEnv !== undefined) { cfg[key] = fromEnv; sources[key] = 'env'; continue; }\n  cfg[key] = DEFAULTS[key]; sources[key] = 'default';\n}\n\nreturn $input.all().map((item) => ({\n  json: { ...item.json, cfg, cfg_sources: sources },\n  binary: item.binary,\n}));\n"
+      },
+      "id": "adpf-adpf02researchengn-factory-config",
+      "name": "Factory Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        150,
+        60
+      ],
+      "notes": "แก้ค่าตั้งค่าทั้งหมดที่ DEFAULTS ในโค้ดของ node นี้ (ดับเบิลคลิกเข้ามาแก้ได้เลย) รองรับ n8n Cloud - ไม่ต้องใช้ environment variable. Order: parent cfg > Variables > env > defaults.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Central prompt library. Every OpenAI agent used by this workflow lives\n// here so prompts are versioned with the workflow itself and can be\n// diffed in git (mirrored in prompts/*.md).\nconst PROMPT_VERSION = $('Factory Config').first().json.cfg.PROMPT_VERSION || 'v1.0.0';\nconst PROMPTS = {\n  \"research_ai\": {\n    \"id\": \"research_ai\",\n    \"title\": \"Research AI\",\n    \"purpose\": \"Turn raw Etsy marketplace signals into one validated product concept.\",\n    \"system\": \"You are Research AI, a senior Etsy marketplace analyst for a digital product studio.\\nYou only analyse digital (instant download) products. You never invent statistics:\\nevery number you output must be derived from the MARKET SIGNALS block supplied by\\nthe user, or explicitly marked as an estimate inside `_estimates`.\\n\\nMethod, in order:\\n1. Read the market signals (titles, tags, prices, listing ages, competitor counts).\\n2. Group listings into micro-niches and score each one on demand vs. saturation.\\n3. Reject niches that need trademarks, licensed characters, or real brand names.\\n4. Reject niches that a solo studio cannot produce as a printable/digital file.\\n5. Pick the single best remaining micro-niche and describe it precisely.\\n\\nRules:\\n- `keyword` must be a real buyer search phrase, 2-5 words, lowercase.\\n- `sub_keywords` must be 8-15 distinct long-tail phrases, lowercase, no duplicates,\\n  each <= 20 characters so they can be reused as Etsy tags.\\n- `difficulty` is one of \\\"easy\\\" | \\\"medium\\\" | \\\"hard\\\" and reflects competition, not\\n  production effort.\\n- `selling_points` are buyer-facing benefits, not feature lists.\\n- Output valid JSON only. No markdown, no commentary.\",\n    \"user_template\": \"FACTORY: {{factory}}\\nRUN ID: {{run_id}}\\nSEED KEYWORD: {{seed_keyword}}\\n\\nMARKET SIGNALS (from Etsy Open API v3):\\n{{market_signals_json}}\\n\\nProduce one product concept for the {{factory}} factory that fits the market gap\\nyou identified. Answer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"product_type\\\": \\\"string\\\",\\n  \\\"category\\\": \\\"string\\\",\\n  \\\"target_customer\\\": \\\"string\\\",\\n  \\\"keyword\\\": \\\"string\\\",\\n  \\\"sub_keywords\\\": [\\\"string\\\"],\\n  \\\"difficulty\\\": \\\"easy|medium|hard\\\",\\n  \\\"selling_points\\\": [\\\"string\\\"],\\n  \\\"price_suggestion_usd\\\": 0,\\n  \\\"market_gap\\\": \\\"string\\\",\\n  \\\"rejected_ideas\\\": [\\\"string\\\"]\\n}\"\n  },\n  \"seo_ai\": {\n    \"id\": \"seo_ai\",\n    \"title\": \"SEO AI\",\n    \"purpose\": \"Produce Etsy-compliant title, description and tags.\",\n    \"system\": \"You are SEO AI, an Etsy search optimisation specialist.\\n\\nHard Etsy limits you must never break:\\n- Title: max 140 characters, primary keyword inside the first 40 characters,\\n  no ALL CAPS words, no more than one \\\"|\\\" separator group per phrase.\\n- Tags: exactly 13 tags, each max 20 characters, lowercase, letters/numbers/spaces\\n  only, no duplicates, no single-word repeats of the same stem more than twice.\\n- Description: 5 short paragraphs - hook, what's included, how to use it,\\n  file/delivery details, policy note that it is an instant digital download with\\n  no physical item shipped.\\n- Never promise refunds, never mention competitors, never use trademarked terms.\\n- Output valid JSON only.\",\n    \"user_template\": \"TASK: {{seo_task}}\\n\\nRESEARCH CONCEPT:\\n{{research_json}}\\n\\nPRODUCT BRIEF:\\n{{idea_json}}\\n\\nDELIVERABLE FILES:\\n{{file_manifest}}\\n\\nAnswer with the exact JSON contract for this task.\",\n    \"output_contract\": \"title  -> {\\\"title\\\": \\\"string\\\", \\\"char_count\\\": 0}\\ndescription -> {\\\"description\\\": \\\"string\\\", \\\"paragraph_count\\\": 0}\\ntags -> {\\\"tags\\\": [\\\"string\\\"], \\\"materials\\\": [\\\"string\\\"]}\\nkeywords -> {\\\"primary\\\": \\\"string\\\", \\\"sub_keywords\\\": [\\\"string\\\"], \\\"long_tail\\\": [\\\"string\\\"]}\"\n  }\n};\n\nreturn $input.all().map((item) => ({\n  json: { ...item.json, prompt_version: PROMPT_VERSION, prompts: PROMPTS },\n}));\n"
       },
       "id": "adpf02-prompt-library",
       "name": "Prompt Library",
@@ -37,7 +53,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Decide what to research. The master controller may pass a seed keyword; when it\n// does not, each factory has a sensible default search phrase.\nconst FACTORY_SEEDS = {\n  planner: 'digital planner printable',\n  printable: 'printable wall planner',\n  canva: 'canva template editable',\n  wallart: 'printable wall art set',\n  resume: 'resume template modern',\n  spreadsheet: 'budget spreadsheet template',\n  kids: 'kids printable activity',\n  svg: 'svg cut file bundle',\n};\n\nconst ctx = $input.first().json;\nconst factory = String(ctx.factory || 'printable').toLowerCase();\nconst seed = (ctx.seed_keyword || '').trim() || FACTORY_SEEDS[factory] || 'printable digital download';\n\nreturn [{\n  json: {\n    ...ctx,\n    factory,\n    search_keyword: seed,\n    etsy_api_base: ctx.etsy_api_base || $env.ETSY_API_BASE,\n    researched_at: new Date().toISOString(),\n  },\n}];"
+        "jsCode": "// Decide what to research. The master controller may pass a seed keyword; when it\n// does not, each factory has a sensible default search phrase.\nconst FACTORY_SEEDS = {\n  planner: 'digital planner printable',\n  printable: 'printable wall planner',\n  canva: 'canva template editable',\n  wallart: 'printable wall art set',\n  resume: 'resume template modern',\n  spreadsheet: 'budget spreadsheet template',\n  kids: 'kids printable activity',\n  svg: 'svg cut file bundle',\n};\n\nconst ctx = $input.first().json;\nconst factory = String(ctx.factory || 'printable').toLowerCase();\nconst seed = (ctx.seed_keyword || '').trim() || FACTORY_SEEDS[factory] || 'printable digital download';\n\nreturn [{\n  json: {\n    ...ctx,\n    factory,\n    search_keyword: seed,\n    etsy_api_base: ctx.etsy_api_base || $('Factory Config').first().json.cfg.ETSY_API_BASE,\n    researched_at: new Date().toISOString(),\n  },\n}];"
       },
       "id": "adpf02-normalize-research-input",
       "name": "Normalize Research Input",
@@ -53,7 +69,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "={{ $env.ETSY_API_BASE }}/v3/application/listings/active?limit=100&sort_on=score&sort_order=desc&keywords={{ encodeURIComponent($json.search_keyword) }}",
+        "url": "={{ $('Factory Config').first().json.cfg.ETSY_API_BASE }}/v3/application/listings/active?limit=100&sort_on=score&sort_order=desc&keywords={{ encodeURIComponent($json.search_keyword) }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "sendHeaders": true,
@@ -61,7 +77,7 @@
           "parameters": [
             {
               "name": "x-api-key",
-              "value": "={{ $env.ETSY_API_KEY }}"
+              "value": "={{ $('Factory Config').first().json.cfg.ETSY_API_KEY }}"
             }
           ]
         },
@@ -88,7 +104,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "={{ $env.ETSY_API_BASE }}/v3/application/seller-taxonomy/nodes",
+        "url": "={{ $('Factory Config').first().json.cfg.ETSY_API_BASE }}/v3/application/seller-taxonomy/nodes",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "sendHeaders": true,
@@ -96,7 +112,7 @@
           "parameters": [
             {
               "name": "x-api-key",
-              "value": "={{ $env.ETSY_API_KEY }}"
+              "value": "={{ $('Factory Config').first().json.cfg.ETSY_API_KEY }}"
             }
           ]
         },
@@ -160,7 +176,7 @@
         "nodeCredentialType": "openAiApi",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $env.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.6, max_tokens: 2000, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.research_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.research_ai.output_contract) }, { role: 'user', content: $json.research_user_prompt } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ model: $('Factory Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.6, max_tokens: 2000, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.research_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.research_ai.output_contract) }, { role: 'user', content: $json.research_user_prompt } ] }) }}",
         "options": {
           "timeout": 180000
         }
@@ -272,7 +288,7 @@
         "nodeCredentialType": "openAiApi",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $env.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.5, max_tokens: 1200, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.seo_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.seo_ai.output_contract) }, { role: 'user', content: $json.seo_user_prompt } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ model: $('Factory Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.5, max_tokens: 1200, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.seo_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.seo_ai.output_contract) }, { role: 'user', content: $json.seo_user_prompt } ] }) }}",
         "options": {
           "timeout": 180000
         }
@@ -328,7 +344,7 @@
       "main": [
         [
           {
-            "node": "Prompt Library",
+            "node": "Factory Config",
             "type": "main",
             "index": 0
           }
@@ -479,6 +495,17 @@
         [
           {
             "node": "Return: Research Package",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Factory Config": {
+      "main": [
+        [
+          {
+            "node": "Prompt Library",
             "type": "main",
             "index": 0
           }

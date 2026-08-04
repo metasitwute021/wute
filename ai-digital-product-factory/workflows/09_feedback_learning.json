@@ -27,6 +27,22 @@
     },
     {
       "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// =====================================================================\n// FACTORY CONFIG - ศูนย์รวมค่าตั้งค่าของโรงงานทั้งหมด\n//\n// วิธีแก้ค่า (เลือกอย่างใดอย่างหนึ่ง):\n//   1. แก้ตัวเลข/ข้อความใน DEFAULTS ข้างล่างนี้ตรง ๆ (ง่ายสุด ใช้ได้ทุกแพลน)\n//   2. หรือตั้งใน n8n Variables (Settings > Variables) ชื่อเดียวกัน - จะทับ DEFAULTS\n//   3. หรือตั้ง environment variable (เฉพาะ self-hosted) - จะทับ DEFAULTS เช่นกัน\n//\n// แก้ที่ workflow 01 ตัวเดียวพอ: sub-workflow ทุกตัวรับ cfg ต่อจากแม่อัตโนมัติ\n// =====================================================================\nconst DEFAULTS = {\n  \"OPENAI_MODEL_TEXT\": \"gpt-4.1\",\n  \"OPENAI_MODEL_IMAGE\": \"gpt-image-1\",\n  \"OPENAI_IMAGE_QUALITY\": \"high\",\n  \"PROMPT_VERSION\": \"v1.0.0\",\n  \"ETSY_API_BASE\": \"https://openapi.etsy.com\",\n  \"ETSY_API_KEY\": \"\",\n  \"ETSY_SHOP_ID\": \"\",\n  \"ETSY_LISTING_STATE\": \"draft\",\n  \"ETSY_TAXONOMY_ID\": 2078,\n  \"GDRIVE_ROOT_FOLDER_ID\": \"root\",\n  \"DB_TYPE\": \"postgres\",\n  \"DB_SQLITE_PATH\": \"/home/node/.n8n/adpf.db\",\n  \"FACTORY_ROTATION\": \"planner,printable,canva,wallart,resume,spreadsheet,kids,svg\",\n  \"ALERT_WEBHOOK_URL\": \"\",\n  \"IDEA_TARGET_COUNT\": 200,\n  \"IDEA_BATCH_SIZE\": 25,\n  \"DUPLICATE_SIMILARITY_THRESHOLD\": 0.62,\n  \"ALLOW_PRODUCT_REVISION\": \"false\",\n  \"BUDGET_DAILY_USD\": 20,\n  \"BUDGET_MONTHLY_USD\": 300,\n  \"BUDGET_RUN_RESERVE_USD\": 3,\n  \"OPENAI_IMAGE_UNIT_COST_USD\": 0.19,\n  \"OPENAI_CHAT_RUN_COST_USD\": 0.12,\n  \"OPENAI_PRICE_OVERRIDE_JSON\": \"{}\",\n  \"LEARNING_WINDOW_DAYS\": 30,\n  \"LEARNING_MIN_SAMPLE\": 15,\n  \"AB_MIN_VIEWS_PER_ARM\": 200,\n  \"AB_MIN_RELATIVE_LIFT\": 0.2\n};\n\nconst first = $input.first();\nconst incoming = first && first.json ? first.json : {};\nconst parentCfg = incoming.cfg && typeof incoming.cfg === 'object' ? incoming.cfg : {};\n\n// ทั้ง $vars และ $env อาจไม่มีอยู่เลย (n8n Cloud) - แตะผ่าน try เท่านั้น\nconst readVars = (key) => {\n  try {\n    if (typeof $vars !== 'undefined' && $vars[key] !== undefined && $vars[key] !== '') {\n      return $vars[key];\n    }\n  } catch (e) { /* Variables not available on this plan */ }\n  return undefined;\n};\nconst readEnv = (key) => {\n  try {\n    if (typeof $env !== 'undefined' && $env[key] !== undefined && $env[key] !== '') {\n      return $env[key];\n    }\n  } catch (e) { /* env access blocked or not present */ }\n  return undefined;\n};\n\nconst cfg = {};\nconst sources = {};\nfor (const key of Object.keys(DEFAULTS)) {\n  if (parentCfg[key] !== undefined) { cfg[key] = parentCfg[key]; sources[key] = 'parent'; continue; }\n  const fromVars = readVars(key);\n  if (fromVars !== undefined) { cfg[key] = fromVars; sources[key] = 'variables'; continue; }\n  const fromEnv = readEnv(key);\n  if (fromEnv !== undefined) { cfg[key] = fromEnv; sources[key] = 'env'; continue; }\n  cfg[key] = DEFAULTS[key]; sources[key] = 'default';\n}\n\nreturn $input.all().map((item) => ({\n  json: { ...item.json, cfg, cfg_sources: sources },\n  binary: item.binary,\n}));\n"
+      },
+      "id": "adpf-adpf09feedbacklrn-factory-config",
+      "name": "Factory Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        150,
+        -130
+      ],
+      "notes": "แก้ค่าตั้งค่าทั้งหมดที่ DEFAULTS ในโค้ดของ node นี้ (ดับเบิลคลิกเข้ามาแก้ได้เลย) รองรับ n8n Cloud - ไม่ต้องใช้ environment variable. Order: parent cfg > Variables > env > defaults.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
         "inputSource": "passthrough"
       },
       "id": "adpf09-receive-learning-request",
@@ -43,7 +59,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Central prompt library. Every OpenAI agent used by this workflow lives\n// here so prompts are versioned with the workflow itself and can be\n// diffed in git (mirrored in prompts/*.md).\nconst PROMPT_VERSION = $env.PROMPT_VERSION || 'v1.0.0';\nconst PROMPTS = {\n  \"learning_ai\": {\n    \"id\": \"learning_ai\",\n    \"title\": \"Learning AI\",\n    \"purpose\": \"Turn measured marketplace performance into concrete prompt improvements.\",\n    \"system\": \"You are Learning AI. You read the measured performance of products this factory\\nalready shipped and propose SPECIFIC, TESTABLE changes to the agent prompts.\\n\\nRules:\\n- Ground every recommendation in the numbers you were given. If the sample is\\n  too small to justify a change, say so and recommend `no_change`.\\n- A recommendation must name the agent, quote the sentence to change, and give\\n  the replacement sentence. \\\"Be more creative\\\" is not a recommendation.\\n- Never propose changes that would weaken a compliance rule (trademark checks,\\n  Etsy limits, age-appropriateness). Those are floors, not variables.\\n- `confidence` reflects sample size and effect size, not how good the idea feels.\\n- Prefer one high-conviction change over five speculative ones.\\n- Output valid JSON only.\",\n    \"user_template\": \"WINDOW: {{window}}\\nPRODUCTS MEASURED: {{sample_size}}\\n\\nPERFORMANCE BY CATEGORY:\\n{{category_performance_json}}\\n\\nPERFORMANCE BY PROMPT VERSION:\\n{{prompt_performance_json}}\\n\\nBEST PERFORMERS:\\n{{winners_json}}\\n\\nWORST PERFORMERS:\\n{{losers_json}}\\n\\nA/B TEST RESULTS THAT REACHED A CONCLUSION:\\n{{ab_results_json}}\\n\\nAnswer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"verdict\\\": \\\"change|no_change\\\",\\n  \\\"sample_adequate\\\": true,\\n  \\\"findings\\\": [\\\"string\\\"],\\n  \\\"recommendations\\\": [\\n    {\\\"agent\\\": \\\"string\\\", \\\"current_text\\\": \\\"string\\\", \\\"proposed_text\\\": \\\"string\\\",\\n     \\\"rationale\\\": \\\"string\\\", \\\"expected_effect\\\": \\\"string\\\", \\\"confidence\\\": 0.0}\\n  ],\\n  \\\"category_advice\\\": [{\\\"category\\\": \\\"string\\\", \\\"action\\\": \\\"more|less|hold\\\", \\\"why\\\": \\\"string\\\"}],\\n  \\\"next_ab_tests\\\": [{\\\"element\\\": \\\"title|thumbnail|description|price|tags\\\", \\\"hypothesis\\\": \\\"string\\\"}]\\n}\"\n  },\n  \"ab_test_ai\": {\n    \"id\": \"ab_test_ai\",\n    \"title\": \"A/B Test AI\",\n    \"purpose\": \"Author the challenger variant for one listing element.\",\n    \"system\": \"You are A/B Test AI. You write the B variant for a single marketplace element so\\nthat the test isolates ONE hypothesis.\\n\\nRules:\\n- Change only the element under test. Everything else stays identical.\\n- The variant must obey every marketplace limit the control obeys\\n  (title <= 140 characters, exactly 13 tags, each tag <= 20 characters).\\n- State the hypothesis in one sentence, in the form\\n  \\\"If we <change>, then <metric> improves because <reason>\\\".\\n- The variant must be meaningfully different - a synonym swap is not a test.\\n- For a price variant, stay inside the allowed price range you were given.\\n- Output valid JSON only.\",\n    \"user_template\": \"ELEMENT UNDER TEST: {{element}}\\nCONTROL VALUE (variant A):\\n{{control_value}}\\n\\nPRODUCT: {{product_name}}\\nCATEGORY: {{category}}\\nKEYWORDS: {{keywords}}\\nPRICE RANGE ALLOWED: {{price_range}}\\nWHAT PREVIOUS TESTS SHOWED:\\n{{prior_results}}\\n\\nWrite variant B. Answer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"element\\\": \\\"string\\\",\\n  \\\"hypothesis\\\": \\\"string\\\",\\n  \\\"variant_b\\\": \\\"string\\\",\\n  \\\"expected_metric\\\": \\\"views|favorites|conversion|revenue\\\",\\n  \\\"min_sample\\\": 0\\n}\"\n  }\n};\n\nreturn $input.all().map((item) => ({\n  json: { ...item.json, prompt_version: PROMPT_VERSION, prompts: PROMPTS },\n}));\n"
+        "jsCode": "// Central prompt library. Every OpenAI agent used by this workflow lives\n// here so prompts are versioned with the workflow itself and can be\n// diffed in git (mirrored in prompts/*.md).\nconst PROMPT_VERSION = $('Factory Config').first().json.cfg.PROMPT_VERSION || 'v1.0.0';\nconst PROMPTS = {\n  \"learning_ai\": {\n    \"id\": \"learning_ai\",\n    \"title\": \"Learning AI\",\n    \"purpose\": \"Turn measured marketplace performance into concrete prompt improvements.\",\n    \"system\": \"You are Learning AI. You read the measured performance of products this factory\\nalready shipped and propose SPECIFIC, TESTABLE changes to the agent prompts.\\n\\nRules:\\n- Ground every recommendation in the numbers you were given. If the sample is\\n  too small to justify a change, say so and recommend `no_change`.\\n- A recommendation must name the agent, quote the sentence to change, and give\\n  the replacement sentence. \\\"Be more creative\\\" is not a recommendation.\\n- Never propose changes that would weaken a compliance rule (trademark checks,\\n  Etsy limits, age-appropriateness). Those are floors, not variables.\\n- `confidence` reflects sample size and effect size, not how good the idea feels.\\n- Prefer one high-conviction change over five speculative ones.\\n- Output valid JSON only.\",\n    \"user_template\": \"WINDOW: {{window}}\\nPRODUCTS MEASURED: {{sample_size}}\\n\\nPERFORMANCE BY CATEGORY:\\n{{category_performance_json}}\\n\\nPERFORMANCE BY PROMPT VERSION:\\n{{prompt_performance_json}}\\n\\nBEST PERFORMERS:\\n{{winners_json}}\\n\\nWORST PERFORMERS:\\n{{losers_json}}\\n\\nA/B TEST RESULTS THAT REACHED A CONCLUSION:\\n{{ab_results_json}}\\n\\nAnswer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"verdict\\\": \\\"change|no_change\\\",\\n  \\\"sample_adequate\\\": true,\\n  \\\"findings\\\": [\\\"string\\\"],\\n  \\\"recommendations\\\": [\\n    {\\\"agent\\\": \\\"string\\\", \\\"current_text\\\": \\\"string\\\", \\\"proposed_text\\\": \\\"string\\\",\\n     \\\"rationale\\\": \\\"string\\\", \\\"expected_effect\\\": \\\"string\\\", \\\"confidence\\\": 0.0}\\n  ],\\n  \\\"category_advice\\\": [{\\\"category\\\": \\\"string\\\", \\\"action\\\": \\\"more|less|hold\\\", \\\"why\\\": \\\"string\\\"}],\\n  \\\"next_ab_tests\\\": [{\\\"element\\\": \\\"title|thumbnail|description|price|tags\\\", \\\"hypothesis\\\": \\\"string\\\"}]\\n}\"\n  },\n  \"ab_test_ai\": {\n    \"id\": \"ab_test_ai\",\n    \"title\": \"A/B Test AI\",\n    \"purpose\": \"Author the challenger variant for one listing element.\",\n    \"system\": \"You are A/B Test AI. You write the B variant for a single marketplace element so\\nthat the test isolates ONE hypothesis.\\n\\nRules:\\n- Change only the element under test. Everything else stays identical.\\n- The variant must obey every marketplace limit the control obeys\\n  (title <= 140 characters, exactly 13 tags, each tag <= 20 characters).\\n- State the hypothesis in one sentence, in the form\\n  \\\"If we <change>, then <metric> improves because <reason>\\\".\\n- The variant must be meaningfully different - a synonym swap is not a test.\\n- For a price variant, stay inside the allowed price range you were given.\\n- Output valid JSON only.\",\n    \"user_template\": \"ELEMENT UNDER TEST: {{element}}\\nCONTROL VALUE (variant A):\\n{{control_value}}\\n\\nPRODUCT: {{product_name}}\\nCATEGORY: {{category}}\\nKEYWORDS: {{keywords}}\\nPRICE RANGE ALLOWED: {{price_range}}\\nWHAT PREVIOUS TESTS SHOWED:\\n{{prior_results}}\\n\\nWrite variant B. Answer with the exact JSON contract.\",\n    \"output_contract\": \"{\\n  \\\"element\\\": \\\"string\\\",\\n  \\\"hypothesis\\\": \\\"string\\\",\\n  \\\"variant_b\\\": \\\"string\\\",\\n  \\\"expected_metric\\\": \\\"views|favorites|conversion|revenue\\\",\\n  \\\"min_sample\\\": 0\\n}\"\n  }\n};\n\nreturn $input.all().map((item) => ({\n  json: { ...item.json, prompt_version: PROMPT_VERSION, prompts: PROMPTS },\n}));\n"
       },
       "id": "adpf09-prompt-library",
       "name": "Prompt Library",
@@ -59,7 +75,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Runs on a schedule or on demand. The window governs both what is measured and\n// how much weight a conclusion deserves.\nconst input = $input.first() ? $input.first().json : {};\nconst windowDays = Math.max(1, Math.min(365, Number(input.window_days || $env.LEARNING_WINDOW_DAYS || 30)));\n\nreturn [{\n  json: {\n    run_id: input.run_id || `learn-${new Date().toISOString().slice(0, 10)}`,\n    window_days: windowDays,\n    window: `last ${windowDays} days`,\n    marketplace: input.marketplace || 'etsy',\n    prompt_version: $env.PROMPT_VERSION || 'v1.0.0',\n    dry_run: input.dry_run === true,\n    started_at: new Date().toISOString(),\n  },\n}];"
+        "jsCode": "// Runs on a schedule or on demand. The window governs both what is measured and\n// how much weight a conclusion deserves.\nconst input = $input.first() ? $input.first().json : {};\nconst windowDays = Math.max(1, Math.min(365, Number(input.window_days || $('Factory Config').first().json.cfg.LEARNING_WINDOW_DAYS || 30)));\n\nreturn [{\n  json: {\n    run_id: input.run_id || `learn-${new Date().toISOString().slice(0, 10)}`,\n    window_days: windowDays,\n    window: `last ${windowDays} days`,\n    marketplace: input.marketplace || 'etsy',\n    prompt_version: $('Factory Config').first().json.cfg.PROMPT_VERSION || 'v1.0.0',\n    dry_run: input.dry_run === true,\n    started_at: new Date().toISOString(),\n  },\n}];"
       },
       "id": "adpf09-normalize-learning-input",
       "name": "Normalize Learning Input",
@@ -99,7 +115,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "={{ $env.ETSY_API_BASE }}/v3/application/shops/{{ $env.ETSY_SHOP_ID }}/receipts?limit=100&was_paid=true",
+        "url": "={{ $('Factory Config').first().json.cfg.ETSY_API_BASE }}/v3/application/shops/{{ $('Factory Config').first().json.cfg.ETSY_SHOP_ID }}/receipts?limit=100&was_paid=true",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "sendHeaders": true,
@@ -107,7 +123,7 @@
           "parameters": [
             {
               "name": "x-api-key",
-              "value": "={{ $env.ETSY_API_KEY }}"
+              "value": "={{ $('Factory Config').first().json.cfg.ETSY_API_KEY }}"
             }
           ]
         },
@@ -184,7 +200,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "={{ $env.ETSY_API_BASE }}/v3/application/listings/{{ $json.listing_id }}",
+        "url": "={{ $('Factory Config').first().json.cfg.ETSY_API_BASE }}/v3/application/listings/{{ $json.listing_id }}",
         "authentication": "genericCredentialType",
         "genericAuthType": "oAuth2Api",
         "sendHeaders": true,
@@ -192,7 +208,7 @@
           "parameters": [
             {
               "name": "x-api-key",
-              "value": "={{ $env.ETSY_API_KEY }}"
+              "value": "={{ $('Factory Config').first().json.cfg.ETSY_API_KEY }}"
             }
           ]
         },
@@ -299,7 +315,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Section 21: decide running A/B tests. Deliberately conservative - a test is\n// only called when both arms have enough traffic and the gap is not noise.\nconst ctx = $('Normalize Learning Input').first().json;\nconst row = $input.first().json || {};\n\nconst asArray = (value) => {\n  if (Array.isArray(value)) return value;\n  if (typeof value === 'string') { try { return JSON.parse(value); } catch (e) { return []; } }\n  return value || [];\n};\n\nconst MIN_VIEWS = Number($env.AB_MIN_VIEWS_PER_ARM || 200);\nconst MIN_LIFT = Number($env.AB_MIN_RELATIVE_LIFT || 0.20);\n\nconst tests = asArray(row.ab_tests);\nconst grouped = new Map();\nfor (const arm of tests) {\n  const list = grouped.get(arm.test_uid) || [];\n  list.push(arm);\n  grouped.set(arm.test_uid, list);\n}\n\nconst decisions = [];\nfor (const [testUid, arms] of grouped) {\n  const a = arms.find((x) => x.variant === 'A');\n  const b = arms.find((x) => x.variant === 'B');\n  if (!a || !b) continue;\n\n  const rate = (arm) => (arm.views > 0 ? arm.sales / arm.views : 0);\n  const rateA = rate(a);\n  const rateB = rate(b);\n\n  if (a.views < MIN_VIEWS || b.views < MIN_VIEWS) {\n    decisions.push({ test_uid: testUid, element: a.element, decision: 'keep_running',\n                     reason: `needs ${MIN_VIEWS} views per arm (A=${a.views}, B=${b.views})` });\n    continue;\n  }\n\n  const lift = rateA > 0 ? (rateB - rateA) / rateA : (rateB > 0 ? 1 : 0);\n  if (Math.abs(lift) < MIN_LIFT) {\n    decisions.push({ test_uid: testUid, element: a.element, decision: 'no_difference',\n                     winner: 'A', reason: `relative lift ${Math.round(lift * 1000) / 10}% is inside the noise band` });\n  } else {\n    decisions.push({\n      test_uid: testUid, element: a.element,\n      decision: 'winner', winner: lift > 0 ? 'B' : 'A',\n      reason: `variant ${lift > 0 ? 'B' : 'A'} converts ${Math.abs(Math.round(lift * 1000) / 10)}% better`,\n      winning_value: lift > 0 ? b.variant_value : a.variant_value,\n    });\n  }\n}\n\nreturn [{\n  json: {\n    ...ctx,\n    performance: {\n      categories: asArray(row.categories),\n      marketplaces: asArray(row.marketplaces),\n      prompts: asArray(row.prompts),\n      winners: asArray(row.winners),\n      losers: asArray(row.losers),\n      sample_size: Number(row.sample_size || 0),\n    },\n    ab_decisions: decisions,\n    ab_concluded: decisions.filter((d) => d.decision !== 'keep_running'),\n  },\n}];"
+        "jsCode": "// Section 21: decide running A/B tests. Deliberately conservative - a test is\n// only called when both arms have enough traffic and the gap is not noise.\nconst ctx = $('Normalize Learning Input').first().json;\nconst row = $input.first().json || {};\n\nconst asArray = (value) => {\n  if (Array.isArray(value)) return value;\n  if (typeof value === 'string') { try { return JSON.parse(value); } catch (e) { return []; } }\n  return value || [];\n};\n\nconst MIN_VIEWS = Number($('Factory Config').first().json.cfg.AB_MIN_VIEWS_PER_ARM || 200);\nconst MIN_LIFT = Number($('Factory Config').first().json.cfg.AB_MIN_RELATIVE_LIFT || 0.20);\n\nconst tests = asArray(row.ab_tests);\nconst grouped = new Map();\nfor (const arm of tests) {\n  const list = grouped.get(arm.test_uid) || [];\n  list.push(arm);\n  grouped.set(arm.test_uid, list);\n}\n\nconst decisions = [];\nfor (const [testUid, arms] of grouped) {\n  const a = arms.find((x) => x.variant === 'A');\n  const b = arms.find((x) => x.variant === 'B');\n  if (!a || !b) continue;\n\n  const rate = (arm) => (arm.views > 0 ? arm.sales / arm.views : 0);\n  const rateA = rate(a);\n  const rateB = rate(b);\n\n  if (a.views < MIN_VIEWS || b.views < MIN_VIEWS) {\n    decisions.push({ test_uid: testUid, element: a.element, decision: 'keep_running',\n                     reason: `needs ${MIN_VIEWS} views per arm (A=${a.views}, B=${b.views})` });\n    continue;\n  }\n\n  const lift = rateA > 0 ? (rateB - rateA) / rateA : (rateB > 0 ? 1 : 0);\n  if (Math.abs(lift) < MIN_LIFT) {\n    decisions.push({ test_uid: testUid, element: a.element, decision: 'no_difference',\n                     winner: 'A', reason: `relative lift ${Math.round(lift * 1000) / 10}% is inside the noise band` });\n  } else {\n    decisions.push({\n      test_uid: testUid, element: a.element,\n      decision: 'winner', winner: lift > 0 ? 'B' : 'A',\n      reason: `variant ${lift > 0 ? 'B' : 'A'} converts ${Math.abs(Math.round(lift * 1000) / 10)}% better`,\n      winning_value: lift > 0 ? b.variant_value : a.variant_value,\n    });\n  }\n}\n\nreturn [{\n  json: {\n    ...ctx,\n    performance: {\n      categories: asArray(row.categories),\n      marketplaces: asArray(row.marketplaces),\n      prompts: asArray(row.prompts),\n      winners: asArray(row.winners),\n      losers: asArray(row.losers),\n      sample_size: Number(row.sample_size || 0),\n    },\n    ab_decisions: decisions,\n    ab_concluded: decisions.filter((d) => d.decision !== 'keep_running'),\n  },\n}];"
       },
       "id": "adpf09-evaluate-a-b-tests",
       "name": "Evaluate A/B Tests",
@@ -336,7 +352,7 @@
         "nodeCredentialType": "openAiApi",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $env.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.3, max_tokens: 3000, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.learning_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.learning_ai.output_contract) }, { role: 'user', content: $json.learning_user_prompt } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ model: $('Factory Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.3, max_tokens: 3000, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.learning_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.learning_ai.output_contract) }, { role: 'user', content: $json.learning_user_prompt } ] }) }}",
         "options": {
           "timeout": 180000
         }
@@ -360,7 +376,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Section 14 + 15. The report is stored; it never edits a live prompt by itself.\nconst ctx = $('Build Learning Prompt').first().json;\nconst response = $input.first().json;\n\nlet report;\ntry {\n  report = JSON.parse(response?.choices?.[0]?.message?.content || '{}');\n} catch (e) {\n  report = { verdict: 'no_change', findings: [`Learning AI returned invalid JSON: ${e.message}`] };\n}\n\nconst sample = ctx.performance.sample_size;\nconst MIN_SAMPLE = Number($env.LEARNING_MIN_SAMPLE || 15);\n\n// Guard rail: a confident-sounding recommendation off 3 products is worthless.\nconst adequate = sample >= MIN_SAMPLE && report.sample_adequate !== false;\nconst recommendations = adequate ? (report.recommendations || []) : [];\n\nconst nextVersion = (() => {\n  const current = String(ctx.prompt_version || 'v1.0.0');\n  const parts = current.replace(/^v/, '').split('.').map(Number);\n  if (parts.length !== 3 || parts.some(Number.isNaN)) return 'v1.0.1';\n  return `v${parts[0]}.${parts[1]}.${parts[2] + 1}`;\n})();\n\nreturn [{\n  json: {\n    ...ctx,\n    learning: {\n      verdict: adequate ? (report.verdict || 'no_change') : 'no_change',\n      sample_adequate: adequate,\n      sample_size: sample,\n      findings: report.findings || [],\n      recommendations,\n      category_advice: report.category_advice || [],\n      next_ab_tests: report.next_ab_tests || [],\n      proposed_prompt_version: recommendations.length ? nextVersion : null,\n      blocked_reason: adequate ? null\n        : `sample of ${sample} products is below the minimum of ${MIN_SAMPLE}`,\n    },\n  },\n}];"
+        "jsCode": "// Section 14 + 15. The report is stored; it never edits a live prompt by itself.\nconst ctx = $('Build Learning Prompt').first().json;\nconst response = $input.first().json;\n\nlet report;\ntry {\n  report = JSON.parse(response?.choices?.[0]?.message?.content || '{}');\n} catch (e) {\n  report = { verdict: 'no_change', findings: [`Learning AI returned invalid JSON: ${e.message}`] };\n}\n\nconst sample = ctx.performance.sample_size;\nconst MIN_SAMPLE = Number($('Factory Config').first().json.cfg.LEARNING_MIN_SAMPLE || 15);\n\n// Guard rail: a confident-sounding recommendation off 3 products is worthless.\nconst adequate = sample >= MIN_SAMPLE && report.sample_adequate !== false;\nconst recommendations = adequate ? (report.recommendations || []) : [];\n\nconst nextVersion = (() => {\n  const current = String(ctx.prompt_version || 'v1.0.0');\n  const parts = current.replace(/^v/, '').split('.').map(Number);\n  if (parts.length !== 3 || parts.some(Number.isNaN)) return 'v1.0.1';\n  return `v${parts[0]}.${parts[1]}.${parts[2] + 1}`;\n})();\n\nreturn [{\n  json: {\n    ...ctx,\n    learning: {\n      verdict: adequate ? (report.verdict || 'no_change') : 'no_change',\n      sample_adequate: adequate,\n      sample_size: sample,\n      findings: report.findings || [],\n      recommendations,\n      category_advice: report.category_advice || [],\n      next_ab_tests: report.next_ab_tests || [],\n      proposed_prompt_version: recommendations.length ? nextVersion : null,\n      blocked_reason: adequate ? null\n        : `sample of ${sample} products is below the minimum of ${MIN_SAMPLE}`,\n    },\n  },\n}];"
       },
       "id": "adpf09-parse-learning-report",
       "name": "Parse Learning Report",
@@ -514,7 +530,7 @@
         "nodeCredentialType": "openAiApi",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $env.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.8, max_tokens: 1200, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.ab_test_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.ab_test_ai.output_contract) }, { role: 'user', content: $json.ab_user_prompt } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ model: $('Factory Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.8, max_tokens: 1200, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.ab_test_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.ab_test_ai.output_contract) }, { role: 'user', content: $json.ab_user_prompt } ] }) }}",
         "options": {
           "timeout": 180000
         }
@@ -538,7 +554,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Store both arms so the next learning run can compare like with like.\nconst ctx = $('Build AB Test Prompt').first().json;\nconst response = $input.first().json;\nconst target = ctx.ab_target || {};\n\nlet variant;\ntry {\n  variant = JSON.parse(response?.choices?.[0]?.message?.content || '{}');\n} catch (e) {\n  variant = {};\n}\n\nconst testUid = `ab-${ctx.ab_element}-${Date.now().toString(36)}`;\nconst rows = [\n  { test_uid: testUid, run_id: target.run_id || null, marketplace: 'etsy',\n    listing_id: String(target.listing_id || ''), element: ctx.ab_element,\n    variant: 'A', variant_value: String(target.product_name || ''), status: 'running' },\n  { test_uid: testUid, run_id: target.run_id || null, marketplace: 'etsy',\n    listing_id: String(target.listing_id || ''), element: ctx.ab_element,\n    variant: 'B', variant_value: String(variant.variant_b || ''), status: 'running' },\n];\n\nreturn [{\n  json: {\n    ...ctx,\n    ab_test: {\n      test_uid: testUid,\n      element: ctx.ab_element,\n      hypothesis: variant.hypothesis || ctx.ab_hypothesis,\n      variant_b: variant.variant_b || null,\n      expected_metric: variant.expected_metric || 'conversion',\n      min_sample: Number(variant.min_sample || $env.AB_MIN_VIEWS_PER_ARM || 200),\n    },\n    rows_json: JSON.stringify(rows),\n  },\n}];"
+        "jsCode": "// Store both arms so the next learning run can compare like with like.\nconst ctx = $('Build AB Test Prompt').first().json;\nconst response = $input.first().json;\nconst target = ctx.ab_target || {};\n\nlet variant;\ntry {\n  variant = JSON.parse(response?.choices?.[0]?.message?.content || '{}');\n} catch (e) {\n  variant = {};\n}\n\nconst testUid = `ab-${ctx.ab_element}-${Date.now().toString(36)}`;\nconst rows = [\n  { test_uid: testUid, run_id: target.run_id || null, marketplace: 'etsy',\n    listing_id: String(target.listing_id || ''), element: ctx.ab_element,\n    variant: 'A', variant_value: String(target.product_name || ''), status: 'running' },\n  { test_uid: testUid, run_id: target.run_id || null, marketplace: 'etsy',\n    listing_id: String(target.listing_id || ''), element: ctx.ab_element,\n    variant: 'B', variant_value: String(variant.variant_b || ''), status: 'running' },\n];\n\nreturn [{\n  json: {\n    ...ctx,\n    ab_test: {\n      test_uid: testUid,\n      element: ctx.ab_element,\n      hypothesis: variant.hypothesis || ctx.ab_hypothesis,\n      variant_b: variant.variant_b || null,\n      expected_metric: variant.expected_metric || 'conversion',\n      min_sample: Number(variant.min_sample || $('Factory Config').first().json.cfg.AB_MIN_VIEWS_PER_ARM || 200),\n    },\n    rows_json: JSON.stringify(rows),\n  },\n}];"
       },
       "id": "adpf09-parse-ab-variant",
       "name": "Parse AB Variant",
@@ -626,7 +642,7 @@
       "main": [
         [
           {
-            "node": "Prompt Library",
+            "node": "Factory Config",
             "type": "main",
             "index": 0
           }
@@ -637,7 +653,7 @@
       "main": [
         [
           {
-            "node": "Prompt Library",
+            "node": "Factory Config",
             "type": "main",
             "index": 0
           }
@@ -949,6 +965,17 @@
         [
           {
             "node": "Return: Learning Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Factory Config": {
+      "main": [
+        [
+          {
+            "node": "Prompt Library",
             "type": "main",
             "index": 0
           }

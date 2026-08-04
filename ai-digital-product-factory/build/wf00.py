@@ -10,7 +10,7 @@ Deliberately depends on NOTHING except n8n itself:
 What it proves, in order:
 
   1. n8n runs a Code node at all
-  2. ``$env`` is readable (the single most common setup mistake)
+  2. configuration resolves via the Factory Config node (n8n Cloud OK)
   3. the OpenAI credential works and JSON mode returns parseable output
   4. the dependency-free PDF engine produces a real, openable file
 
@@ -25,20 +25,15 @@ from common import (
 from js_pdf import PDF_LIB_JS
 
 JS_CHECK_SETUP = r"""
-// STEP 1 - can this instance read environment variables at all?
-// This never throws: the whole point is to produce a readable report instead
-// of a red node with a cryptic message.
-const read = (key) => {
-  try { return $env[key]; } catch (e) { return undefined; }
-};
+// STEP 1+2 - can this instance resolve its configuration?
+// Works on n8n Cloud and self-hosted alike: settings come from the Factory
+// Config node (parent cfg > Variables > env > built-in defaults), so nothing
+// here depends on environment variables existing.
+const item = $input.first().json;
+const cfg = item.cfg || {};
+const sources = item.cfg_sources || {};
 
-let envAccessible = true;
-try {
-  // Touching $env throws when N8N_BLOCK_ENV_ACCESS_IN_NODE is left at its default.
-  void $env.PATH;
-} catch (e) {
-  envAccessible = false;
-}
+const cfgReady = Object.keys(cfg).length > 0;
 
 const GROUPS = {
   'OpenAI (needed to generate anything)': ['OPENAI_MODEL_TEXT', 'OPENAI_MODEL_IMAGE'],
@@ -50,33 +45,34 @@ const GROUPS = {
 
 const report = {};
 for (const [group, keys] of Object.entries(GROUPS)) {
-  report[group] = keys.map((key) => ({
-    key,
-    set: Boolean(read(key)),
-    value: key.includes('KEY') || key.includes('SECRET')
-      ? (read(key) ? '(set, hidden)' : null)
-      : (read(key) || null),
-  }));
+  report[group] = keys.map((key) => {
+    const value = cfg[key];
+    const isSet = value !== undefined && value !== null && String(value).trim() !== '';
+    return {
+      key,
+      set: isSet,
+      source: sources[key] || 'default',
+      value: key.includes('KEY') || key.includes('SECRET')
+        ? (isSet ? '(set, hidden)' : null)
+        : (isSet ? String(value) : null),
+    };
+  });
 }
 
-const input = $input.first() ? $input.first().json : {};
-
 const blockers = [];
-if (!envAccessible) {
-  blockers.push(
-    'Cannot read $env. Start n8n with N8N_BLOCK_ENV_ACCESS_IN_NODE=false and restart it.'
-  );
+if (!cfgReady) {
+  blockers.push('Factory Config produced no settings - is the node connected before this one?');
 }
 
 return [{
   json: {
     step: 'check-setup',
-    env_accessible: envAccessible,
+    cfg_ready: cfgReady,
     env_report: report,
     blockers,
     // Flip to false to test the PDF engine without spending anything on OpenAI.
-    test_openai: input.test_openai !== false && blockers.length === 0,
-    product_title: input.product_title || 'My First Test Product',
+    test_openai: item.test_openai !== false && blockers.length === 0,
+    product_title: item.product_title || 'My First Test Product',
     checked_at: new Date().toISOString(),
   },
 }];
@@ -175,7 +171,8 @@ for (const [group, keys] of Object.entries(ctx.env_report)) {
   envLines.push(group);
   for (const entry of keys) {
     envLines.push(`   ${entry.set ? '[OK]  ' : '[--]  '}${entry.key}` +
-      (entry.value ? ` = ${entry.value}` : ''));
+      (entry.value ? ` = ${entry.value}` : '') +
+      (entry.source && entry.source !== 'default' ? `  (from ${entry.source})` : ''));
   }
   envLines.push('');
 }
@@ -191,7 +188,7 @@ const pages = [
       'If you can read this page, the following all work on this machine:',
       '',
       '- n8n executes Code nodes',
-      `- environment variables are readable: ${ctx.env_accessible ? 'YES' : 'NO'}`,
+      `- configuration resolves (Cloud-compatible): ${ctx.cfg_ready ? 'YES' : 'NO'}`,
       `- OpenAI credential: ${ctx.openai_ok === null ? 'skipped' : (ctx.openai_ok ? 'YES' : 'FAILED')}`,
       '- the PDF engine produces a real file (this document)',
       '',
@@ -268,8 +265,10 @@ const ctx = $input.first().json;
 const checks = [
   { name: '1. n8n runs Code nodes', ok: true,
     detail: 'this node executed' },
-  { name: '2. $env is readable', ok: ctx.env_accessible,
-    detail: ctx.env_accessible ? 'ok' : 'set N8N_BLOCK_ENV_ACCESS_IN_NODE=false and restart n8n' },
+  { name: '2. Configuration resolves', ok: ctx.cfg_ready,
+    detail: ctx.cfg_ready
+      ? 'ok - settings come from the Factory Config node (works on n8n Cloud)'
+      : 'Factory Config did not run before Check Setup' },
   { name: '3. OpenAI credential works',
     ok: ctx.openai_ok === null ? null : ctx.openai_ok,
     detail: ctx.openai_ok === null ? (ctx.skip_reason || 'skipped')

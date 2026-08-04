@@ -25,8 +25,9 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-SOURCE = os.path.join(ROOT, "docs", "SYSTEM_SPEC_TH.md")
-OUTPUT = os.path.join(ROOT, "docs", "SYSTEM_SPEC_TH.pdf")
+# Default document; pass a different pair as argv[1] argv[2] to render others.
+SOURCE = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "docs", "SYSTEM_SPEC_TH.md")
+OUTPUT = sys.argv[2] if len(sys.argv) > 2 else os.path.join(ROOT, "docs", "SYSTEM_SPEC_TH.pdf")
 
 CHROME_CANDIDATES = [
     "/opt/pw-browsers/chromium",
