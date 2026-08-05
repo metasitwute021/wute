@@ -243,6 +243,181 @@ def check_input_fields() -> list[str]:
     return problems
 
 
+# Identifiers a Code node may use without declaring them.
+JS_GLOBALS = {
+    # JavaScript
+    "JSON", "Math", "Number", "String", "Object", "Array", "Boolean", "Date",
+    "RegExp", "Buffer", "Map", "Set", "WeakMap", "Promise", "Error", "console",
+    "parseInt", "parseFloat", "isNaN", "isFinite", "encodeURIComponent",
+    "decodeURIComponent", "undefined", "null", "true", "false", "NaN",
+    "Infinity", "globalThis", "process", "require", "TextEncoder", "TextDecoder",
+    "Intl", "Symbol", "BigInt", "structuredClone", "URL", "URLSearchParams",
+    # n8n
+    "items", "item", "this", "$", "$json", "$binary", "$input", "$execution",
+    "$env", "$vars", "$workflow", "$node", "$now", "$today", "$runIndex",
+    "$prevNode", "$itemMatching", "$position", "$parameter", "$getWorkflowStaticData",
+    "$if", "$max", "$min", "$evaluateExpression", "$jmespath", "$fromAI",
+}
+
+def strip_literals(source: str) -> str:
+    """Blank comments and string bodies, keeping ${...} inside template literals.
+
+    A regex is the wrong tool here - template literals nest quotes and code, and
+    an approximate match silently swallows the very declarations this check
+    needs to see. This walks the source once instead.
+    """
+    out = []
+    i, n = 0, len(source)
+    template_stack: list[int] = []          # brace depth where each template began
+    brace_depth = 0
+
+    def prev_significant() -> str:
+        for ch in reversed(out):
+            if not ch.isspace():
+                return ch
+        return ""
+
+    while i < n:
+        ch = source[i]
+        nxt = source[i + 1] if i + 1 < n else ""
+
+        if ch == "/" and nxt == "/":
+            while i < n and source[i] != "\n":
+                i += 1
+            continue
+        if ch == "/" and nxt == "*":
+            i = source.find("*/", i + 2)
+            i = n if i == -1 else i + 2
+            out.append(" ")
+            continue
+        if ch == "/" and prev_significant() not in ")]}" and not (
+                prev_significant().isalnum() or prev_significant() in "_$"):
+            i += 1                                   # regex literal
+            while i < n and source[i] != "/":
+                if source[i] == "\\":
+                    i += 1
+                elif source[i] == "[":
+                    while i < n and source[i] != "]":
+                        i += 2 if source[i] == "\\" else 1
+                i += 1
+            i += 1
+            while i < n and source[i] in "gimsuyd":
+                i += 1
+            out.append(" ")
+            continue
+        if ch in "'\"":
+            quote = ch
+            i += 1
+            while i < n and source[i] != quote:
+                i += 2 if source[i] == "\\" else 1
+            i += 1
+            out.append(" ")
+            continue
+        if ch == "`":
+            i += 1
+            while i < n:
+                if source[i] == "\\":
+                    i += 2
+                    continue
+                if source[i] == "`":
+                    i += 1
+                    break
+                if source[i] == "$" and i + 1 < n and source[i + 1] == "{":
+                    out.append(" ")
+                    template_stack.append(brace_depth)
+                    brace_depth += 1
+                    i += 2
+                    break                            # back to normal scanning
+                i += 1
+            else:
+                break
+            if not template_stack or template_stack[-1] != brace_depth - 1:
+                out.append(" ")
+            continue
+        if ch == "{":
+            brace_depth += 1
+        elif ch == "}":
+            brace_depth -= 1
+            if template_stack and template_stack[-1] == brace_depth:
+                template_stack.pop()
+                i += 1
+                # resume the template literal text after the interpolation
+                while i < n:
+                    if source[i] == "\\":
+                        i += 2
+                        continue
+                    if source[i] == "`":
+                        i += 1
+                        break
+                    if source[i] == "$" and i + 1 < n and source[i + 1] == "{":
+                        template_stack.append(brace_depth)
+                        brace_depth += 1
+                        i += 2
+                        break
+                    i += 1
+                out.append(" ")
+                continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+_DECL = re.compile(r"\b(?:const|let|var|function|class)\s+([A-Za-z_$][\w$]*)")
+_BINDING = re.compile(r"[\[{]([^\[\]{}]*)[\]}]\s*(?:=|=>|\)|\bof\b|\bin\b)")
+_PARAMS = re.compile(r"\(([^()]*)\)\s*=>|function\s*[\w$]*\s*\(([^()]*)\)")
+_ARROW_ONE = re.compile(r"(?:^|[^\w$.])([A-Za-z_$][\w$]*)\s*=>")
+_LOOP_VAR = re.compile(r"\bfor\s*\(\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)")
+_CATCH = re.compile(r"\bcatch\s*\(\s*([A-Za-z_$][\w$]*)")
+_ROOT_USE = re.compile(r"(?<![.\w$])([A-Za-z_$][\w$]*)\s*\.")
+_NAME = re.compile(r"[A-Za-z_$][\w$]*")
+
+
+def check_undeclared() -> list[str]:
+    """Flag a Code node using a name nothing declares.
+
+    `node --check` only parses, so a reference to an undeclared variable is
+    invisible until the node runs - a stray `profile.display_name` cost a full
+    run to surface. Only roots of a property access are considered, which is
+    where this mistake actually shows up and keeps false positives near zero.
+    """
+    problems: list[str] = []
+    checked = 0
+    for path in sorted(glob.glob(os.path.join(WORKFLOW_DIR, "*.json"))):
+        with open(path, encoding="utf-8") as fh:
+            document = json.load(fh)
+        for node in document["nodes"]:
+            source = node["parameters"].get("jsCode")
+            if not source:
+                continue
+            checked += 1
+            code = strip_literals(source)
+
+            declared = set(_DECL.findall(code)) | set(_LOOP_VAR.findall(code))
+            declared |= set(_CATCH.findall(code)) | set(_ARROW_ONE.findall(code))
+            for group in _BINDING.findall(code):
+                for part in group.split(","):
+                    name = part.split(":")[-1].split("=")[0].strip().lstrip(".")
+                    if _NAME.fullmatch(name or ""):
+                        declared.add(name)
+            for a, b in _PARAMS.findall(code):
+                for part in (a or b).split(","):
+                    name = part.split("=")[0].strip().lstrip(".")
+                    if _NAME.fullmatch(name or ""):
+                        declared.add(name)
+
+            unknown = sorted({
+                name for name in _ROOT_USE.findall(code)
+                if name not in declared and name not in JS_GLOBALS
+            })
+            if unknown:
+                problems.append(
+                    f"{os.path.basename(path)} :: {node['name']} uses undeclared "
+                    f"{', '.join(unknown)}")
+    print(f"[{'ok' if not problems else 'FAILED'}] scanned {checked} Code nodes for "
+          f"undeclared identifiers")
+    return problems
+
+
 def main() -> int:
     if subprocess.run(["node", "-v"], capture_output=True).returncode != 0:
         print("node is required for verify.py")
@@ -254,6 +429,7 @@ def main() -> int:
         problems += check_sql()
         problems += check_pdf(tmp)
     problems += check_input_fields()
+    problems += check_undeclared()
 
     if problems:
         print(f"\n{len(problems)} problem(s):")

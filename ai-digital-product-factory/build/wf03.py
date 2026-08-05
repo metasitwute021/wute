@@ -1557,6 +1557,7 @@ const idea = $('Parse Idea JSON').first().json.idea;
 const content = $('Parse Content JSON').first().json.content;
 const seo = $('Validate SEO Package').first().json.seo;
 const agent = $('Prompt Library').first().json.prompts.content_qa_ai;
+const profile = base.profile;
 
 return [{
   json: {
