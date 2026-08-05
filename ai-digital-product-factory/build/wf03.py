@@ -1555,14 +1555,28 @@ const blockers = stages.flatMap((s) => (s.blockers || []).map((b) => `[${s.stage
 const warnings = stages.flatMap((s) => (s.warnings || []).map((w) => `[${s.stage}] ${w}`));
 const scores = stages.map((s) => Number(s.score)).filter((n) => !Number.isNaN(n));
 
+// A dry run feeds the line placeholder images and a locally synthesised idea,
+// so QA is grading inputs the rehearsal invented: the placeholders always miss
+// the DPI floor and the synthetic idea never matches the brief. Judging a
+// rehearsal on those makes it impossible to pass, which defeats the point of
+// having one. The verdict is still computed and reported in full - it simply
+// does not stop the run.
+const dryRun = base.dry_run === true;
+const reallyPassed = failed.length === 0;
+
 return [{
   json: {
     run_id: base.run_id,
     qa_stages: stages,
-    qa_passed: failed.length === 0,
-    failed_stages: failed.map((s) => s.stage),
-    qa_blockers: blockers,
-    qa_warnings: warnings,
+    qa_passed: dryRun ? true : reallyPassed,
+    qa_advisory: dryRun,
+    qa_would_have_passed: reallyPassed,
+    failed_stages: dryRun ? [] : failed.map((s) => s.stage),
+    advisory_failed_stages: failed.map((s) => s.stage),
+    qa_blockers: dryRun ? [] : blockers,
+    qa_warnings: dryRun
+      ? [...warnings, ...blockers.map((b) => `[dry-run, not blocking] ${b}`)]
+      : warnings,
     qa_average_score: scores.length
       ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : 0,
     qa_lowest_score: scores.length ? Math.min(...scores) : 0,
@@ -1653,7 +1667,17 @@ return [{
       average_score: Math.round(
         ((gate.qa_average_score * gate.qa_stages.length + exportQa.score) /
          (gate.qa_stages.length + 1)) * 10) / 10,
-      summary: passed ? 'all six QA stages passed' : `blocked at ${gate.failed_stages.join(', ') || 'export'}`,
+      // Never let a rehearsal read as a clean bill of health: export QA is real
+      // (it opens the bytes) but stages 1-4 and 6 graded placeholder inputs.
+      advisory: gate.qa_advisory === true,
+      would_have_passed: gate.qa_advisory === true ? gate.qa_would_have_passed : null,
+      advisory_failed_stages: gate.qa_advisory === true ? gate.advisory_failed_stages : [],
+      summary: gate.qa_advisory === true
+        ? `dry run - export QA passed for real, stages ${
+            (gate.advisory_failed_stages || []).join(', ') || 'none'
+          } are advisory only (placeholder art and a synthetic idea)`
+        : (passed ? 'all six QA stages passed'
+                  : `blocked at ${gate.failed_stages.join(', ') || 'export'}`),
     },
     // Section 12 + 13
     version: dedupe.version,
