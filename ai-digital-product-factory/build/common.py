@@ -69,9 +69,13 @@ COL = 300
 ROW = 190
 
 
-def pos(col: int, row: int = 0):
-    """Grid position helper so the imported canvas stays readable."""
-    return [col * COL, row * ROW]
+def pos(col: float, row: float = 0):
+    """Grid position helper so the imported canvas stays readable.
+
+    Half steps are allowed for a node inserted between two existing ones; n8n
+    wants whole numbers, so the result is rounded rather than left as a float.
+    """
+    return [round(col * COL), round(row * ROW)]
 
 
 class Workflow:

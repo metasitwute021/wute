@@ -508,6 +508,22 @@
     },
     {
       "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// The product travels as base64 inside the item, which is what keeps it intact\n// across Code node hops - but it also means nothing is downloadable from the\n// n8n UI, and until Drive or Etsy is connected the browser is the only way the\n// user can see what the factory made.\n//\n// Attach every file as its own binary property, on the same single item. One\n// item per file would be tidier to read and would break every node downstream,\n// which all expect exactly one.\nconst product = $input.first().json;\n\nconst binary = {};\nfor (const [index, file] of (product.files || []).entries()) {\n  const name = String(file.file_name || `file-${index}`);\n  const dot = name.lastIndexOf('.');\n  binary[`file_${index}_${file.key || index}`] = {\n    data: file.b64,\n    mimeType: file.mime_type || 'application/octet-stream',\n    fileName: name,\n    fileExtension: dot > 0 ? name.slice(dot + 1) : '',\n    fileSize: `${file.bytes} B`,\n  };\n}\n\nreturn [{ json: product, binary }];"
+      },
+      "id": "adpf01-download-product-files",
+      "name": "Download: Product Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3450,
+        190
+      ],
+      "notes": "Attaches every produced file as a binary so it can be downloaded from this node's Binary tab. Passes the item through unchanged.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
         "conditions": {
           "options": {
             "caseSensitive": true,
@@ -1436,7 +1452,7 @@
       "main": [
         [
           {
-            "node": "Check: Etsy Configured",
+            "node": "Download: Product Files",
             "type": "main",
             "index": 0
           }
@@ -1444,6 +1460,17 @@
         [
           {
             "node": "Stage Failed: Product",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download: Product Files": {
+      "main": [
+        [
+          {
+            "node": "Check: Etsy Configured",
             "type": "main",
             "index": 0
           }

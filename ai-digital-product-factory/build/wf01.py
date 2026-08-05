@@ -401,6 +401,33 @@ return [{
 }];
 """.strip()
 
+JS_ATTACH_BINARIES = r"""
+// The product travels as base64 inside the item, which is what keeps it intact
+// across Code node hops - but it also means nothing is downloadable from the
+// n8n UI, and until Drive or Etsy is connected the browser is the only way the
+// user can see what the factory made.
+//
+// Attach every file as its own binary property, on the same single item. One
+// item per file would be tidier to read and would break every node downstream,
+// which all expect exactly one.
+const product = $input.first().json;
+
+const binary = {};
+for (const [index, file] of (product.files || []).entries()) {
+  const name = String(file.file_name || `file-${index}`);
+  const dot = name.lastIndexOf('.');
+  binary[`file_${index}_${file.key || index}`] = {
+    data: file.b64,
+    mimeType: file.mime_type || 'application/octet-stream',
+    fileName: name,
+    fileExtension: dot > 0 ? name.slice(dot + 1) : '',
+    fileSize: `${file.bytes} B`,
+  };
+}
+
+return [{ json: product, binary }];
+""".strip()
+
 JS_BUILD_ERROR = r"""
 // Single funnel for every failed stage. Keeps one error shape for the database,
 // the alert webhook and the final Stop And Error message.
@@ -592,6 +619,9 @@ def build() -> Workflow:
     )
     wf.add("Check: Product OK", T_IF, pos(11, 1), if_bool("={{ $json.ok }}"),
            notes="False when the QA agent rejected the product - nothing gets published.")
+    wf.add("Download: Product Files", T_CODE, pos(11.5, 1), code(JS_ATTACH_BINARIES),
+           notes=("Attaches every produced file as a binary so it can be downloaded "
+                  "from this node's Binary tab. Passes the item through unchanged."))
     # -- Cloud path: no Etsy yet -> build + record, skip publish/backup -----
     wf.add("Check: Etsy Configured", T_IF, pos(12, 0),
            if_bool("={{ !$('Validate Environment').first().json.skip_publish }}"),
@@ -748,7 +778,8 @@ def build() -> Workflow:
     wf.link("Compose Product Request", "Run: Product Engine")
     wf.link("Run: Product Engine", "Check: Product OK", 0)
     wf.link("Run: Product Engine", "Stage Failed: Product", 1)
-    wf.link("Check: Product OK", "Check: Etsy Configured", 0)
+    wf.link("Check: Product OK", "Download: Product Files", 0)
+    wf.link("Download: Product Files", "Check: Etsy Configured")
     wf.link("Check: Product OK", "Stage Failed: Product", 1)
     wf.link("Check: Etsy Configured", "Compose Publish Request", 0)
     wf.link("Check: Etsy Configured", "Prepare Record (No Publish)", 1)
