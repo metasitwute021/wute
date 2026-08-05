@@ -1,2 +1,6 @@
 __pycache__/
 *.pyc
+
+# Workflows stamped with one instance's credential ids - local only.
+dist/
+*.map.json
