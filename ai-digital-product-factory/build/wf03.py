@@ -344,6 +344,10 @@ const unwrapEnvelope = (data, fields) => {
   return data;
 };
 
+// n8n keeps only the tail of a thrown Code node message, so the ordering here
+// is deliberate: least useful first, the actual verdict last. Two runs were
+// spent reading "{ [line 39]" and "0 } [line 58]" - the diagnostic was present
+// both times and sat in the half that got cut off.
 const requireAgentFields = (label, reply, fields) => {
   const missing = fields.filter((field) => {
     const value = reply.data[field];
@@ -351,10 +355,18 @@ const requireAgentFields = (label, reply, fields) => {
         || (Array.isArray(value) && value.length === 0);
   });
   if (missing.length) {
+    const shape = fields.map((field) => {
+      const value = reply.data[field];
+      if (value === undefined) return `${field}=absent`;
+      if (Array.isArray(value)) return `${field}=array(${value.length})`;
+      if (value === null) return `${field}=null`;
+      if (value === '') return `${field}=empty-string`;
+      return `${field}=${typeof value}`;
+    }).join(' ');
     throw new Error(
-      `${label} output is missing ${missing.join(', ')}. ` +
-      `Keys it did return: [${Object.keys(reply.data).join(', ')}] ` +
-      `(finish_reason=${reply.finish}) | got: ${reply.preview}`);
+      `got ${reply.preview.slice(0, 120)} || ` +
+      `keys=[${Object.keys(reply.data).join(',')}] | ` +
+      `finish=${reply.finish} | ${shape} | ${label} MISSING: ${missing.join(',')}`);
   }
 };
 """

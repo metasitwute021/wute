@@ -107,9 +107,13 @@ Rules:
 - The product must be deliverable as static files. Never propose interactivity,
   fillable-PDF scripting, video, or anything requiring a runtime.
 - `product_name` is a shop-facing name, max 60 characters, no emoji, no ALL CAPS.
-- `sections` describes the real structure of the deliverable, in order.
+- `sections` describes the real structure of the deliverable, in order. It must
+  contain at least three entries and must never be empty - an empty `sections`
+  is an unusable answer, because it is the plan the writer builds the pages from.
 - `visual_direction` must be one coherent art direction reused across every image.
 - Never reference a real brand, celebrity, franchise, or trademarked style.
+- The output contract shows the *shape* of the answer, not its content. Replace
+  every placeholder: `"string"` is not a product name and `0` is not a page count.
 - Output valid JSON only.
 """,
     """
