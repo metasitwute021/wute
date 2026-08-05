@@ -285,20 +285,64 @@ return [{
 }];
 """.rstrip()
 
-JS_PARSE_IDEA = r"""
+AGENT_PARSE_HELPER = r"""
+// Read an OpenAI chat reply, or fail with something worth reading. A bare
+// "missing field" message costs a whole run and a support round-trip to
+// diagnose; the model's own reply, its finish_reason and the keys it did
+// return are the evidence that actually identifies the problem.
+const readAgentReply = (label, response) => {
+  const choice = (response && response.choices && response.choices[0]) || {};
+  const message = choice.message || {};
+  const finish = choice.finish_reason || 'unknown';
+  const content = message.content == null ? '' : String(message.content);
+  const preview = content.slice(0, 400);
+
+  if (message.refusal) {
+    throw new Error(`${label} refused the request: ${String(message.refusal).slice(0, 300)}`);
+  }
+  if (!content.trim()) {
+    throw new Error(`${label} returned no content (finish_reason=${finish})`);
+  }
+  if (finish === 'length') {
+    throw new Error(
+      `${label} hit the token limit before finishing its JSON ` +
+      `(finish_reason=length). Raise max_tokens on that node. | got: ${preview}`);
+  }
+  try {
+    return { data: JSON.parse(content), finish, preview };
+  } catch (e) {
+    throw new Error(`${label} returned invalid JSON (finish_reason=${finish}): ` +
+                    `${e.message} | got: ${preview}`);
+  }
+};
+
+const requireAgentFields = (label, reply, fields) => {
+  const missing = fields.filter((field) => {
+    const value = reply.data[field];
+    return value === undefined || value === null || value === ''
+        || (Array.isArray(value) && value.length === 0);
+  });
+  if (missing.length) {
+    throw new Error(
+      `${label} output is missing ${missing.join(', ')}. ` +
+      `Keys it did return: [${Object.keys(reply.data).join(', ')}] ` +
+      `(finish_reason=${reply.finish}) | got: ${reply.preview}`);
+  }
+};
+"""
+
+JS_PARSE_IDEA = AGENT_PARSE_HELPER + r"""
 // Parse the product brief and enforce the limits the factory profile declares.
 const base = $('Merge: Factory Profiles').first().json;
 const response = $input.first().json;
 
-let idea;
-try {
-  idea = JSON.parse(response?.choices?.[0]?.message?.content || '');
-} catch (e) {
-  throw new Error(`Idea AI returned invalid JSON: ${e.message}`);
-}
+const reply = readAgentReply('Idea AI', response);
+requireAgentFields('Idea AI', reply, ['product_name', 'sections']);
+const idea = reply.data;
 
-if (!idea.product_name || !Array.isArray(idea.sections) || !idea.sections.length) {
-  throw new Error('Idea AI output is missing product_name or sections');
+if (!Array.isArray(idea.sections) || !idea.sections.length) {
+  throw new Error(`Idea AI returned 'sections' but not as a non-empty array: ` +
+                  `${JSON.stringify(idea.sections).slice(0, 200)}`);
 }
 
 idea.product_name = String(idea.product_name).replace(/\s+/g, ' ').trim().slice(0, 60);
@@ -328,18 +372,13 @@ return [{
 }];
 """.rstrip()
 
-JS_PARSE_CONTENT = r"""
+JS_PARSE_CONTENT = AGENT_PARSE_HELPER + r"""
 // Normalise the written content into exactly the shape the PDF builder expects.
 const base = $('Merge: Factory Profiles').first().json;
 const idea = $('Parse Idea JSON').first().json.idea;
 const response = $input.first().json;
 
-let content;
-try {
-  content = JSON.parse(response?.choices?.[0]?.message?.content || '');
-} catch (e) {
-  throw new Error(`Writer AI returned invalid JSON: ${e.message}`);
-}
+const content = readAgentReply('Writer AI', response).data;
 
 const pages = (content.pages || [])
   .filter((p) => p && (p.title || (p.lines || []).length))
@@ -404,7 +443,7 @@ return [{
 }];
 """.rstrip()
 
-JS_PARSE_IMAGE_PLAN = r"""
+JS_PARSE_IMAGE_PLAN = AGENT_PARSE_HELPER + r"""
 // Build the concrete image job list. Formats are chosen on purpose:
 //   jpeg -> anything that goes inside the PDF (embeds as /DCTDecode untouched)
 //   png  -> the shop thumbnail, where a lossless icon looks better
@@ -412,12 +451,7 @@ const base = $('Merge: Factory Profiles').first().json;
 const content = $('Parse Content JSON').first().json.content;
 const response = $input.first().json;
 
-let plan;
-try {
-  plan = JSON.parse(response?.choices?.[0]?.message?.content || '');
-} catch (e) {
-  throw new Error(`Designer AI returned invalid JSON: ${e.message}`);
-}
+const plan = readAgentReply('Designer AI', response).data;
 
 const style = base.profile.art_direction;
 const decorate = (prompt) =>
