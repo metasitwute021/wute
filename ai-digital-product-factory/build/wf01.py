@@ -671,11 +671,17 @@ def build() -> Workflow:
         notes="Calls 06 Database Logger, op=error_log. Never blocks the alert below.",
         onError="continueRegularOutput", alwaysOutputData=True, **RETRY,
     )
+    # Without this gate the node below posted to a localhost placeholder, which
+    # n8n rejects as SSRF - a loud, confusing failure inside the error handler
+    # for a feature the user never turned on.
+    wf.add("Check: Alert Configured", T_IF, pos(20, 4),
+           if_bool("={{ /^https?:\\/\\//.test(String($env.ALERT_WEBHOOK_URL || '')) }}"),
+           notes="No ALERT_WEBHOOK_URL configured -> skip the alert, keep the funnel quiet.")
     wf.add(
         "Notify: Alert Webhook", T_HTTP, pos(20, 3),
         {
             "method": "POST",
-            "url": "={{ $env.ALERT_WEBHOOK_URL || 'https://localhost/disabled' }}",
+            "url": "={{ $env.ALERT_WEBHOOK_URL }}",
             "sendBody": True,
             "specifyBody": "json",
             "jsonBody": (
@@ -686,7 +692,7 @@ def build() -> Workflow:
             ),
             "options": {"timeout": 15000},
         },
-        notes="Optional Slack/Discord alert. Silently skipped when ALERT_WEBHOOK_URL is unset.",
+        notes="Optional Slack/Discord alert. Only reached when ALERT_WEBHOOK_URL is a real URL.",
         onError="continueRegularOutput", alwaysOutputData=True,
         retryOnFail=True, maxTries=2, waitBetweenTries=3000,
     )
@@ -767,10 +773,10 @@ def build() -> Workflow:
 
     for name, _stage, _col in stages:
         wf.link(name, "Build Error Payload")
-    wf.chain(
-        "Build Error Payload", "Log: Error To Database",
-        "Notify: Alert Webhook", "Stop On Fatal Error",
-    )
+    wf.chain("Build Error Payload", "Log: Error To Database", "Check: Alert Configured")
+    wf.link("Check: Alert Configured", "Notify: Alert Webhook", 0)
+    wf.link("Check: Alert Configured", "Stop On Fatal Error", 1)
+    wf.link("Notify: Alert Webhook", "Stop On Fatal Error")
     wf.chain("Trigger: Workflow Error Handler", "Format Global Error", "Log: Global Error")
 
     return wf

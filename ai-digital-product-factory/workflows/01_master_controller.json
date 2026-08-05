@@ -1036,8 +1036,45 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ /^https?:\\/\\//.test(String($('Factory Config').first().json.cfg.ALERT_WEBHOOK_URL || '')) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "adpf01-check-alert-configured",
+      "name": "Check: Alert Configured",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6000,
+        760
+      ],
+      "notes": "No ALERT_WEBHOOK_URL configured -> skip the alert, keep the funnel quiet.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
         "method": "POST",
-        "url": "={{ $('Factory Config').first().json.cfg.ALERT_WEBHOOK_URL || 'https://localhost/disabled' }}",
+        "url": "={{ $('Factory Config').first().json.cfg.ALERT_WEBHOOK_URL }}",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ text: '[ADPF] run ' + $('Build Error Payload').first().json.run_id + ' failed at stage ' + $('Build Error Payload').first().json.stage + ': ' + $('Build Error Payload').first().json.error_message }) }}",
@@ -1053,7 +1090,7 @@
         6000,
         570
       ],
-      "notes": "Optional Slack/Discord alert. Silently skipped when ALERT_WEBHOOK_URL is unset.",
+      "notes": "Optional Slack/Discord alert. Only reached when ALERT_WEBHOOK_URL is a real URL.",
       "notesInFlow": true,
       "onError": "continueRegularOutput",
       "alwaysOutputData": true,
@@ -1698,7 +1735,25 @@
       "main": [
         [
           {
+            "node": "Check: Alert Configured",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Alert Configured": {
+      "main": [
+        [
+          {
             "node": "Notify: Alert Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop On Fatal Error",
             "type": "main",
             "index": 0
           }
