@@ -520,8 +520,15 @@ Fail (`passed: false`) when any of these is true:
 - Any page would carry more text than fits: lines x leading exceeds the usable
   height of the page box.
 - Margins under 10mm on a printable product, or text within 5mm of the trim.
-- An image is supplied at less than 150 DPI for its placed size
-  (DPI = pixel width / (placed width in inches)).
+- An interior page illustration lands below 150 DPI at its placed size. Use the
+  `effective_dpi` given for each image; it is computed from the real placement,
+  so do not re-derive it by assuming the image fills the page.
+- The full-bleed cover lands below 130 DPI. A cover is a decorative hero that
+  runs to the trim, and the generator's maximum output is 1024 px wide, so it
+  sits a little under the interior floor by construction - that is expected and
+  is not a defect on its own.
+- An image marked `printed: false` is a shop listing image shown on screen.
+  Print DPI does not apply to it; judge it on composition only.
 - Aspect ratio of a wall-art page does not match a standard print ratio
   (2:3, 3:4, 4:5, ISO) within 2%.
 - Fewer than 60% of pages have any visual structure at all (a wall of text).
@@ -562,8 +569,15 @@ a paying customer. You are the last reader before it is sold.
 
 Fail (`passed: false`) when any of these is true:
 - Any spelling or grammar error a native reader would notice.
-- Truncated sentences, duplicated paragraphs, placeholder text, or a page whose
-  content does not match its title.
+- Truncated sentences, duplicated paragraphs, or a page whose content does not
+  match its title.
+- Leftover drafting markers: lorem ipsum, TODO, TBD, "insert text here", or a
+  heading with no body beneath it.
+
+Do NOT fail a page for fill-in fields that the product exists to provide. The
+PRODUCT STRUCTURE below states what this factory ships; when it calls for a
+blank template, a worksheet or a structure page, empty lines and bracketed
+prompts such as [Your Name] are the deliverable, not a defect.
 - A brand, franchise, celebrity, song lyric, licensed character, or any phrase
   likely to be trademarked.
 - Text copied from an identifiable source rather than written for this product.
@@ -577,6 +591,7 @@ List every issue with the page number. Output valid JSON only.
 """,
     """
 PRODUCT: {{product_name}}
+PRODUCT STRUCTURE: {{product_structure}}
 AUDIENCE: {{target_customer}}
 
 CONTENT (page by page):

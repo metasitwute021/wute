@@ -1445,17 +1445,37 @@ const parseSize = (size) => {
   return { width: w || 1024, height: h || 1024 };
 };
 
+// Placement geometry must match what the PDF writer actually does, not an
+// assumption about it. Claiming every image fills the page reported 120 DPI on
+// art the writer places at 150, and QA blocked a sound product on a number
+// this node invented. Mirrors the fit-inside-the-box maths in the PDF library.
+const MARGIN_PT = 56;
+const placement = (pxWidth, pxHeight, fullBleed) => {
+  const bleed = fullBleed ? 0 : MARGIN_PT / 2;
+  const scale = Math.min(
+    (profile.page_width_pt - bleed * 2) / pxWidth,
+    (profile.page_height_pt - bleed * 2) / pxHeight
+  );
+  const placedWidthPt = pxWidth * scale;
+  return {
+    placed_width_pt: Math.round(placedWidthPt),
+    placed_height_pt: Math.round(pxHeight * scale),
+    effective_dpi: Math.round(pxWidth / (placedWidthPt / 72)),
+  };
+};
+
+// Only the cover and the page art are printed. The thumbnail and previews are
+// shop listing images shown on screen, where print DPI does not apply.
 const imageSpecs = [
-  { role: 'cover', ...parseSize(profile.cover_size) },
-  { role: 'thumbnail', ...parseSize(profile.thumbnail_size) },
-  ...(images.previews || []).map((p) => ({ role: `preview_${p.index}`, ...parseSize(profile.preview_size) })),
-  ...(images.pages || []).map((p) => ({ role: `page_${p.page_number}`, ...parseSize(profile.image_size) })),
-].map((spec) => ({
-  ...spec,
-  placed_width_pt: profile.page_width_pt,
-  placed_height_pt: profile.page_height_pt,
-  effective_dpi: Math.round(spec.width / (profile.page_width_pt / 72)),
-}));
+  { role: 'cover', printed: true, full_bleed: true, ...parseSize(profile.cover_size) },
+  { role: 'thumbnail', printed: false, ...parseSize(profile.thumbnail_size) },
+  ...(images.previews || []).map((p) => ({
+    role: `preview_${p.index}`, printed: false, ...parseSize(profile.preview_size) })),
+  ...(images.pages || []).map((p) => ({
+    role: `page_${p.page_number}`, printed: true, full_bleed: false, ...parseSize(profile.image_size) })),
+].map((spec) => (spec.printed
+  ? { ...spec, ...placement(spec.width, spec.height, spec.full_bleed === true) }
+  : { ...spec, note: 'listing image, displayed on screen - print DPI does not apply' }));
 
 return [{
   json: {
@@ -1506,9 +1526,16 @@ for (const page of content.pages) {
 }
 if (MARGIN_PT / 2.835 < 10) blockers.push('page margin is below 10mm');
 
-const minDpi = Math.round(1024 / (profile.page_width_pt / 72));
-if (minDpi < 150) {
-  warnings.push(`generated art is ~${minDpi} DPI at full page width - acceptable on screen, soft in print`);
+// Same fit-inside-the-box maths the PDF writer uses, so this warning describes
+// the document that actually ships rather than a hypothetical full-bleed one.
+const [artW, artH] = String(profile.image_size || '1024x1536').split('x').map(Number);
+const artScale = Math.min(
+  (profile.page_width_pt - 56) / (artW || 1024),
+  (profile.page_height_pt - 56) / (artH || 1536)
+);
+const placedDpi = Math.round((artW || 1024) / (((artW || 1024) * artScale) / 72));
+if (placedDpi < 150) {
+  warnings.push(`page art lands at ~${placedDpi} DPI as placed - acceptable on screen, soft in print`);
 }
 
 const scores = report.scores || {};
@@ -1536,6 +1563,11 @@ return [{
     run_id: base.run_id,
     content_qa_prompt: render(agent.user_template, {
       product_name: idea.product_name,
+      // Without the factory's content schema the agent cannot tell a leftover
+      // draft marker from a field the product exists to be filled in: a resume
+      // kit's blank structure page was reported as "placeholder text", which is
+      // precisely what that page is for.
+      product_structure: `${profile.display_name}: ${profile.content_schema}`,
       target_customer: base.research.target_customer || '',
       content_json: JSON.stringify({
         cover_title: content.cover_title,

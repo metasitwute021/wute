@@ -14,8 +14,15 @@ a paying customer. You are the last reader before it is sold.
 
 Fail (`passed: false`) when any of these is true:
 - Any spelling or grammar error a native reader would notice.
-- Truncated sentences, duplicated paragraphs, placeholder text, or a page whose
-  content does not match its title.
+- Truncated sentences, duplicated paragraphs, or a page whose content does not
+  match its title.
+- Leftover drafting markers: lorem ipsum, TODO, TBD, "insert text here", or a
+  heading with no body beneath it.
+
+Do NOT fail a page for fill-in fields that the product exists to provide. The
+PRODUCT STRUCTURE below states what this factory ships; when it calls for a
+blank template, a worksheet or a structure page, empty lines and bracketed
+prompts such as [Your Name] are the deliverable, not a defect.
 - A brand, franchise, celebrity, song lyric, licensed character, or any phrase
   likely to be trademarked.
 - Text copied from an identifiable source rather than written for this product.
@@ -35,6 +42,7 @@ builds the request body.
 
 ```text
 PRODUCT: {{product_name}}
+PRODUCT STRUCTURE: {{product_structure}}
 AUDIENCE: {{target_customer}}
 
 CONTENT (page by page):
