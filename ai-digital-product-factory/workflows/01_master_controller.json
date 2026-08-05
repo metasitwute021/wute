@@ -895,104 +895,98 @@
     },
     {
       "parameters": {
-        "mode": "raw",
-        "jsonOutput": "={{ JSON.stringify({ ...$json, failed_stage: \"budget\" }) }}",
-        "options": {}
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nconst base = (items.length && items[0] && items[0].json) ? items[0].json : {};\nreturn [{\n  json: {\n    ...base,\n    failed_stage: 'budget',\n    stage_error: base.error ? String(base.error).slice(0, 500)\n               : (base.message ? String(base.message).slice(0, 500) : null),\n  },\n}];"
       },
       "id": "adpf01-stage-failed-budget",
       "name": "Stage Failed: Budget",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         1500,
         570
       ],
-      "notes": "Tags the failure with stage=budget for the shared error funnel.",
+      "notes": "Tags the failure with stage=budget for the shared error funnel. Tolerates an empty or null item from the error output.",
       "notesInFlow": true
     },
     {
       "parameters": {
-        "mode": "raw",
-        "jsonOutput": "={{ JSON.stringify({ ...$json, failed_stage: \"research\" }) }}",
-        "options": {}
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nconst base = (items.length && items[0] && items[0].json) ? items[0].json : {};\nreturn [{\n  json: {\n    ...base,\n    failed_stage: 'research',\n    stage_error: base.error ? String(base.error).slice(0, 500)\n               : (base.message ? String(base.message).slice(0, 500) : null),\n  },\n}];"
       },
       "id": "adpf01-stage-failed-research",
       "name": "Stage Failed: Research",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         2400,
         570
       ],
-      "notes": "Tags the failure with stage=research for the shared error funnel.",
+      "notes": "Tags the failure with stage=research for the shared error funnel. Tolerates an empty or null item from the error output.",
       "notesInFlow": true
     },
     {
       "parameters": {
-        "mode": "raw",
-        "jsonOutput": "={{ JSON.stringify({ ...$json, failed_stage: \"ideas\" }) }}",
-        "options": {}
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nconst base = (items.length && items[0] && items[0].json) ? items[0].json : {};\nreturn [{\n  json: {\n    ...base,\n    failed_stage: 'ideas',\n    stage_error: base.error ? String(base.error).slice(0, 500)\n               : (base.message ? String(base.message).slice(0, 500) : null),\n  },\n}];"
       },
       "id": "adpf01-stage-failed-ideas",
       "name": "Stage Failed: Ideas",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         3000,
         570
       ],
-      "notes": "Tags the failure with stage=ideas for the shared error funnel.",
+      "notes": "Tags the failure with stage=ideas for the shared error funnel. Tolerates an empty or null item from the error output.",
       "notesInFlow": true
     },
     {
       "parameters": {
-        "mode": "raw",
-        "jsonOutput": "={{ JSON.stringify({ ...$json, failed_stage: \"product\" }) }}",
-        "options": {}
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nconst base = (items.length && items[0] && items[0].json) ? items[0].json : {};\nreturn [{\n  json: {\n    ...base,\n    failed_stage: 'product',\n    stage_error: base.error ? String(base.error).slice(0, 500)\n               : (base.message ? String(base.message).slice(0, 500) : null),\n  },\n}];"
       },
       "id": "adpf01-stage-failed-product",
       "name": "Stage Failed: Product",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         3300,
         570
       ],
-      "notes": "Tags the failure with stage=product for the shared error funnel.",
+      "notes": "Tags the failure with stage=product for the shared error funnel. Tolerates an empty or null item from the error output.",
       "notesInFlow": true
     },
     {
       "parameters": {
-        "mode": "raw",
-        "jsonOutput": "={{ JSON.stringify({ ...$json, failed_stage: \"publish\" }) }}",
-        "options": {}
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nconst base = (items.length && items[0] && items[0].json) ? items[0].json : {};\nreturn [{\n  json: {\n    ...base,\n    failed_stage: 'publish',\n    stage_error: base.error ? String(base.error).slice(0, 500)\n               : (base.message ? String(base.message).slice(0, 500) : null),\n  },\n}];"
       },
       "id": "adpf01-stage-failed-publish",
       "name": "Stage Failed: Publish",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         4200,
         570
       ],
-      "notes": "Tags the failure with stage=publish for the shared error funnel.",
+      "notes": "Tags the failure with stage=publish for the shared error funnel. Tolerates an empty or null item from the error output.",
       "notesInFlow": true
     },
     {
       "parameters": {
-        "mode": "raw",
-        "jsonOutput": "={{ JSON.stringify({ ...$json, failed_stage: \"backup\" }) }}",
-        "options": {}
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nconst base = (items.length && items[0] && items[0].json) ? items[0].json : {};\nreturn [{\n  json: {\n    ...base,\n    failed_stage: 'backup',\n    stage_error: base.error ? String(base.error).slice(0, 500)\n               : (base.message ? String(base.message).slice(0, 500) : null),\n  },\n}];"
       },
       "id": "adpf01-stage-failed-backup",
       "name": "Stage Failed: Backup",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [
         5100,
         570
       ],
-      "notes": "Tags the failure with stage=backup for the shared error funnel.",
+      "notes": "Tags the failure with stage=backup for the shared error funnel. Tolerates an empty or null item from the error output.",
       "notesInFlow": true
     },
     {

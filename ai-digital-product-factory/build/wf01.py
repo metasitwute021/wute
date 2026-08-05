@@ -483,13 +483,27 @@ return [{
 """.strip()
 
 
-def _stage_marker(stage: str) -> dict:
-    """Set node that tags which stage blew up before the shared error funnel."""
-    return {
-        "mode": "raw",
-        "jsonOutput": '={{ JSON.stringify({ ...$json, failed_stage: "%s" }) }}' % stage,
-        "options": {},
-    }
+def _stage_marker_js(stage: str) -> str:
+    """Tag which stage failed, for the shared error funnel.
+
+    A Set node was used here originally and it crashed on its own input: these
+    nodes sit on error outputs, where n8n may hand over an item whose json is
+    empty or null, and the raw-mode expression could not survive that. A node
+    that reports failures must never be the thing that fails, so this makes no
+    assumption at all about the incoming shape.
+    """
+    return """
+const items = $input.all();
+const base = (items.length && items[0] && items[0].json) ? items[0].json : {};
+return [{
+  json: {
+    ...base,
+    failed_stage: '%s',
+    stage_error: base.error ? String(base.error).slice(0, 500)
+               : (base.message ? String(base.message).slice(0, 500) : null),
+  },
+}];
+""".strip() % stage
 
 
 def build() -> Workflow:
@@ -645,10 +659,10 @@ def build() -> Workflow:
         ("Stage Failed: Publish", "publish", 14),
         ("Stage Failed: Backup", "backup", 17),
     ]
-    from common import T_SET
     for name, stage, column in stages:
-        wf.add(name, T_SET, pos(column, 3), _stage_marker(stage),
-               notes=f"Tags the failure with stage={stage} for the shared error funnel.")
+        wf.add(name, T_CODE, pos(column, 3), code(_stage_marker_js(stage)),
+               notes=(f"Tags the failure with stage={stage} for the shared error funnel. "
+                      "Tolerates an empty or null item from the error output."))
 
     wf.add("Build Error Payload", T_CODE, pos(18, 3), code(JS_BUILD_ERROR),
            notes="Normalises any stage failure into one error record shape.")
