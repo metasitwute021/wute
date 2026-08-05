@@ -31,30 +31,85 @@ workflow ชุดนี้ (รุ่น Cloud-compatible) **ไม่ใช้
 
 ---
 
-## ขั้นที่ 2 — แก้ Postgres (Supabase) ให้ต่อติด
+## ขั้นที่ 2 — Postgres (Supabase)
 
-จากภาพหน้าจอของคุณ Host / Database / User ถูกแล้ว ปัญหาอยู่ที่ช่องล่าง ๆ ที่มองไม่เห็น
+> **Supabase คืออะไร:** เป็นผู้ให้บริการที่เอา **PostgreSQL ของแท้** มารันบนคลาวด์ให้เรา
+> พร้อมหน้าเว็บไว้ดูตาราง — credential ชื่อ "Postgres" ใน n8n ก็คือการต่อไปที่ฐานข้อมูลนี้
+> ลบโปรเจกต์ Supabase = ลบฐานข้อมูลทิ้ง / สร้างโปรเจกต์ใหม่ = ได้ฐานข้อมูลใหม่
 
-### หาค่าที่ถูกจาก Supabase
+### 2.1 สร้างโปรเจกต์ Supabase (ทำครั้งเดียว)
 
-เปิดโปรเจกต์ Supabase → กดปุ่ม **Connect** (แถบบนสุด) → เลือกแท็บ **Session pooler**
-จะเห็นค่าครบทุกช่อง ลอกมากรอกใน n8n:
+supabase.com → **New project** แล้วกรอก:
+
+| ช่อง | ใส่อะไร |
+|---|---|
+| Organization | ปล่อยตามเดิม |
+| GitHub (optional) | **ข้าม** ไม่ต้องกด Connect GitHub |
+| Project name | เช่น `ai-product-factory` |
+| **Database password** | ดูคำเตือนข้างล่าง |
+| Region | **Northeast Asia (Tokyo)** (หรือที่ใกล้ที่สุด) |
+| Security | เอาติ๊กออกที่ **Automatically expose new tables** ที่เหลือปล่อยตามเดิม |
+
+⚠️ **Database password — จุดที่คนพลาดบ่อยที่สุด**
+- **อย่ากด "Generate a password"** — จะได้อักขระพิเศษที่ทำให้ copy/paste เพี้ยน
+- พิมพ์เองเป็น **ตัวอักษรอังกฤษ + ตัวเลขล้วน** ยาว ~16 ตัว ไม่มี `@ # $ % & !` หรือช่องว่าง
+- **จดไว้ทันทีก่อนกดสร้าง** — Supabase ไม่โชว์ให้ดูซ้ำอีกเลย และนี่คือรหัสที่ต้องเอาไปใส่ n8n
+- ไม่ใช่รหัส login เว็บ Supabase และไม่ใช่ API key
+- ถ้าลืมจริง ๆ: Settings → Database → **Reset database password**
+
+กด **Create new project** แล้วรอ ~2 นาที
+
+### 2.2 หาค่าเชื่อมต่อ
+
+ในโปรเจกต์ → ปุ่ม **Connect** (แถบบนสุด) → การ์ด **`Direct` (Connection string)**
+→ เลือก **Session pooler**
+
+> ทางสำรองถ้าหาไม่เจอ: Settings → **Database** → หัวข้อ **Connection pooling**
+> หน้าจอ Supabase เปลี่ยนบ่อย ถ้าเห็นการ์ด Framework / Server / Direct / ORM / MCP
+> ให้กด **Direct**
+
+จะได้สตริงหน้าตาแบบนี้ (ตรง `[YOUR-PASSWORD]` เป็นแค่ข้อความ placeholder):
+
+```
+postgresql://postgres.abcdefghijklmnop:[YOUR-PASSWORD]@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres
+             └──────── User ────────┘                  └──────────── Host ─────────────┘ └Port┘ └Database┘
+```
+
+### 2.3 กรอกใน n8n
+
+n8n → **Credentials** → Create credential → ค้นหา **Postgres**
 
 | ช่องใน n8n | ค่า | หมายเหตุ |
 |---|---|---|
-| Host | `aws-0-ap-northeast-1.pooler.supabase.com` | ✅ ของคุณถูกแล้ว |
-| Database | `postgres` | ✅ ถูกแล้ว |
-| User | `postgres.asfgvinifbbauvvtmhgo` | ✅ ถูกแล้ว |
-| **Password** | **Database password** | ⚠️ ไม่ใช่รหัส login เว็บ Supabase และไม่ใช่ API key — ถ้าจำไม่ได้: Supabase → Settings → Database → **Reset database password** |
+| Host | `aws-0-<region>.pooler.supabase.com` | ลอกจากสตริงข้างบน |
+| Database | `postgres` | |
+| User | `postgres.<project-ref>` | ⚠️ **เปลี่ยนทุกครั้งที่สร้างโปรเจกต์ใหม่** |
+| **Password** | Database password ของโปรเจกต์นั้น | |
 | **Port** | **`5432`** | ⚠️ ต้อง 5432 (Session pooler) — ห้ามใช้ `6543` (Transaction pooler) n8n ต่อไม่ได้ |
 | **SSL** | **`require`** | ⚠️ สาเหตุต่อไม่ติดอันดับ 1 — Supabase บังคับ SSL แต่ n8n ตั้งต้นเป็น disable |
 
 ถ้าตั้ง `require` แล้วยังไม่ผ่าน → เปิด **Ignore SSL Issues** เพิ่ม → Retry
 
-### สร้างตาราง
+ต้องขึ้นแถบเขียว **Connection tested successfully** → แล้ว **กด Save** (เขียวเฉย ๆ ยังไม่บันทึก)
 
-Supabase → **SQL Editor** → วางเนื้อหาไฟล์ `db/schema.postgres.sql` ทั้งไฟล์ → **Run**
-(หรือไม่ทำก็ได้ — workflow 06 สร้างให้เองรอบแรก แต่ทำเองจะเห็นผลทันที)
+🧹 ถ้ามี Postgres credential ตัวเก่าที่ต่อไม่ติดค้างอยู่ **ลบทิ้ง** ไม่งั้นเวลาเลือกในโหนดจะหยิบผิดตัว
+
+> **ย้ายไปโปรเจกต์ Supabase ใหม่เมื่อไหร่ ต้องแก้ 3 ช่อง: Host, User, Password**
+> ไม่ใช่แค่ password — เพราะ project ref ใหม่ทำให้ User เปลี่ยนด้วย
+
+### 2.4 สร้างตาราง
+
+Supabase → **SQL Editor** → **New query** → วางเนื้อหาไฟล์ `db/schema.postgres.sql` ทั้งไฟล์
+→ **Run** (Ctrl+Enter)
+
+ถ้าเด้งกล่อง **"Potential issue detected — creates tables without enabling Row Level Security"**
+→ กด **`Run and enable RLS`** (ปุ่มเขียว)
+
+> RLS ปิดกั้นการอ่านตารางผ่าน API สาธารณะ (anon key) แต่**ไม่กระทบ n8n** เพราะ n8n ต่อ
+> PostgreSQL โดยตรงด้วย user `postgres` ซึ่งเป็นเจ้าของตาราง — เจ้าของตารางข้าม RLS ได้เสมอ
+
+✅ ต้องได้ `Success. No rows returned` → เช็คที่ **Table Editor** ต้องเห็นตาราง `adpf_*` ~15 ตาราง
+(รันซ้ำได้ไม่พัง ทุกคำสั่งเป็น `CREATE TABLE IF NOT EXISTS`)
 
 ---
 
@@ -150,7 +205,8 @@ Import ทีละไฟล์ **เรียงจากเลขมากไ�
 
 | อาการ | แก้ |
 |---|---|
-| Postgres: `password authentication failed` | ใช้ Database password (reset ได้ใน Supabase) |
+| Postgres: `password authentication failed` | ใช้ Database password ของ**โปรเจกต์ที่กำลังต่ออยู่** ไม่ใช่ของโปรเจกต์เก่า (reset ได้ใน Supabase → Settings → Database) |
+| Postgres: `Tenant or user not found` | ช่อง User ยังเป็น project ref เก่า หรือ Host คนละ region กับโปรเจกต์ — ลอกใหม่จาก Connect → Direct → Session pooler |
 | Postgres: timeout / ต่อไม่ติด | Port ต้อง 5432 + SSL = require |
 | Postgres: ผ่านแล้วแต่ query พัง `relation does not exist` | รัน schema ใน SQL Editor (ขั้นที่ 2) |
 | OpenAI: `Incorrect API key` | key ผิด/ลืม Save credential |
