@@ -302,7 +302,16 @@ def _sqlite_command(sql_expr: str) -> str:
     )
 
 
-def build() -> Workflow:
+def build(with_sqlite: bool = False) -> Workflow:
+    """The database logger.
+
+    ``with_sqlite`` adds the SQLite branch, which drives the sqlite3 CLI through
+    Execute Command nodes. n8n Cloud does not ship that node at all and refuses
+    to *load* a workflow containing an unknown node type - the whole workflow
+    fails before the router ever picks a branch, even though the branch is
+    unreachable when DB_TYPE is postgres. So the default build omits it, and
+    self-hosted users import the .selfhosted.json variant instead.
+    """
     wf = Workflow("06")
 
     wf.add("Receive DB Request", T_EXEC_TRIGGER, pos(0, 1),
@@ -313,8 +322,10 @@ def build() -> Workflow:
                   "PostgreSQL, fully escaped SQL text for the SQLite CLI."))
     wf.add("Route: Database Type", T_SWITCH, pos(2, 1),
            switch_equals("={{ ($env.DB_TYPE || 'postgres').toLowerCase() }}",
-                         ["postgres", "sqlite"]),
-           notes="DB_TYPE decides the engine. Anything unknown falls back to PostgreSQL.")
+                         ["postgres", "sqlite"] if with_sqlite else ["postgres"]),
+           notes=("DB_TYPE decides the engine. Anything unknown falls back to PostgreSQL."
+                  if with_sqlite else
+                  "PostgreSQL only in this build - see the .selfhosted variant for SQLite."))
 
     # -- PostgreSQL branch (native node) -----------------------------------
     wf.add("Postgres: Ensure Schema", T_POSTGRES, pos(3, 0),
@@ -334,14 +345,15 @@ def build() -> Workflow:
            **RETRY)
 
     # -- SQLite branch (CLI, self-hosted n8n only) -------------------------
-    wf.add("SQLite: Ensure Schema", T_EXEC_CMD, pos(3, 2),
-           {"command": _sqlite_command(json.dumps(DDL_SQLITE + "\n" + DDL_V2_SQLITE))},
-           notes="Requires the sqlite3 CLI on the n8n host. Self-hosted deployments only.",
-           **RETRY)
-    wf.add("SQLite: Write Record", T_EXEC_CMD, pos(4, 2),
-           {"command": _sqlite_command("$('Build SQL Statement').first().json.sqlite_sql")},
-           notes="Same upsert + event insert, escaped in the Build SQL Statement node.",
-           **RETRY)
+    if with_sqlite:
+        wf.add("SQLite: Ensure Schema", T_EXEC_CMD, pos(3, 2),
+               {"command": _sqlite_command(json.dumps(DDL_SQLITE + "\n" + DDL_V2_SQLITE))},
+               notes="Requires the sqlite3 CLI on the n8n host. Self-hosted deployments only.",
+               **RETRY)
+        wf.add("SQLite: Write Record", T_EXEC_CMD, pos(4, 2),
+               {"command": _sqlite_command("$('Build SQL Statement').first().json.sqlite_sql")},
+               notes="Same upsert + event insert, escaped in the Build SQL Statement node.",
+               **RETRY)
 
     wf.add("Build DB Result", T_CODE, pos(5, 1), code(JS_BUILD_RESULT),
            notes="Normalises the PostgreSQL row and the CLI stdout into one result shape.")
@@ -351,12 +363,19 @@ def build() -> Workflow:
     wf.link("Receive DB Request", "Build SQL Statement")
     wf.link("Build SQL Statement", "Route: Database Type")
     wf.link("Route: Database Type", "Postgres: Ensure Schema", 0)
-    wf.link("Route: Database Type", "SQLite: Ensure Schema", 1)
-    wf.link("Route: Database Type", "Postgres: Ensure Schema", 2)
     wf.link("Postgres: Ensure Schema", "Postgres: Write Record")
-    wf.link("SQLite: Ensure Schema", "SQLite: Write Record")
     wf.link("Postgres: Write Record", "Build DB Result")
-    wf.link("SQLite: Write Record", "Build DB Result")
+    if with_sqlite:
+        wf.link("Route: Database Type", "SQLite: Ensure Schema", 1)
+        wf.link("Route: Database Type", "Postgres: Ensure Schema", 2)  # fallback output
+        wf.link("SQLite: Ensure Schema", "SQLite: Write Record")
+        wf.link("SQLite: Write Record", "Build DB Result")
+    else:
+        wf.link("Route: Database Type", "Postgres: Ensure Schema", 1)  # fallback output
     wf.link("Build DB Result", "Return: DB Result")
 
     return wf
+
+
+def build_selfhosted() -> Workflow:
+    return build(with_sqlite=True)

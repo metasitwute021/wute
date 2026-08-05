@@ -77,6 +77,30 @@
               },
               "renameOutput": true,
               "outputKey": "postgres"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "rule-1",
+                    "leftValue": "={{ ($('Factory Config').first().json.cfg.DB_TYPE || 'postgres').toLowerCase() }}",
+                    "rightValue": "sqlite",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "sqlite"
             }
           ]
         },
@@ -94,7 +118,7 @@
         600,
         190
       ],
-      "notes": "PostgreSQL only in this build - see the .selfhosted variant for SQLite.",
+      "notes": "DB_TYPE decides the engine. Anything unknown falls back to PostgreSQL.",
       "notesInFlow": true
     },
     {
@@ -134,6 +158,42 @@
         0
       ],
       "notes": "Single parameterised statement: upsert the product row (NULLs never clobber existing values) and append an event.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "command": "={{ \"sqlite3 '\" + ($('Factory Config').first().json.cfg.DB_SQLITE_PATH || '/home/node/.n8n/adpf.db') + \"' <<'ADPFSQL'\\n\" + \"-- AI Digital Product Factory - SQLite schema\\nCREATE TABLE IF NOT EXISTS adpf_products (\\n  id              INTEGER PRIMARY KEY AUTOINCREMENT,\\n  run_id          TEXT NOT NULL UNIQUE,\\n  factory         TEXT,\\n  product_name    TEXT,\\n  category        TEXT,\\n  keywords        TEXT,\\n  marketplace     TEXT,\\n  drive_folder_id TEXT,\\n  etsy_listing_id TEXT,\\n  prompt_version  TEXT,\\n  status          TEXT NOT NULL DEFAULT 'running',\\n  error_log       TEXT,\\n  created_at      TEXT NOT NULL DEFAULT (datetime('now')),\\n  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))\\n);\\n\\nCREATE INDEX IF NOT EXISTS adpf_products_status_idx   ON adpf_products (status);\\nCREATE INDEX IF NOT EXISTS adpf_products_category_idx ON adpf_products (category);\\nCREATE INDEX IF NOT EXISTS adpf_products_created_idx  ON adpf_products (created_at DESC);\\n\\nCREATE TABLE IF NOT EXISTS adpf_events (\\n  id         INTEGER PRIMARY KEY AUTOINCREMENT,\\n  run_id     TEXT NOT NULL,\\n  op         TEXT NOT NULL,\\n  level      TEXT NOT NULL DEFAULT 'info',\\n  message    TEXT,\\n  created_at TEXT NOT NULL DEFAULT (datetime('now'))\\n);\\n\\nCREATE INDEX IF NOT EXISTS adpf_events_run_idx ON adpf_events (run_id, created_at DESC);\\n-- V2 tables for SQLite. The V2 workflows (07-10) target PostgreSQL; this schema\\n-- exists so a SQLite deployment can still record ideas, costs and QA results.\\nCREATE TABLE IF NOT EXISTS adpf_ideas (\\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\\n  idea_uid TEXT NOT NULL UNIQUE, run_id TEXT NOT NULL, batch_id TEXT,\\n  title TEXT NOT NULL, title_norm TEXT NOT NULL, category TEXT NOT NULL,\\n  factory TEXT NOT NULL, target_customer TEXT, keywords TEXT,\\n  demand_score REAL DEFAULT 0, competition_score REAL DEFAULT 0,\\n  trend_score REAL DEFAULT 0, seo_score REAL DEFAULT 0, profit_score REAL DEFAULT 0,\\n  difficulty_score REAL DEFAULT 0, evergreen_score REAL DEFAULT 0,\\n  diversity_score REAL DEFAULT 0, saturation_penalty REAL DEFAULT 0,\\n  est_price_usd REAL, est_api_cost_usd REAL, est_profit_usd REAL, est_margin_pct REAL,\\n  difficulty TEXT, lifecycle TEXT,\\n  idea_score REAL DEFAULT 0, final_score REAL DEFAULT 0, rank_in_batch INTEGER,\\n  stage TEXT NOT NULL DEFAULT 'generated', rejected_reason TEXT,\\n  created_at TEXT NOT NULL DEFAULT (datetime('now')),\\n  updated_at TEXT NOT NULL DEFAULT (datetime('now'))\\n);\\n\\nCREATE TABLE IF NOT EXISTS adpf_costs (\\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\\n  run_id TEXT NOT NULL, stage TEXT, provider TEXT NOT NULL DEFAULT 'openai',\\n  model TEXT, kind TEXT NOT NULL, calls INTEGER DEFAULT 1,\\n  input_units INTEGER DEFAULT 0, output_units INTEGER DEFAULT 0,\\n  cost_usd REAL NOT NULL DEFAULT 0,\\n  created_at TEXT NOT NULL DEFAULT (datetime('now'))\\n);\\n\\nCREATE TABLE IF NOT EXISTS adpf_budget (\\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\\n  scope TEXT NOT NULL, period_key TEXT NOT NULL,\\n  limit_usd REAL NOT NULL, spent_usd REAL NOT NULL DEFAULT 0,\\n  runs INTEGER NOT NULL DEFAULT 0, blocked INTEGER NOT NULL DEFAULT 0,\\n  updated_at TEXT NOT NULL DEFAULT (datetime('now')),\\n  UNIQUE (scope, period_key)\\n);\\n\\nCREATE TABLE IF NOT EXISTS adpf_qa_results (\\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\\n  run_id TEXT NOT NULL, stage TEXT NOT NULL, stage_no INTEGER NOT NULL,\\n  passed INTEGER NOT NULL, score REAL, blockers TEXT, warnings TEXT,\\n  checked_by TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now'))\\n);\\n\\nCREATE TABLE IF NOT EXISTS adpf_sales (\\n  id INTEGER PRIMARY KEY AUTOINCREMENT,\\n  marketplace TEXT NOT NULL, listing_id TEXT NOT NULL, run_id TEXT,\\n  product_name TEXT, category TEXT,\\n  views INTEGER DEFAULT 0, clicks INTEGER DEFAULT 0, favorites INTEGER DEFAULT 0,\\n  sales INTEGER DEFAULT 0, revenue_usd REAL DEFAULT 0, conversion_rate REAL,\\n  collected_at TEXT NOT NULL DEFAULT (datetime('now')),\\n  UNIQUE (marketplace, listing_id, collected_at)\\n);\" + \"\\nADPFSQL\" }}"
+      },
+      "id": "adpf06-sqlite-ensure-schema",
+      "name": "SQLite: Ensure Schema",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        900,
+        380
+      ],
+      "notes": "Requires the sqlite3 CLI on the n8n host. Self-hosted deployments only.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "command": "={{ \"sqlite3 '\" + ($('Factory Config').first().json.cfg.DB_SQLITE_PATH || '/home/node/.n8n/adpf.db') + \"' <<'ADPFSQL'\\n\" + $('Build SQL Statement').first().json.sqlite_sql + \"\\nADPFSQL\" }}"
+      },
+      "id": "adpf06-sqlite-write-record",
+      "name": "SQLite: Write Record",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        380
+      ],
+      "notes": "Same upsert + event insert, escaped in the Build SQL Statement node.",
       "notesInFlow": true,
       "retryOnFail": true,
       "maxTries": 3,
@@ -203,6 +263,13 @@
         ],
         [
           {
+            "node": "SQLite: Ensure Schema",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
             "node": "Postgres: Ensure Schema",
             "type": "main",
             "index": 0
@@ -222,6 +289,28 @@
       ]
     },
     "Postgres: Write Record": {
+      "main": [
+        [
+          {
+            "node": "Build DB Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQLite: Ensure Schema": {
+      "main": [
+        [
+          {
+            "node": "SQLite: Write Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQLite: Write Record": {
       "main": [
         [
           {

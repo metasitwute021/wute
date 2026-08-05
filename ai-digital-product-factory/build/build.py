@@ -39,6 +39,10 @@ WORKFLOWS = [
     ("04_publish_engine.json", wf04.build),
     ("05_google_drive_backup.json", wf05.build),
     ("06_database_logger.json", wf06.build),
+    # Same workflow with the SQLite branch. Kept out of the default build
+    # because n8n Cloud has no Execute Command node and refuses to load a
+    # workflow that contains one, unreachable branch or not.
+    ("06_database_logger.selfhosted.json", wf06.build_selfhosted),
     # V2 modules
     ("07_idea_factory.json", wf07.build),
     ("08_cost_and_budget.json", wf08.build),
@@ -56,6 +60,11 @@ TRIGGER_TYPES = {
 
 # Nodes that legitimately have no inbound connection.
 TERMINAL_OK = {"n8n-nodes-base.respondToWebhook"}
+
+# n8n Cloud does not ship these. It rejects the whole workflow at load time
+# with "Unrecognized node type", so an unreachable branch is not safe either.
+# Files named *.selfhosted.json are exempt; they exist for that case.
+CLOUD_UNSUPPORTED = {"n8n-nodes-base.executeCommand"}
 
 # Patterns that look like a real credential, not English words that happen to
 # contain them ("risk-check" is not an OpenAI key).
@@ -114,6 +123,12 @@ def validate(document: dict, filename: str) -> list[str]:
             continue
         if env_ref.search(json.dumps(node["parameters"])):
             problems.append(f"{node['name']}: raw $env reference survives cloudify")
+
+    if ".selfhosted." not in filename:
+        for node in document["nodes"]:
+            if node["type"] in CLOUD_UNSUPPORTED:
+                problems.append(f"{node['name']}: node type unavailable on n8n Cloud "
+                                f"({node['type']})")
 
     if CONFIG_NODE_NAME not in names and any(
         n["type"] in TRIGGER_TYPES and n["type"] != "n8n-nodes-base.errorTrigger"
