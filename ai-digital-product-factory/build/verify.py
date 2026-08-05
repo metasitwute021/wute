@@ -8,6 +8,7 @@ Needs Node.js on the PATH. Nothing here talks to OpenAI, Etsy or Google.
 
 from __future__ import annotations
 
+import glob
 import json
 import os
 import re
@@ -197,6 +198,51 @@ def check_sql() -> list[str]:
     return problems
 
 
+def check_input_fields() -> list[str]:
+    """Catch a Code node reading fields its predecessor does not emit.
+
+    Build Idea Prompt read ctx.research off $input while its feeder emitted a
+    QA verdict, so the agent was handed the literal string "undefined" and no
+    node failed - the run only went wrong three stages later. A node addressed
+    by name ($('X').first().json) is unaffected; this only checks $input.
+    """
+    problems: list[str] = []
+    ctx_from_input = re.compile(r"const ctx = \$input\b")
+    field_use = re.compile(r"\bctx\.(\w+)")
+
+    for path in sorted(glob.glob(os.path.join(ROOT, "workflows", "*.json"))):
+        with open(path, encoding="utf-8") as fh:
+            document = json.load(fh)
+        nodes = {n["name"]: n for n in document["nodes"]}
+        feeders: dict[str, list[str]] = {}
+        for source, outputs in document["connections"].items():
+            for branch in outputs.get("main", []):
+                for link in branch:
+                    feeders.setdefault(link["node"], []).append(source)
+
+        for name, node in nodes.items():
+            code = node["parameters"].get("jsCode")
+            if not code or not ctx_from_input.search(code):
+                continue
+            fields = sorted(set(field_use.findall(code)))
+            for feeder in feeders.get(name, []):
+                feeder_code = nodes[feeder]["parameters"].get("jsCode")
+                if not feeder_code:
+                    continue                      # not a Code node: shape unknown
+                tail = feeder_code[feeder_code.rfind("return "):]
+                if re.search(r"\.\.\.\s*\w+(\.json)?\b", tail):
+                    continue                      # spreads its input: passes through
+                missing = [f for f in fields if not re.search(rf"\b{f}\b", tail)]
+                if missing:
+                    problems.append(
+                        f"{os.path.basename(path)}: '{name}' reads $input."
+                        f"{{{', '.join(missing)}}} but '{feeder}' does not emit "
+                        f"{'it' if len(missing) == 1 else 'them'}")
+    print(f"[{'ok' if not problems else 'FAILED'}] checked $input field reads "
+          f"against their feeders")
+    return problems
+
+
 def main() -> int:
     if subprocess.run(["node", "-v"], capture_output=True).returncode != 0:
         print("node is required for verify.py")
@@ -207,6 +253,7 @@ def main() -> int:
         problems += check_code_nodes(tmp)
         problems += check_sql()
         problems += check_pdf(tmp)
+    problems += check_input_fields()
 
     if problems:
         print(f"\n{len(problems)} problem(s):")

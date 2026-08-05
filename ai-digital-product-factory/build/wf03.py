@@ -279,7 +279,12 @@ return [{
 """.strip()
 
 JS_BUILD_IDEA_PROMPT = RENDER_HELPER + r"""
-const ctx = $input.first().json;
+// Addressed by node, not by $input: the immediate predecessor is QA Stage 1,
+// whose item is a verdict (passed, score, blockers) and carries neither the
+// research package nor the factory profile. Reading them off $input yielded
+// the string "undefined" in both slots, and Idea AI was being asked to design
+// a product from a 312-token prompt containing no product information at all.
+const ctx = $('Merge: Factory Profiles').first().json;
 const agent = $('Prompt Library').first().json.prompts.idea_ai;
 
 return [{
