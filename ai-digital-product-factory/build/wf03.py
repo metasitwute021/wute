@@ -304,7 +304,10 @@ const readAgentReply = (label, response) => {
   const message = choice.message || {};
   const finish = choice.finish_reason || 'unknown';
   const content = message.content == null ? '' : String(message.content);
-  const preview = content.slice(0, 400);
+  // One line, always. n8n renders a Code node failure as "<message> [line N]"
+  // and a newline in the middle truncates it - a preview of pretty-printed
+  // JSON turned the whole diagnostic into "{ [line 39]".
+  const preview = content.replace(/\s+/g, ' ').trim().slice(0, 240);
 
   if (message.refusal) {
     throw new Error(`${label} refused the request: ${String(message.refusal).slice(0, 300)}`);
@@ -321,8 +324,24 @@ const readAgentReply = (label, response) => {
     return { data: JSON.parse(content), finish, preview };
   } catch (e) {
     throw new Error(`${label} returned invalid JSON (finish_reason=${finish}): ` +
-                    `${e.message} | got: ${preview}`);
+                    `${String(e.message).replace(/\s+/g, ' ')} | got: ${preview}`);
   }
+};
+
+// Models sometimes wrap the contract in a single envelope key - {"product": {...}}
+// or {"brief": {...}}. That is a formatting habit, not a different answer, so
+// unwrap it rather than throwing away a reply that contains everything asked
+// for. Anything less obvious is still a genuine contract violation.
+const unwrapEnvelope = (data, fields) => {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
+  const has = (obj) => fields.every((field) => obj && obj[field] !== undefined);
+  if (has(data)) return data;
+  const keys = Object.keys(data);
+  if (keys.length === 1) {
+    const inner = data[keys[0]];
+    if (has(inner)) return inner;
+  }
+  return data;
 };
 
 const requireAgentFields = (label, reply, fields) => {
@@ -346,6 +365,7 @@ const base = $('Merge: Factory Profiles').first().json;
 const response = $input.first().json;
 
 const reply = readAgentReply('Idea AI', response);
+reply.data = unwrapEnvelope(reply.data, ['product_name', 'sections']);
 requireAgentFields('Idea AI', reply, ['product_name', 'sections']);
 const idea = reply.data;
 
@@ -1796,7 +1816,10 @@ def build() -> Workflow:
                "($('Prompt Library').first().json.prompts.idea_ai.system + "
                "'\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + "
                "$('Prompt Library').first().json.prompts.idea_ai.output_contract)",
-               "$json.idea_user_prompt", temperature=0.8, max_tokens=2500),
+               # 2500 was tight for a contract carrying sections,
+               # visual_direction and bonus_items; a truncated reply reads as a
+               # missing field. The extra headroom costs about 1c per run.
+               "$json.idea_user_prompt", temperature=0.8, max_tokens=4000),
            notes="Agent 2/8. Turns the market concept into a buildable product brief.",
            **RETRY)
     wf.add("Parse Idea JSON", T_CODE, pos(8, 3), code(JS_PARSE_IDEA),
