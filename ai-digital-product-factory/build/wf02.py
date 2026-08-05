@@ -285,6 +285,16 @@ return [{
 """.strip()
 
 
+JS_SKIP_ETSY = r"""
+// Reached when no Etsy key is configured. The aggregator downstream reads the
+// two Etsy nodes defensively, so nothing else has to change - this node only
+// carries the context forward and states why the signals are absent.
+const ctx = $('Normalize Research Input').first().json;
+return [{ json: { ...ctx, etsy_signals_skipped: true,
+                  etsy_skip_reason: 'ETSY_API_KEY is not set in Factory Config' } }];
+""".strip()
+
+
 def build() -> Workflow:
     wf = Workflow("02")
 
@@ -297,8 +307,19 @@ def build() -> Workflow:
     wf.add("Normalize Research Input", T_CODE, pos(2, 1), code(JS_NORMALIZE),
            notes="Resolves the search keyword (explicit seed or per-factory default).")
 
+    # Without an Etsy credential the two HTTP nodes below cannot even resolve
+    # their auth, so gate them instead of relying on onError. The aggregator
+    # reads both nodes through a try/catch and treats "never executed" the same
+    # as "returned nothing", which is exactly the no-Etsy case.
+    wf.add("Check: Etsy Available", T_IF, pos(3, 1),
+           if_bool("={{ String($env.ETSY_API_KEY || '').trim() !== '' }}"),
+           notes=("No Etsy key configured -> skip the market sample entirely. "
+                  "Research AI still runs, just without competitor signals."))
+    wf.add("Skip Etsy Signals", T_CODE, pos(4, 2), code(JS_SKIP_ETSY),
+           notes="Records why the market sample is missing so the run stays auditable.")
+
     wf.add(
-        "Etsy: Search Active Listings", T_HTTP, pos(3, 1),
+        "Etsy: Search Active Listings", T_HTTP, pos(4, 0),
         etsy_http(
             "GET",
             "={{ $env.ETSY_API_BASE }}/v3/application/listings/active"
@@ -312,12 +333,12 @@ def build() -> Workflow:
         onError="continueRegularOutput", alwaysOutputData=True, **RETRY,
     )
     wf.add(
-        "Etsy: Fetch Taxonomy Nodes", T_HTTP, pos(4, 1),
+        "Etsy: Fetch Taxonomy Nodes", T_HTTP, pos(5, 0),
         etsy_http("GET", "={{ $env.ETSY_API_BASE }}/v3/application/seller-taxonomy/nodes"),
         notes="Official Etsy category tree, used to ground the category suggestion.",
         onError="continueRegularOutput", alwaysOutputData=True, **RETRY,
     )
-    wf.add("Aggregate Etsy Market Signals", T_CODE, pos(5, 1), code(JS_AGGREGATE),
+    wf.add("Aggregate Etsy Market Signals", T_CODE, pos(6, 1), code(JS_AGGREGATE),
            notes="Price percentiles, tag/keyword frequency, competitor count, category hints.")
     wf.add("Build Research Prompt", T_CODE, pos(6, 1), code(JS_BUILD_RESEARCH_PROMPT),
            notes="Renders the Research AI user template with the aggregated signals.")
@@ -364,7 +385,14 @@ def build() -> Workflow:
 
     wf.chain(
         "Receive Research Request", "Prompt Library", "Normalize Research Input",
-        "Etsy: Search Active Listings", "Etsy: Fetch Taxonomy Nodes",
+        "Check: Etsy Available",
+    )
+    wf.link("Check: Etsy Available", "Etsy: Search Active Listings", 0)
+    wf.link("Check: Etsy Available", "Skip Etsy Signals", 1)
+    wf.link("Etsy: Search Active Listings", "Etsy: Fetch Taxonomy Nodes")
+    wf.link("Etsy: Fetch Taxonomy Nodes", "Aggregate Etsy Market Signals")
+    wf.link("Skip Etsy Signals", "Aggregate Etsy Market Signals")
+    wf.chain(
         "Aggregate Etsy Market Signals", "Build Research Prompt",
         "OpenAI: Research AI", "Parse Research JSON", "Check: Research Valid",
     )

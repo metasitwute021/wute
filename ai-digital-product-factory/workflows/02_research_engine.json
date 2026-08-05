@@ -68,6 +68,59 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-1",
+              "leftValue": "={{ String($('Factory Config').first().json.cfg.ETSY_API_KEY || '').trim() !== '' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "adpf02-check-etsy-available",
+      "name": "Check: Etsy Available",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        900,
+        190
+      ],
+      "notes": "No Etsy key configured -> skip the market sample entirely. Research AI still runs, just without competitor signals.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Reached when no Etsy key is configured. The aggregator downstream reads the\n// two Etsy nodes defensively, so nothing else has to change - this node only\n// carries the context forward and states why the signals are absent.\nconst ctx = $('Normalize Research Input').first().json;\nreturn [{ json: { ...ctx, etsy_signals_skipped: true,\n                  etsy_skip_reason: 'ETSY_API_KEY is not set in Factory Config' } }];"
+      },
+      "id": "adpf02-skip-etsy-signals",
+      "name": "Skip Etsy Signals",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        380
+      ],
+      "notes": "Records why the market sample is missing so the run stays auditable.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
         "method": "GET",
         "url": "={{ $('Factory Config').first().json.cfg.ETSY_API_BASE }}/v3/application/listings/active?limit=100&sort_on=score&sort_order=desc&keywords={{ encodeURIComponent($json.search_keyword) }}",
         "authentication": "genericCredentialType",
@@ -90,8 +143,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        900,
-        190
+        1200,
+        0
       ],
       "notes": "Live competitor sample for the target keyword. Degrades gracefully: on error the run continues with whatever signals are available.",
       "notesInFlow": true,
@@ -125,8 +178,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1200,
-        190
+        1500,
+        0
       ],
       "notes": "Official Etsy category tree, used to ground the category suggestion.",
       "notesInFlow": true,
@@ -146,7 +199,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1500,
+        1800,
         190
       ],
       "notes": "Price percentiles, tag/keyword frequency, competitor count, category hints.",
@@ -366,7 +419,25 @@
       "main": [
         [
           {
+            "node": "Check: Etsy Available",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check: Etsy Available": {
+      "main": [
+        [
+          {
             "node": "Etsy: Search Active Listings",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skip Etsy Signals",
             "type": "main",
             "index": 0
           }
@@ -385,6 +456,17 @@
       ]
     },
     "Etsy: Fetch Taxonomy Nodes": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Etsy Market Signals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Etsy Signals": {
       "main": [
         [
           {
