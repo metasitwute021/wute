@@ -426,10 +426,15 @@ const response = $input.first().json;
 
 const content = readAgentReply('Writer AI', response).data;
 
+// Number the pages here rather than trusting page_number from the writer. The
+// model repeats numbers - a run shipped two different pages both labelled 1 -
+// and the number is not decoration: the PDF prints it in the footer and the
+// illustrations are matched to pages by it, so a collision puts the same
+// artwork on two pages and silently overruns the profile's image budget.
 const pages = (content.pages || [])
   .filter((p) => p && (p.title || (p.lines || []).length))
   .map((p, index) => ({
-    page_number: Number(p.page_number) || index + 1,
+    page_number: index + 1,
     title: String(p.title || `Page ${index + 1}`).slice(0, 90),
     lines: (p.lines || []).map((l) => String(l).slice(0, 400)).filter(Boolean),
     needs_image: p.needs_image === true,
@@ -791,8 +796,22 @@ for (const candidate of candidates) {
 }
 while (tags.length < 13) tags.push(normaliseTag(`${base.factory} download ${tags.length}`));
 
-const description = String(descriptionOut.description || '').trim() ||
-  `${idea.product_name}\n\n${idea.promise || idea.one_liner || ''}`;
+// The description is the listing copy a shopper reads, so it must be text.
+// A model that answers with {intro, body, closing} instead of a string turned
+// into the literal "[object Object]" on a real run - String() will happily
+// stringify anything, which is exactly the problem.
+const flattenText = (value) => {
+  if (value == null) return '';
+  if (typeof value === 'string') return value.trim();
+  if (Array.isArray(value)) return value.map(flattenText).filter(Boolean).join('\n\n');
+  if (typeof value === 'object') return flattenText(Object.values(value));
+  return String(value).trim();
+};
+
+const description = flattenText(descriptionOut.description)
+  || flattenText(descriptionOut.body)
+  || flattenText(descriptionOut.text)
+  || `${idea.product_name}\n\n${idea.promise || idea.one_liner || ''}`;
 
 const disclosure = 'This is an instant digital download. No physical item will be shipped.';
 const finalDescription = description.toLowerCase().includes('digital download')
