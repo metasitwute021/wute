@@ -108,7 +108,9 @@ Supabase → **SQL Editor** → **New query** → วางเนื้อหา
 > RLS ปิดกั้นการอ่านตารางผ่าน API สาธารณะ (anon key) แต่**ไม่กระทบ n8n** เพราะ n8n ต่อ
 > PostgreSQL โดยตรงด้วย user `postgres` ซึ่งเป็นเจ้าของตาราง — เจ้าของตารางข้าม RLS ได้เสมอ
 
-✅ ต้องได้ `Success. No rows returned` → เช็คที่ **Table Editor** ต้องเห็นตาราง `adpf_*` ~15 ตาราง
+✅ ต้องได้ `Success. No rows returned` → เช็คที่ **Table Editor** ต้องเห็นตาราง `adpf_*` **12 ตาราง**
+(`products`, `ideas`, `events`, `costs`, `budget`, `qa_results`, `product_versions`,
+`sales`, `ab_tests`, `trends`, `prompt_versions`, `category_targets`) ทุกตารางว่างเปล่าเป็นเรื่องปกติ
 (รันซ้ำได้ไม่พัง ทุกคำสั่งเป็น `CREATE TABLE IF NOT EXISTS`)
 
 ---
