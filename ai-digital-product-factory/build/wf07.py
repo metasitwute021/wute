@@ -57,6 +57,7 @@ return [{
   json: {
     run_id: ctx.run_id,
     factory: ctx.factory,
+    factory_locked: ctx.factory_locked === true,
     prompt_version: ctx.prompt_version || $env.PROMPT_VERSION || 'v1.0.0',
     dry_run: ctx.dry_run === true,
     research,
@@ -492,8 +493,25 @@ JS_SELECT_FUNNEL = r"""
 // the top 5 is always the same category.
 const ctx = $('Parse Inventory Snapshot').first().json;
 const all = $input.all().map((i) => i.json);
-const alive = all.filter((idea) => idea.stage !== 'rejected')
+let alive = all.filter((idea) => idea.stage !== 'rejected')
   .sort((a, b) => b.final_score - a.final_score);
+
+// A named factory is an instruction, not a hint. Ideas are generated across
+// every factory and ranked on score alone, so without this the request is
+// silently overruled - and the factories differ in cost, so being handed a
+// 13-image kids pack when a 6-image resume kit was asked for doubles the bill.
+// "auto" leaves the choice open, which is what the daily rotation wants.
+let factory_override_reason = null;
+if (ctx.factory_locked && ctx.factory) {
+  const matching = alive.filter((idea) => idea.factory === ctx.factory);
+  if (matching.length) {
+    alive = matching;
+  } else {
+    factory_override_reason =
+      `no idea scored for the requested factory "${ctx.factory}" - ` +
+      'fell back to the whole pool';
+  }
+}
 
 const stageOf = new Map();
 
@@ -539,6 +557,8 @@ top5.forEach((idea) => stageOf.set(idea.idea_uid, 'top5'));
 const decorated = all.map((idea) => ({
   ...idea,
   stage: idea.stage === 'rejected' ? 'rejected' : (stageOf.get(idea.idea_uid) || 'generated'),
+  factory_locked_to: ctx.factory_locked ? ctx.factory : null,
+  factory_override_reason,
 }));
 
 return decorated.map((json) => ({ json }));

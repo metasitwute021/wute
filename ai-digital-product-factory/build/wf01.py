@@ -97,7 +97,14 @@ if (!FACTORIES.includes(factory)) {
   );
 }
 
-return [{ json: { ...ctx, factory, stage: 'factory-selected' } }];
+// Whether the caller named a factory matters downstream: the Idea Factory
+// generates across every factory and picks on score alone, which quietly
+// overrode an explicit request - ask for a resume kit, get a kids pack.
+const factoryLocked = Boolean(ctx.requested_factory)
+  && ctx.requested_factory !== 'auto';
+
+return [{ json: { ...ctx, factory, factory_locked: factoryLocked,
+                  stage: 'factory-selected' } }];
 """.strip()
 
 JS_PREPARE_RUN_LOG = r"""

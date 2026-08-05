@@ -800,12 +800,14 @@ while (tags.length < 13) tags.push(normaliseTag(`${base.factory} download ${tags
 // A model that answers with {intro, body, closing} instead of a string turned
 // into the literal "[object Object]" on a real run - String() will happily
 // stringify anything, which is exactly the problem.
+// Only prose is collected. Walking every value of an object swept up whatever
+// numeric fields the model happened to include, and a bare "5" was printed at
+// the end of a real listing description.
 const flattenText = (value) => {
-  if (value == null) return '';
   if (typeof value === 'string') return value.trim();
   if (Array.isArray(value)) return value.map(flattenText).filter(Boolean).join('\n\n');
-  if (typeof value === 'object') return flattenText(Object.values(value));
-  return String(value).trim();
+  if (value && typeof value === 'object') return flattenText(Object.values(value));
+  return '';
 };
 
 const description = flattenText(descriptionOut.description)
