@@ -542,7 +542,11 @@ CONFIG_DEFAULTS: dict = {
     # Text agents when the suite is built with --text-provider gemini. Images
     # stay on OpenAI either way; nothing here changes that.
     "GEMINI_API_BASE": "https://generativelanguage.googleapis.com",
-    "GEMINI_MODEL_TEXT": "gemini-2.5-flash",
+    # An alias, not a pinned version. Google retires a specific model name
+    # for new projects without warning - gemini-2.5-flash returned 404 with
+    # "no longer available to new users" on a key issued the same day - and
+    # the -latest aliases are what that churn is meant to be absorbed by.
+    "GEMINI_MODEL_TEXT": "gemini-flash-latest",
     "OPENAI_MODEL_IMAGE": "gpt-image-1",
     "OPENAI_IMAGE_QUALITY": "high",
     # Per-role image quality. The cover is the picture a shopper decides on, so

@@ -25,6 +25,8 @@ const CHAT_PRICES = {
   // Gemini's free tier costs nothing per token but still consumes quota, so it
   // is priced at zero rather than omitted - the ledger stays complete and the
   // call count remains visible on the dashboard.
+  'gemini-flash-latest':      [0.00, 0.00],
+  'gemini-flash-lite-latest': [0.00, 0.00],
   'gemini-2.5-flash':      [0.00, 0.00],
   'gemini-2.5-flash-lite': [0.00, 0.00],
   'gemini-2.0-flash':      [0.00, 0.00],
