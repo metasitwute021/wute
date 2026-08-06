@@ -313,6 +313,65 @@ def shape_checks(tmp: str, code_of: dict) -> int:
     return failures
 
 
+def provider_checks(tmp: str) -> int:
+    """The parsers must read either provider's reply shape.
+
+    A build can target OpenAI or Gemini, and their responses agree on nothing:
+    choices[].message.content versus candidates[].content.parts[].text, usage
+    versus usageMetadata, finish_reason versus finishReason. One reader covers
+    both; these drive it with a real example of each.
+    """
+    print("\n=== provider checks: one reader, two reply shapes ===")
+    from common import AGENT_CONTENT_JS
+    payload = '{"product_name":"The Clear Start Resume Kit","sections":[{"title":"Cover"}]}'
+    cases = {
+        "openai": {"choices": [{"finish_reason": "stop",
+                                "message": {"content": payload}}],
+                   "usage": {"prompt_tokens": 312, "completion_tokens": 70}},
+        "gemini": {"candidates": [{"finishReason": "STOP",
+                                   "content": {"parts": [{"text": payload}]}}],
+                   "usageMetadata": {"promptTokenCount": 312,
+                                     "candidatesTokenCount": 70,
+                                     "totalTokenCount": 382}},
+        "gemini split across parts": {
+            "candidates": [{"finishReason": "STOP", "content": {"parts": [
+                {"text": payload[:40]}, {"text": payload[40:]}]}}],
+            "usageMetadata": {"promptTokenCount": 5, "candidatesTokenCount": 5}},
+        "gemini truncated": {
+            "candidates": [{"finishReason": "MAX_TOKENS",
+                            "content": {"parts": [{"text": '{"a":'}]}}]},
+    }
+    script = os.path.join(tmp, "provider.js")
+    failures = 0
+    for label, response in cases.items():
+        harness = AGENT_CONTENT_JS + f"""
+const r = {json.dumps(response)};
+const content = agentContent(r);
+const usage = agentUsage(r);
+const finish = agentFinish(r);
+let name = null;
+try {{ name = JSON.parse(content).product_name; }} catch (e) {{ name = 'UNPARSEABLE'; }}
+console.log(JSON.stringify({{ finish, prompt: usage && usage.prompt_tokens,
+                              completion: usage && usage.completion_tokens, name }}));
+"""
+        with open(script, "w", encoding="utf-8") as fh:
+            fh.write(harness)
+        result = subprocess.run(["node", script], capture_output=True, text=True)
+        if result.returncode:
+            print(f"  [FAIL] {label:26s} {result.stderr.strip().splitlines()[-1][:60]}")
+            failures += 1
+            continue
+        out = json.loads(result.stdout.strip().splitlines()[-1])
+        want_truncated = "truncated" in label
+        ok = (out["finish"] == ("max_tokens" if want_truncated else "stop")
+              and (out["name"] == "UNPARSEABLE" if want_truncated
+                   else out["name"] == "The Clear Start Resume Kit"))
+        print(f"  [{'ok  ' if ok else 'FAIL'}] {label:26s} finish={out['finish']:10s} "
+              f"tokens={out['prompt']}/{out['completion']} name={out['name']}")
+        failures += 0 if ok else 1
+    return failures
+
+
 def main() -> int:
     with open(os.path.join(ROOT, "workflows", "03_product_engine.json"),
               encoding="utf-8") as fh:
@@ -353,6 +412,7 @@ def main() -> int:
 
         failures += negative_checks(tmp, code_of)
         failures += shape_checks(tmp, code_of)
+        failures += provider_checks(tmp)
 
     print()
     if failures:

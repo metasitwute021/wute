@@ -104,18 +104,18 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
+        "url": "={{ ($('Factory Config').first().json.cfg.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com') + '/v1beta/models/' + ($('Factory Config').first().json.cfg.GEMINI_MODEL_TEXT || 'gemini-2.5-flash') + ':generateContent' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $('Factory Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.7, max_tokens: 200, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: $json.system_prompt }, { role: 'user', content: $json.user_prompt } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ systemInstruction: { parts: [{ text: $json.system_prompt }] }, contents: [{ role: 'user', parts: [{ text: $json.user_prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 200, responseMimeType: 'application/json' } }) }}",
         "options": {
           "timeout": 180000
         }
       },
       "id": "adpf00-openai-connection-test",
-      "name": "OpenAI: Connection Test",
+      "name": "Gemini: Connection Test",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -253,14 +253,14 @@
       "main": [
         [
           {
-            "node": "OpenAI: Connection Test",
+            "node": "Gemini: Connection Test",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "OpenAI: Connection Test": {
+    "Gemini: Connection Test": {
       "main": [
         [
           {

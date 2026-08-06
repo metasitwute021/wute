@@ -22,6 +22,12 @@ JS_NORMALIZE = r"""
 //   chat  : USD per 1M tokens  [input, output]
 //   image : USD per image
 const CHAT_PRICES = {
+  // Gemini's free tier costs nothing per token but still consumes quota, so it
+  // is priced at zero rather than omitted - the ledger stays complete and the
+  // call count remains visible on the dashboard.
+  'gemini-2.5-flash':      [0.00, 0.00],
+  'gemini-2.5-flash-lite': [0.00, 0.00],
+  'gemini-2.0-flash':      [0.00, 0.00],
   'gpt-4.1':      [2.00, 8.00],
   'gpt-4.1-mini': [0.40, 1.60],
   'gpt-4o':       [2.50, 10.00],

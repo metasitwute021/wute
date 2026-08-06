@@ -14,6 +14,7 @@ JavaScript and n8n expressions never have to be hand-escaped inside JSON.
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import re
@@ -29,7 +30,10 @@ import wf01, wf02, wf03, wf04, wf05, wf06  # noqa: E402
 import wf07, wf08, wf09, wf10  # noqa: E402  (V2 modules)
 from wf06 import DDL_POSTGRES, DDL_SQLITE  # noqa: E402
 from schema_v2 import DDL_V2_POSTGRES, DDL_V2_SQLITE  # noqa: E402
-from common import CONFIG_EXEMPT_NODES, CONFIG_NODE_NAME, make_cloud_compatible  # noqa: E402
+from common import (  # noqa: E402
+    CONFIG_EXEMPT_NODES, CONFIG_NODE_NAME, make_cloud_compatible,
+    rename_text_agents, set_text_provider,
+)
 
 WORKFLOWS = [
     ("00_starter_smoke_test.json", wf00.build),
@@ -124,6 +128,18 @@ def validate(document: dict, filename: str) -> list[str]:
         if env_ref.search(json.dumps(node["parameters"])):
             problems.append(f"{node['name']}: raw $env reference survives cloudify")
 
+    # Nodes are addressed by name in Code nodes and expressions - $('Name') -
+    # and a rename or a typo there fails only at run time, on the node that
+    # reads it. Names are data here, so they can be checked like data.
+    node_ref = re.compile(r"\$\(\\?['\"]([^'\"\\]+)\\?['\"]\)")
+    comment = re.compile(r"//[^\\\n]*|/\*.*?\*/", re.S)
+    for node in document["nodes"]:
+        source = comment.sub(" ", json.dumps(node["parameters"]))
+        for ref in set(node_ref.findall(source)):
+            if ref not in names:
+                problems.append(f"{node['name']}: refers to $('{ref}'), which is "
+                                "not a node in this workflow")
+
     if ".selfhosted." not in filename:
         for node in document["nodes"]:
             if node["type"] in CLOUD_UNSUPPORTED:
@@ -140,7 +156,18 @@ def validate(document: dict, filename: str) -> list[str]:
 
 
 def main() -> int:
-    workflows_dir = os.path.join(ROOT, "workflows")
+    # A node's credential type is fixed in the JSON, so the text provider is a
+    # build-time choice rather than a runtime one. Both variants are generated
+    # from the same source; only the agent HTTP nodes differ.
+    provider = "openai"
+    if "--text-provider" in sys.argv:
+        provider = sys.argv[sys.argv.index("--text-provider") + 1]
+    set_text_provider(provider)
+    for module in (wf00, wf01, wf02, wf03, wf04, wf05, wf06, wf07, wf08, wf09, wf10):
+        importlib.reload(module)
+
+    suffix = "" if provider == "openai" else f"-{provider}"
+    workflows_dir = os.path.join(ROOT, f"workflows{suffix}")
     prompts_dir = os.path.join(ROOT, "prompts")
     db_dir = os.path.join(ROOT, "db")
     for directory in (workflows_dir, prompts_dir, db_dir):
@@ -151,7 +178,7 @@ def main() -> int:
 
     for filename, builder in WORKFLOWS:
         workflow = builder()
-        document = make_cloud_compatible(workflow.to_dict())
+        document = rename_text_agents(make_cloud_compatible(workflow.to_dict()))
         problems = validate(document, filename)
         path = os.path.join(workflows_dir, filename)
         with open(path, "w", encoding="utf-8") as fh:
@@ -175,7 +202,8 @@ def main() -> int:
         fh.write(DDL_SQLITE + "\n\n" + DDL_V2_SQLITE + "\n")
     print("[ok] db/                           2 schemas (V1 + V2)")
 
-    print(f"\n{total_nodes} nodes generated across {len(WORKFLOWS)} workflows")
+    print(f"\n{total_nodes} nodes generated across {len(WORKFLOWS)} workflows"
+          f" (text provider: {provider})")
     if failures:
         print(f"{failures} validation problem(s) found")
         return 1

@@ -11,6 +11,7 @@ quietly drifts into producing junk; a human flips the switch.
 """
 
 from common import (
+    AGENT_CONTENT_JS,
     RETRY, T_CODE, T_EXEC_TRIGGER, T_HTTP, T_IF, T_LOOP, T_NOOP, T_POSTGRES,
     T_SCHEDULE, Workflow, code, etsy_http, if_bool, loop_node, openai_chat, pos,
 )
@@ -318,14 +319,14 @@ return [{
 }];
 """.rstrip()
 
-JS_PARSE_LEARNING = r"""
+JS_PARSE_LEARNING = AGENT_CONTENT_JS + r"""
 // Section 14 + 15. The report is stored; it never edits a live prompt by itself.
 const ctx = $('Build Learning Prompt').first().json;
 const response = $input.first().json;
 
 let report;
 try {
-  report = JSON.parse(response?.choices?.[0]?.message?.content || '{}');
+  report = JSON.parse(agentContent(response) || '{}');
 } catch (e) {
   report = { verdict: 'no_change', findings: [`Learning AI returned invalid JSON: ${e.message}`] };
 }
@@ -488,7 +489,7 @@ return [{
 }];
 """.rstrip()
 
-JS_PARSE_AB = r"""
+JS_PARSE_AB = AGENT_CONTENT_JS + r"""
 // Store both arms so the next learning run can compare like with like.
 const ctx = $('Build AB Test Prompt').first().json;
 const response = $input.first().json;
@@ -496,7 +497,7 @@ const target = ctx.ab_target || {};
 
 let variant;
 try {
-  variant = JSON.parse(response?.choices?.[0]?.message?.content || '{}');
+  variant = JSON.parse(agentContent(response) || '{}');
 } catch (e) {
   variant = {};
 }

@@ -347,18 +347,18 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
+        "url": "={{ ($('Factory Config').first().json.cfg.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com') + '/v1beta/models/' + ($('Factory Config').first().json.cfg.GEMINI_MODEL_TEXT || 'gemini-2.5-flash') + ':generateContent' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $('Factory Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.3, max_tokens: 3000, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.learning_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.learning_ai.output_contract) }, { role: 'user', content: $json.learning_user_prompt } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ systemInstruction: { parts: [{ text: ($('Prompt Library').first().json.prompts.learning_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.learning_ai.output_contract) }] }, contents: [{ role: 'user', parts: [{ text: $json.learning_user_prompt }] }], generationConfig: { temperature: 0.3, maxOutputTokens: 3000, responseMimeType: 'application/json' } }) }}",
         "options": {
           "timeout": 180000
         }
       },
       "id": "adpf09-openai-learning-ai",
-      "name": "OpenAI: Learning AI",
+      "name": "Gemini: Learning AI",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -525,18 +525,18 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
+        "url": "={{ ($('Factory Config').first().json.cfg.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com') + '/v1beta/models/' + ($('Factory Config').first().json.cfg.GEMINI_MODEL_TEXT || 'gemini-2.5-flash') + ':generateContent' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $('Factory Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.8, max_tokens: 1200, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.ab_test_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.ab_test_ai.output_contract) }, { role: 'user', content: $json.ab_user_prompt } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ systemInstruction: { parts: [{ text: ($('Prompt Library').first().json.prompts.ab_test_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.ab_test_ai.output_contract) }] }, contents: [{ role: 'user', parts: [{ text: $json.ab_user_prompt }] }], generationConfig: { temperature: 0.8, maxOutputTokens: 1200, responseMimeType: 'application/json' } }) }}",
         "options": {
           "timeout": 180000
         }
       },
       "id": "adpf09-openai-a-b-test-ai",
-      "name": "OpenAI: A/B Test AI",
+      "name": "Gemini: A/B Test AI",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -814,14 +814,14 @@
       "main": [
         [
           {
-            "node": "OpenAI: Learning AI",
+            "node": "Gemini: Learning AI",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "OpenAI: Learning AI": {
+    "Gemini: Learning AI": {
       "main": [
         [
           {
@@ -909,14 +909,14 @@
       "main": [
         [
           {
-            "node": "OpenAI: A/B Test AI",
+            "node": "Gemini: A/B Test AI",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "OpenAI: A/B Test AI": {
+    "Gemini: A/B Test AI": {
       "main": [
         [
           {

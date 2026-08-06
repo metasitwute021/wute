@@ -19,6 +19,7 @@ and the remaining work is only credentials for Etsy / Drive / Postgres.
 """
 
 from common import (
+    AGENT_CONTENT_JS,
     T_CODE, T_HTTP, T_IF, T_MANUAL, T_NOOP, Workflow, code, if_bool,
     openai_chat, pos,
 )
@@ -96,7 +97,7 @@ return [{
 }];
 """.strip()
 
-JS_PARSE_REPLY = r"""
+JS_PARSE_REPLY = AGENT_CONTENT_JS + r"""
 // STEP 3 - did OpenAI answer, and is the answer parseable JSON?
 // Both halves matter: a working key that returns prose would break every
 // downstream workflow, so the parse is part of the test.
@@ -106,7 +107,7 @@ const response = $input.first().json;
 const problems = [];
 let parsed = null;
 
-const content = response?.choices?.[0]?.message?.content;
+const content = agentContent(response);
 if (response?.error) {
   problems.push(`OpenAI error: ${response.error.message || JSON.stringify(response.error)}`);
 } else if (!content) {

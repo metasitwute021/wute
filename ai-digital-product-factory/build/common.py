@@ -91,6 +91,74 @@ const asArray = (value) => {
 """.strip()
 
 
+# Injected wherever a model reply is read. Keeps the parsers provider-agnostic.
+AGENT_CONTENT_JS = """
+// One reader for both providers. OpenAI answers with choices[].message.content,
+// Gemini with candidates[].content.parts[].text - and a build can target either,
+// so every parser in this repo would otherwise need two code paths.
+const agentContent = (response) => {
+  const openai = response && response.choices && response.choices[0]
+    && response.choices[0].message;
+  if (openai && typeof openai.content === 'string') return openai.content;
+  if (openai && openai.refusal) return '';
+  const gemini = response && response.candidates && response.candidates[0];
+  if (gemini && gemini.content && Array.isArray(gemini.content.parts)) {
+    return gemini.content.parts.map((p) => p && p.text).filter(Boolean).join('');
+  }
+  return '';
+};
+
+// Token counts, normalised to the OpenAI field names the cost tracker records.
+const agentUsage = (response) => {
+  if (response && response.usage) return response.usage;
+  const m = response && response.usageMetadata;
+  if (!m) return null;
+  return {
+    prompt_tokens: m.promptTokenCount || 0,
+    completion_tokens: m.candidatesTokenCount || 0,
+    total_tokens: m.totalTokenCount || 0,
+  };
+};
+
+// finish_reason / finishReason, same idea.
+const agentFinish = (response) => {
+  const openai = response && response.choices && response.choices[0];
+  if (openai && openai.finish_reason) return openai.finish_reason;
+  const gemini = response && response.candidates && response.candidates[0];
+  if (gemini && gemini.finishReason) return String(gemini.finishReason).toLowerCase();
+  return 'unknown';
+};
+""".strip()
+
+
+
+def rename_text_agents(document: dict) -> dict:
+    """Rename the switched agent nodes so the canvas says what it calls.
+
+    A node labelled "OpenAI: Writer AI" that posts to Gemini is a trap for
+    whoever opens the workflow next. Only nodes actually switched are renamed -
+    the image node keeps its name because it really is OpenAI - and every
+    $('OpenAI: ...') reference in the Code nodes and expressions is rewritten
+    with it, since those lookups are by name and would otherwise break.
+    """
+    renames = {}
+    for node in document["nodes"]:
+        if node["type"] != "n8n-nodes-base.httpRequest":
+            continue
+        if node["parameters"].get("genericAuthType") != "httpHeaderAuth":
+            continue
+        if not node["name"].startswith("OpenAI: "):
+            continue
+        renames[node["name"]] = "Gemini: " + node["name"][len("OpenAI: "):]
+
+    if not renames:
+        return document
+
+    blob = json.dumps(document, ensure_ascii=False)
+    for old, new in renames.items():
+        blob = blob.replace(json.dumps(old)[1:-1], json.dumps(new)[1:-1])
+    return json.loads(blob)
+
 def pos(col: float, row: float = 0):
     """Grid position helper so the imported canvas stays readable.
 
@@ -198,6 +266,65 @@ def code(js: str, mode: str = "runOnceForAllItems") -> dict:
     return {"mode": mode, "jsCode": js}
 
 
+# Which provider the text agents call. Set at build time by build.py, because a
+# node's credential type is fixed in the JSON and cannot be switched by an
+# expression - one provider per generated file, not per run.
+TEXT_PROVIDER = "openai"
+
+
+def set_text_provider(name: str) -> None:
+    global TEXT_PROVIDER
+    if name not in ("openai", "gemini"):
+        raise ValueError(f"unknown text provider: {name}")
+    TEXT_PROVIDER = name
+
+
+def gemini_chat(
+    system_expr: str,
+    user_expr: str,
+    *,
+    json_mode: bool = True,
+    temperature: float = 0.7,
+    max_tokens: int = 2500,
+) -> dict:
+    """HTTP Request node params for Gemini generateContent.
+
+    Auth is a generic Header Auth credential carrying ``x-goog-api-key``. n8n's
+    own Gemini credential type varies by version, and a header credential is
+    available on every install and every plan - one fewer thing to be wrong
+    about on a machine this repo cannot inspect.
+
+    Gemini has no ``system`` role: the instruction goes in systemInstruction,
+    which is the documented equivalent and keeps the prompt library unchanged.
+    """
+    config = (
+        f"temperature: {temperature}, maxOutputTokens: {max_tokens}"
+        + (", responseMimeType: 'application/json'" if json_mode else "")
+    )
+    body = (
+        "={{ JSON.stringify({ "
+        f"systemInstruction: {{ parts: [{{ text: {system_expr} }}] }}, "
+        f"contents: [{{ role: 'user', parts: [{{ text: {user_expr} }}] }}], "
+        f"generationConfig: {{ {config} }} "
+        "}) }}"
+    )
+    url = (
+        "={{ ($env.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com') "
+        "+ '/v1beta/models/' + ($env.GEMINI_MODEL_TEXT || 'gemini-2.5-flash') "
+        "+ ':generateContent' }}"
+    )
+    return {
+        "method": "POST",
+        "url": url,
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": True,
+        "specifyBody": "json",
+        "jsonBody": body,
+        "options": {"timeout": 180000},
+    }
+
+
 def openai_chat(
     system_expr: str,
     user_expr: str,
@@ -208,11 +335,15 @@ def openai_chat(
     model_env: str = "OPENAI_MODEL_TEXT",
     model_default: str = "gpt-4.1",
 ) -> dict:
-    """HTTP Request node params for POST /v1/chat/completions.
+    """HTTP Request node params for a text agent call.
 
-    Auth uses the built-in ``openAiApi`` credential, so no key is ever stored
-    inside the workflow JSON.
+    Named for the default provider and kept as the single entry point every
+    builder already uses, so switching providers touches this file only. Auth
+    uses a credential either way - no key is ever stored in the workflow JSON.
     """
+    if TEXT_PROVIDER == "gemini":
+        return gemini_chat(system_expr, user_expr, json_mode=json_mode,
+                           temperature=temperature, max_tokens=max_tokens)
     response_format = (
         "response_format: { type: 'json_object' }, " if json_mode else ""
     )
@@ -405,6 +536,10 @@ def loop_node(batch_size: int = 1) -> dict:
 CONFIG_DEFAULTS: dict = {
     # OpenAI
     "OPENAI_MODEL_TEXT": "gpt-4.1",
+    # Text agents when the suite is built with --text-provider gemini. Images
+    # stay on OpenAI either way; nothing here changes that.
+    "GEMINI_API_BASE": "https://generativelanguage.googleapis.com",
+    "GEMINI_MODEL_TEXT": "gemini-2.5-flash",
     "OPENAI_MODEL_IMAGE": "gpt-image-1",
     "OPENAI_IMAGE_QUALITY": "high",
     "PROMPT_VERSION": "v1.0.0",

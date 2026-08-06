@@ -224,18 +224,18 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
+        "url": "={{ ($('Factory Config').first().json.cfg.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com') + '/v1beta/models/' + ($('Factory Config').first().json.cfg.GEMINI_MODEL_TEXT || 'gemini-2.5-flash') + ':generateContent' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $('Factory Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.6, max_tokens: 2000, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.research_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.research_ai.output_contract) }, { role: 'user', content: $json.research_user_prompt } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ systemInstruction: { parts: [{ text: ($('Prompt Library').first().json.prompts.research_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.research_ai.output_contract) }] }, contents: [{ role: 'user', parts: [{ text: $json.research_user_prompt }] }], generationConfig: { temperature: 0.6, maxOutputTokens: 2000, responseMimeType: 'application/json' } }) }}",
         "options": {
           "timeout": 180000
         }
       },
       "id": "adpf02-openai-research-ai",
-      "name": "OpenAI: Research AI",
+      "name": "Gemini: Research AI",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -336,18 +336,18 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
+        "url": "={{ ($('Factory Config').first().json.cfg.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com') + '/v1beta/models/' + ($('Factory Config').first().json.cfg.GEMINI_MODEL_TEXT || 'gemini-2.5-flash') + ':generateContent' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $('Factory Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.5, max_tokens: 1200, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.seo_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.seo_ai.output_contract) }, { role: 'user', content: $json.seo_user_prompt } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ systemInstruction: { parts: [{ text: ($('Prompt Library').first().json.prompts.seo_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.seo_ai.output_contract) }] }, contents: [{ role: 'user', parts: [{ text: $json.seo_user_prompt }] }], generationConfig: { temperature: 0.5, maxOutputTokens: 1200, responseMimeType: 'application/json' } }) }}",
         "options": {
           "timeout": 180000
         }
       },
       "id": "adpf02-openai-seo-ai-keyword-expansion",
-      "name": "OpenAI: SEO AI Keyword Expansion",
+      "name": "Gemini: SEO AI Keyword Expansion",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -492,14 +492,14 @@
       "main": [
         [
           {
-            "node": "OpenAI: Research AI",
+            "node": "Gemini: Research AI",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "OpenAI: Research AI": {
+    "Gemini: Research AI": {
       "main": [
         [
           {
@@ -554,14 +554,14 @@
       "main": [
         [
           {
-            "node": "OpenAI: SEO AI Keyword Expansion",
+            "node": "Gemini: SEO AI Keyword Expansion",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "OpenAI: SEO AI Keyword Expansion": {
+    "Gemini: SEO AI Keyword Expansion": {
       "main": [
         [
           {

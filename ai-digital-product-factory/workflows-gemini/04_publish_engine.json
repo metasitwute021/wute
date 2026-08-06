@@ -85,18 +85,18 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
+        "url": "={{ ($('Factory Config').first().json.cfg.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com') + '/v1beta/models/' + ($('Factory Config').first().json.cfg.GEMINI_MODEL_TEXT || 'gemini-2.5-flash') + ':generateContent' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $('Factory Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.2, max_tokens: 2000, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.publisher_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.publisher_ai.output_contract) }, { role: 'user', content: $json.publisher_user_prompt } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ systemInstruction: { parts: [{ text: ($('Prompt Library').first().json.prompts.publisher_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.publisher_ai.output_contract) }] }, contents: [{ role: 'user', parts: [{ text: $json.publisher_user_prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 2000, responseMimeType: 'application/json' } }) }}",
         "options": {
           "timeout": 180000
         }
       },
       "id": "adpf04-openai-publisher-ai",
-      "name": "OpenAI: Publisher AI",
+      "name": "Gemini: Publisher AI",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -761,14 +761,14 @@
       "main": [
         [
           {
-            "node": "OpenAI: Publisher AI",
+            "node": "Gemini: Publisher AI",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "OpenAI: Publisher AI": {
+    "Gemini: Publisher AI": {
       "main": [
         [
           {

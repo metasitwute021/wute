@@ -1,6 +1,7 @@
 """02 Research Engine - Etsy market analysis + Research AI product concept."""
 
 from common import (
+    AGENT_CONTENT_JS,
     ASARRAY_JS,
     RETRY, T_CODE, T_EXEC_TRIGGER, T_HTTP, T_IF, T_NOOP, Workflow, code,
     etsy_http, if_bool, openai_chat, pos,
@@ -135,7 +136,7 @@ const userPrompt = render(agent.user_template, {
 return [{ json: { ...ctx, research_user_prompt: userPrompt } }];
 """.rstrip()
 
-JS_PARSE_RESEARCH = r"""
+JS_PARSE_RESEARCH = AGENT_CONTENT_JS + r"""
 // Parse + validate the model output against the fixed research contract. The
 // node never throws: an invalid answer is routed to the deterministic fallback
 // instead of killing the whole run.
@@ -151,7 +152,7 @@ let research = null;
 const errors = [];
 
 try {
-  const content = response?.choices?.[0]?.message?.content;
+  const content = agentContent(response);
   if (!content) throw new Error('OpenAI returned an empty completion');
   research = JSON.parse(content);
 } catch (e) {
@@ -239,7 +240,7 @@ const userPrompt = render(agent.user_template, {
 return [{ json: { ...ctx, seo_user_prompt: userPrompt } }];
 """.rstrip()
 
-JS_BUILD_OUTPUT = ASARRAY_JS + r"""
+JS_BUILD_OUTPUT = AGENT_CONTENT_JS + ASARRAY_JS +r"""
 
 // Final research contract returned to 01 Master Controller.
 const ctx = $('Build Keyword Expansion Prompt').first().json;
@@ -247,7 +248,7 @@ const response = $input.first().json;
 
 let expansion = {};
 try {
-  expansion = JSON.parse(response?.choices?.[0]?.message?.content || '{}');
+  expansion = JSON.parse(agentContent(response) || '{}');
 } catch (e) {
   expansion = {};
 }

@@ -475,18 +475,18 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
+        "url": "={{ ($('Factory Config').first().json.cfg.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com') + '/v1beta/models/' + ($('Factory Config').first().json.cfg.GEMINI_MODEL_TEXT || 'gemini-2.5-flash') + ':generateContent' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $('Factory Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.8, max_tokens: 4000, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.idea_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.idea_ai.output_contract) }, { role: 'user', content: $json.idea_user_prompt } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ systemInstruction: { parts: [{ text: ($('Prompt Library').first().json.prompts.idea_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.idea_ai.output_contract) }] }, contents: [{ role: 'user', parts: [{ text: $json.idea_user_prompt }] }], generationConfig: { temperature: 0.8, maxOutputTokens: 4000, responseMimeType: 'application/json' } }) }}",
         "options": {
           "timeout": 180000
         }
       },
       "id": "adpf03-openai-idea-ai",
-      "name": "OpenAI: Idea AI",
+      "name": "Gemini: Idea AI",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -534,18 +534,18 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
+        "url": "={{ ($('Factory Config').first().json.cfg.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com') + '/v1beta/models/' + ($('Factory Config').first().json.cfg.GEMINI_MODEL_TEXT || 'gemini-2.5-flash') + ':generateContent' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $('Factory Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.7, max_tokens: 8000, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.writer_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.writer_ai.output_contract) }, { role: 'user', content: $json.content_user_prompt } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ systemInstruction: { parts: [{ text: ($('Prompt Library').first().json.prompts.writer_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.writer_ai.output_contract) }] }, contents: [{ role: 'user', parts: [{ text: $json.content_user_prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 8000, responseMimeType: 'application/json' } }) }}",
         "options": {
           "timeout": 180000
         }
       },
       "id": "adpf03-openai-writer-ai",
-      "name": "OpenAI: Writer AI",
+      "name": "Gemini: Writer AI",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -593,18 +593,18 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
+        "url": "={{ ($('Factory Config').first().json.cfg.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com') + '/v1beta/models/' + ($('Factory Config').first().json.cfg.GEMINI_MODEL_TEXT || 'gemini-2.5-flash') + ':generateContent' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $('Factory Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.9, max_tokens: 4000, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.designer_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.designer_ai.output_contract) }, { role: 'user', content: $json.designer_user_prompt } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ systemInstruction: { parts: [{ text: ($('Prompt Library').first().json.prompts.designer_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.designer_ai.output_contract) }] }, contents: [{ role: 'user', parts: [{ text: $json.designer_user_prompt }] }], generationConfig: { temperature: 0.9, maxOutputTokens: 4000, responseMimeType: 'application/json' } }) }}",
         "options": {
           "timeout": 180000
         }
       },
       "id": "adpf03-openai-designer-ai",
-      "name": "OpenAI: Designer AI",
+      "name": "Gemini: Designer AI",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -800,18 +800,18 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
+        "url": "={{ ($('Factory Config').first().json.cfg.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com') + '/v1beta/models/' + ($('Factory Config').first().json.cfg.GEMINI_MODEL_TEXT || 'gemini-2.5-flash') + ':generateContent' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $('Factory Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.6, max_tokens: 600, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.seo_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.seo_ai.output_contract) }, { role: 'user', content: $json.seo_user_prompt } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ systemInstruction: { parts: [{ text: ($('Prompt Library').first().json.prompts.seo_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.seo_ai.output_contract) }] }, contents: [{ role: 'user', parts: [{ text: $json.seo_user_prompt }] }], generationConfig: { temperature: 0.6, maxOutputTokens: 600, responseMimeType: 'application/json' } }) }}",
         "options": {
           "timeout": 180000
         }
       },
       "id": "adpf03-openai-seo-ai-title",
-      "name": "OpenAI: SEO AI Title",
+      "name": "Gemini: SEO AI Title",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -843,18 +843,18 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
+        "url": "={{ ($('Factory Config').first().json.cfg.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com') + '/v1beta/models/' + ($('Factory Config').first().json.cfg.GEMINI_MODEL_TEXT || 'gemini-2.5-flash') + ':generateContent' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $('Factory Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.6, max_tokens: 1500, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.seo_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.seo_ai.output_contract) }, { role: 'user', content: $json.seo_user_prompt } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ systemInstruction: { parts: [{ text: ($('Prompt Library').first().json.prompts.seo_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.seo_ai.output_contract) }] }, contents: [{ role: 'user', parts: [{ text: $json.seo_user_prompt }] }], generationConfig: { temperature: 0.6, maxOutputTokens: 1500, responseMimeType: 'application/json' } }) }}",
         "options": {
           "timeout": 180000
         }
       },
       "id": "adpf03-openai-seo-ai-description",
-      "name": "OpenAI: SEO AI Description",
+      "name": "Gemini: SEO AI Description",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -886,18 +886,18 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
+        "url": "={{ ($('Factory Config').first().json.cfg.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com') + '/v1beta/models/' + ($('Factory Config').first().json.cfg.GEMINI_MODEL_TEXT || 'gemini-2.5-flash') + ':generateContent' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $('Factory Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.5, max_tokens: 800, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.seo_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.seo_ai.output_contract) }, { role: 'user', content: $json.seo_user_prompt } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ systemInstruction: { parts: [{ text: ($('Prompt Library').first().json.prompts.seo_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.seo_ai.output_contract) }] }, contents: [{ role: 'user', parts: [{ text: $json.seo_user_prompt }] }], generationConfig: { temperature: 0.5, maxOutputTokens: 800, responseMimeType: 'application/json' } }) }}",
         "options": {
           "timeout": 180000
         }
       },
       "id": "adpf03-openai-seo-ai-etsy-tags",
-      "name": "OpenAI: SEO AI Etsy Tags",
+      "name": "Gemini: SEO AI Etsy Tags",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -913,7 +913,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// One reader for both providers. OpenAI answers with choices[].message.content,\n// Gemini with candidates[].content.parts[].text - and a build can target either,\n// so every parser in this repo would otherwise need two code paths.\nconst agentContent = (response) => {\n  const openai = response && response.choices && response.choices[0]\n    && response.choices[0].message;\n  if (openai && typeof openai.content === 'string') return openai.content;\n  if (openai && openai.refusal) return '';\n  const gemini = response && response.candidates && response.candidates[0];\n  if (gemini && gemini.content && Array.isArray(gemini.content.parts)) {\n    return gemini.content.parts.map((p) => p && p.text).filter(Boolean).join('');\n  }\n  return '';\n};\n\n// Token counts, normalised to the OpenAI field names the cost tracker records.\nconst agentUsage = (response) => {\n  if (response && response.usage) return response.usage;\n  const m = response && response.usageMetadata;\n  if (!m) return null;\n  return {\n    prompt_tokens: m.promptTokenCount || 0,\n    completion_tokens: m.candidatesTokenCount || 0,\n    total_tokens: m.totalTokenCount || 0,\n  };\n};\n\n// finish_reason / finishReason, same idea.\nconst agentFinish = (response) => {\n  const openai = response && response.choices && response.choices[0];\n  if (openai && openai.finish_reason) return openai.finish_reason;\n  const gemini = response && response.candidates && response.candidates[0];\n  if (gemini && gemini.finishReason) return String(gemini.finishReason).toLowerCase();\n  return 'unknown';\n};// Coerce a model-supplied value into an array. The contract says these fields\n// are arrays; models answer with a bare string, a comma-joined string or an\n// object of values often enough that `x || []` is not a guard at all - it only\n// catches null, and a run died on \"(tagsOut.tags || []) is not iterable\".\n// Interpreting the answer beats discarding it: the content is usually right,\n// only its container is wrong.\nconst asArray = (value) => {\n  if (Array.isArray(value)) return value;\n  if (value === null || value === undefined || value === '') return [];\n  if (typeof value === 'string') {\n    return value.includes('\\n') || value.includes(',')\n      ? value.split(/[,\\n]/).map((s) => s.trim()).filter(Boolean)\n      : [value.trim()];\n  }\n  if (typeof value === 'object') return Object.values(value).flatMap(asArray);\n  return [value];\n};// Etsy rejects listings on hard limits, so the model output is repaired here\n// rather than trusted: 140 char title, exactly 13 tags, 20 chars per tag.\nconst base = $('Merge: Factory Profiles').first().json;\nconst idea = $('Parse Idea JSON').first().json.idea;\n\n// Each source node is addressed by a literal lookup rather than through a\n// helper that takes the name as a string. build.py verifies every literal\n// node reference resolves; one hidden behind a variable is invisible to it.\nconst readJson = (response) => {\n  try {\n    return JSON.parse(agentContent(response) || '{}');\n  } catch (e) {\n    return {};\n  }\n};\n\nconst titleOut = readJson($('OpenAI: SEO AI Title').first().json);\nconst descriptionOut = readJson($('OpenAI: SEO AI Description').first().json);\nconst tagsOut = readJson($('OpenAI: SEO AI Etsy Tags').first().json);\n\nlet title = String(titleOut.title || idea.product_name).replace(/\\s+/g, ' ').trim();\nif (title.length > 140) title = title.slice(0, 137).replace(/[\\s,|-]+$/, '') + '...';\n\nconst normaliseTag = (tag) => String(tag)\n  .toLowerCase()\n  .replace(/[^a-z0-9 ]/g, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim()\n  .slice(0, 20)\n  .trim();\n\nconst candidates = [\n  ...asArray(tagsOut.tags),\n  ...asArray(base.research.sub_keywords),\n  ...asArray(base.research.long_tail),\n  base.research.keyword,\n  base.factory,\n];\n\nconst tags = [];\nfor (const candidate of candidates) {\n  const tag = normaliseTag(candidate);\n  if (tag && tag.length >= 3 && !tags.includes(tag)) tags.push(tag);\n  if (tags.length === 13) break;\n}\nwhile (tags.length < 13) tags.push(normaliseTag(`${base.factory} download ${tags.length}`));\n\n// The description is the listing copy a shopper reads, so it must be text.\n// A model that answers with {intro, body, closing} instead of a string turned\n// into the literal \"[object Object]\" on a real run - String() will happily\n// stringify anything, which is exactly the problem.\n// Only prose is collected. Walking every value of an object swept up whatever\n// numeric fields the model happened to include, and a bare \"5\" was printed at\n// the end of a real listing description.\nconst flattenText = (value) => {\n  if (typeof value === 'string') return value.trim();\n  if (Array.isArray(value)) return value.map(flattenText).filter(Boolean).join('\\n\\n');\n  if (value && typeof value === 'object') return flattenText(Object.values(value));\n  return '';\n};\n\nconst description = flattenText(descriptionOut.description)\n  || flattenText(descriptionOut.body)\n  || flattenText(descriptionOut.text)\n  || `${idea.product_name}\\n\\n${idea.promise || idea.one_liner || ''}`;\n\nconst disclosure = 'This is an instant digital download. No physical item will be shipped.';\nconst finalDescription = description.toLowerCase().includes('digital download')\n  ? description\n  : `${description}\\n\\n${disclosure}`;\n\nconst materials = (asArray(tagsOut.materials).length ? asArray(tagsOut.materials) : ['digital file', 'pdf', 'printable'])\n  .map(normaliseTag)\n  .filter(Boolean)\n  .slice(0, 13);\n\nreturn [{\n  json: {\n    run_id: base.run_id,\n    seo: {\n      title,\n      title_length: title.length,\n      description: finalDescription,\n      tags,\n      materials,\n      primary_keyword: base.research.keyword,\n    },\n    seo_warnings: [\n      title.length > 140 ? 'title truncated' : null,\n      (tagsOut.tags || []).length !== 13 ? 'tag list repaired locally' : null,\n    ].filter(Boolean),\n  },\n}];"
+        "jsCode": "// One reader for both providers. OpenAI answers with choices[].message.content,\n// Gemini with candidates[].content.parts[].text - and a build can target either,\n// so every parser in this repo would otherwise need two code paths.\nconst agentContent = (response) => {\n  const openai = response && response.choices && response.choices[0]\n    && response.choices[0].message;\n  if (openai && typeof openai.content === 'string') return openai.content;\n  if (openai && openai.refusal) return '';\n  const gemini = response && response.candidates && response.candidates[0];\n  if (gemini && gemini.content && Array.isArray(gemini.content.parts)) {\n    return gemini.content.parts.map((p) => p && p.text).filter(Boolean).join('');\n  }\n  return '';\n};\n\n// Token counts, normalised to the OpenAI field names the cost tracker records.\nconst agentUsage = (response) => {\n  if (response && response.usage) return response.usage;\n  const m = response && response.usageMetadata;\n  if (!m) return null;\n  return {\n    prompt_tokens: m.promptTokenCount || 0,\n    completion_tokens: m.candidatesTokenCount || 0,\n    total_tokens: m.totalTokenCount || 0,\n  };\n};\n\n// finish_reason / finishReason, same idea.\nconst agentFinish = (response) => {\n  const openai = response && response.choices && response.choices[0];\n  if (openai && openai.finish_reason) return openai.finish_reason;\n  const gemini = response && response.candidates && response.candidates[0];\n  if (gemini && gemini.finishReason) return String(gemini.finishReason).toLowerCase();\n  return 'unknown';\n};// Coerce a model-supplied value into an array. The contract says these fields\n// are arrays; models answer with a bare string, a comma-joined string or an\n// object of values often enough that `x || []` is not a guard at all - it only\n// catches null, and a run died on \"(tagsOut.tags || []) is not iterable\".\n// Interpreting the answer beats discarding it: the content is usually right,\n// only its container is wrong.\nconst asArray = (value) => {\n  if (Array.isArray(value)) return value;\n  if (value === null || value === undefined || value === '') return [];\n  if (typeof value === 'string') {\n    return value.includes('\\n') || value.includes(',')\n      ? value.split(/[,\\n]/).map((s) => s.trim()).filter(Boolean)\n      : [value.trim()];\n  }\n  if (typeof value === 'object') return Object.values(value).flatMap(asArray);\n  return [value];\n};// Etsy rejects listings on hard limits, so the model output is repaired here\n// rather than trusted: 140 char title, exactly 13 tags, 20 chars per tag.\nconst base = $('Merge: Factory Profiles').first().json;\nconst idea = $('Parse Idea JSON').first().json.idea;\n\n// Each source node is addressed by a literal lookup rather than through a\n// helper that takes the name as a string. build.py verifies every literal\n// node reference resolves; one hidden behind a variable is invisible to it.\nconst readJson = (response) => {\n  try {\n    return JSON.parse(agentContent(response) || '{}');\n  } catch (e) {\n    return {};\n  }\n};\n\nconst titleOut = readJson($('Gemini: SEO AI Title').first().json);\nconst descriptionOut = readJson($('Gemini: SEO AI Description').first().json);\nconst tagsOut = readJson($('Gemini: SEO AI Etsy Tags').first().json);\n\nlet title = String(titleOut.title || idea.product_name).replace(/\\s+/g, ' ').trim();\nif (title.length > 140) title = title.slice(0, 137).replace(/[\\s,|-]+$/, '') + '...';\n\nconst normaliseTag = (tag) => String(tag)\n  .toLowerCase()\n  .replace(/[^a-z0-9 ]/g, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim()\n  .slice(0, 20)\n  .trim();\n\nconst candidates = [\n  ...asArray(tagsOut.tags),\n  ...asArray(base.research.sub_keywords),\n  ...asArray(base.research.long_tail),\n  base.research.keyword,\n  base.factory,\n];\n\nconst tags = [];\nfor (const candidate of candidates) {\n  const tag = normaliseTag(candidate);\n  if (tag && tag.length >= 3 && !tags.includes(tag)) tags.push(tag);\n  if (tags.length === 13) break;\n}\nwhile (tags.length < 13) tags.push(normaliseTag(`${base.factory} download ${tags.length}`));\n\n// The description is the listing copy a shopper reads, so it must be text.\n// A model that answers with {intro, body, closing} instead of a string turned\n// into the literal \"[object Object]\" on a real run - String() will happily\n// stringify anything, which is exactly the problem.\n// Only prose is collected. Walking every value of an object swept up whatever\n// numeric fields the model happened to include, and a bare \"5\" was printed at\n// the end of a real listing description.\nconst flattenText = (value) => {\n  if (typeof value === 'string') return value.trim();\n  if (Array.isArray(value)) return value.map(flattenText).filter(Boolean).join('\\n\\n');\n  if (value && typeof value === 'object') return flattenText(Object.values(value));\n  return '';\n};\n\nconst description = flattenText(descriptionOut.description)\n  || flattenText(descriptionOut.body)\n  || flattenText(descriptionOut.text)\n  || `${idea.product_name}\\n\\n${idea.promise || idea.one_liner || ''}`;\n\nconst disclosure = 'This is an instant digital download. No physical item will be shipped.';\nconst finalDescription = description.toLowerCase().includes('digital download')\n  ? description\n  : `${description}\\n\\n${disclosure}`;\n\nconst materials = (asArray(tagsOut.materials).length ? asArray(tagsOut.materials) : ['digital file', 'pdf', 'printable'])\n  .map(normaliseTag)\n  .filter(Boolean)\n  .slice(0, 13);\n\nreturn [{\n  json: {\n    run_id: base.run_id,\n    seo: {\n      title,\n      title_length: title.length,\n      description: finalDescription,\n      tags,\n      materials,\n      primary_keyword: base.research.keyword,\n    },\n    seo_warnings: [\n      title.length > 140 ? 'title truncated' : null,\n      (tagsOut.tags || []).length !== 13 ? 'tag list repaired locally' : null,\n    ].filter(Boolean),\n  },\n}];"
       },
       "id": "adpf03-validate-seo-package",
       "name": "Validate SEO Package",
@@ -945,18 +945,18 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
+        "url": "={{ ($('Factory Config').first().json.cfg.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com') + '/v1beta/models/' + ($('Factory Config').first().json.cfg.GEMINI_MODEL_TEXT || 'gemini-2.5-flash') + ':generateContent' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $('Factory Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.2, max_tokens: 1500, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.metadata_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.metadata_ai.output_contract) }, { role: 'user', content: $json.metadata_user_prompt } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ systemInstruction: { parts: [{ text: ($('Prompt Library').first().json.prompts.metadata_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.metadata_ai.output_contract) }] }, contents: [{ role: 'user', parts: [{ text: $json.metadata_user_prompt }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 1500, responseMimeType: 'application/json' } }) }}",
         "options": {
           "timeout": 180000
         }
       },
       "id": "adpf03-openai-metadata-ai",
-      "name": "OpenAI: Metadata AI",
+      "name": "Gemini: Metadata AI",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -1004,18 +1004,18 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
+        "url": "={{ ($('Factory Config').first().json.cfg.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com') + '/v1beta/models/' + ($('Factory Config').first().json.cfg.GEMINI_MODEL_TEXT || 'gemini-2.5-flash') + ':generateContent' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $('Factory Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.1, max_tokens: 2000, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.qa_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.qa_ai.output_contract) }, { role: 'user', content: $json.qa_user_prompt } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ systemInstruction: { parts: [{ text: ($('Prompt Library').first().json.prompts.qa_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.qa_ai.output_contract) }] }, contents: [{ role: 'user', parts: [{ text: $json.qa_user_prompt }] }], generationConfig: { temperature: 0.1, maxOutputTokens: 2000, responseMimeType: 'application/json' } }) }}",
         "options": {
           "timeout": 180000
         }
       },
       "id": "adpf03-openai-qa-ai",
-      "name": "OpenAI: QA AI",
+      "name": "Gemini: QA AI",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -1334,18 +1334,18 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
+        "url": "={{ ($('Factory Config').first().json.cfg.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com') + '/v1beta/models/' + ($('Factory Config').first().json.cfg.GEMINI_MODEL_TEXT || 'gemini-2.5-flash') + ':generateContent' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $('Factory Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.1, max_tokens: 1500, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.design_qa_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.design_qa_ai.output_contract) }, { role: 'user', content: $json.design_qa_prompt } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ systemInstruction: { parts: [{ text: ($('Prompt Library').first().json.prompts.design_qa_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.design_qa_ai.output_contract) }] }, contents: [{ role: 'user', parts: [{ text: $json.design_qa_prompt }] }], generationConfig: { temperature: 0.1, maxOutputTokens: 1500, responseMimeType: 'application/json' } }) }}",
         "options": {
           "timeout": 180000
         }
       },
       "id": "adpf03-openai-design-qa-ai",
-      "name": "OpenAI: Design QA AI",
+      "name": "Gemini: Design QA AI",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -1395,18 +1395,18 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "openAiApi",
+        "url": "={{ ($('Factory Config').first().json.cfg.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com') + '/v1beta/models/' + ($('Factory Config').first().json.cfg.GEMINI_MODEL_TEXT || 'gemini-2.5-flash') + ':generateContent' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $('Factory Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.1, max_tokens: 3000, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: ($('Prompt Library').first().json.prompts.content_qa_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.content_qa_ai.output_contract) }, { role: 'user', content: $json.content_qa_prompt } ] }) }}",
+        "jsonBody": "={{ JSON.stringify({ systemInstruction: { parts: [{ text: ($('Prompt Library').first().json.prompts.content_qa_ai.system + '\\n\\nOUTPUT CONTRACT (return exactly this JSON shape):\\n' + $('Prompt Library').first().json.prompts.content_qa_ai.output_contract) }] }, contents: [{ role: 'user', parts: [{ text: $json.content_qa_prompt }] }], generationConfig: { temperature: 0.1, maxOutputTokens: 3000, responseMimeType: 'application/json' } }) }}",
         "options": {
           "timeout": 180000
         }
       },
       "id": "adpf03-openai-content-qa-ai",
-      "name": "OpenAI: Content QA AI",
+      "name": "Gemini: Content QA AI",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -1664,14 +1664,14 @@
       "main": [
         [
           {
-            "node": "OpenAI: Idea AI",
+            "node": "Gemini: Idea AI",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "OpenAI: Idea AI": {
+    "Gemini: Idea AI": {
       "main": [
         [
           {
@@ -1759,14 +1759,14 @@
       "main": [
         [
           {
-            "node": "OpenAI: Writer AI",
+            "node": "Gemini: Writer AI",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "OpenAI: Writer AI": {
+    "Gemini: Writer AI": {
       "main": [
         [
           {
@@ -1792,14 +1792,14 @@
       "main": [
         [
           {
-            "node": "OpenAI: Designer AI",
+            "node": "Gemini: Designer AI",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "OpenAI: Designer AI": {
+    "Gemini: Designer AI": {
       "main": [
         [
           {
@@ -1916,14 +1916,14 @@
       "main": [
         [
           {
-            "node": "OpenAI: Design QA AI",
+            "node": "Gemini: Design QA AI",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "OpenAI: Design QA AI": {
+    "Gemini: Design QA AI": {
       "main": [
         [
           {
@@ -1949,14 +1949,14 @@
       "main": [
         [
           {
-            "node": "OpenAI: SEO AI Title",
+            "node": "Gemini: SEO AI Title",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "OpenAI: SEO AI Title": {
+    "Gemini: SEO AI Title": {
       "main": [
         [
           {
@@ -1971,14 +1971,14 @@
       "main": [
         [
           {
-            "node": "OpenAI: SEO AI Description",
+            "node": "Gemini: SEO AI Description",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "OpenAI: SEO AI Description": {
+    "Gemini: SEO AI Description": {
       "main": [
         [
           {
@@ -1993,14 +1993,14 @@
       "main": [
         [
           {
-            "node": "OpenAI: SEO AI Etsy Tags",
+            "node": "Gemini: SEO AI Etsy Tags",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "OpenAI: SEO AI Etsy Tags": {
+    "Gemini: SEO AI Etsy Tags": {
       "main": [
         [
           {
@@ -2026,14 +2026,14 @@
       "main": [
         [
           {
-            "node": "OpenAI: Content QA AI",
+            "node": "Gemini: Content QA AI",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "OpenAI: Content QA AI": {
+    "Gemini: Content QA AI": {
       "main": [
         [
           {
@@ -2059,14 +2059,14 @@
       "main": [
         [
           {
-            "node": "OpenAI: Metadata AI",
+            "node": "Gemini: Metadata AI",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "OpenAI: Metadata AI": {
+    "Gemini: Metadata AI": {
       "main": [
         [
           {
@@ -2092,14 +2092,14 @@
       "main": [
         [
           {
-            "node": "OpenAI: QA AI",
+            "node": "Gemini: QA AI",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "OpenAI: QA AI": {
+    "Gemini: QA AI": {
       "main": [
         [
           {

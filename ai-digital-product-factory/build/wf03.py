@@ -3,6 +3,7 @@
 import json
 
 from common import (
+    AGENT_CONTENT_JS,
     ASARRAY_JS,
     RETRY, T_CODE, T_EXEC_TRIGGER, T_HTTP, T_IF, T_LOOP, T_NOOP, T_POSTGRES,
     T_SET, T_SWITCH, Workflow, code, if_bool, loop_node, openai_chat,
@@ -300,17 +301,16 @@ return [{
 }];
 """.rstrip()
 
-AGENT_PARSE_HELPER = ASARRAY_JS + r"""
+AGENT_PARSE_HELPER = AGENT_CONTENT_JS + ASARRAY_JS +r"""
 
 // Read an OpenAI chat reply, or fail with something worth reading. A bare
 // "missing field" message costs a whole run and a support round-trip to
 // diagnose; the model's own reply, its finish_reason and the keys it did
 // return are the evidence that actually identifies the problem.
 const readAgentReply = (label, response) => {
-  const choice = (response && response.choices && response.choices[0]) || {};
-  const message = choice.message || {};
-  const finish = choice.finish_reason || 'unknown';
-  const content = message.content == null ? '' : String(message.content);
+  const message = ((response && response.choices && response.choices[0]) || {}).message || {};
+  const finish = agentFinish(response);
+  const content = agentContent(response);
   // One line, always. n8n renders a Code node failure as "<message> [line N]"
   // and a newline in the middle truncates it - a preview of pretty-printed
   // JSON turned the whole diagnostic into "{ [line 39]".
@@ -780,24 +780,27 @@ return [{
 }];
 """.rstrip()
 
-JS_VALIDATE_SEO = ASARRAY_JS + r"""
+JS_VALIDATE_SEO = AGENT_CONTENT_JS + ASARRAY_JS +r"""
 
 // Etsy rejects listings on hard limits, so the model output is repaired here
 // rather than trusted: 140 char title, exactly 13 tags, 20 chars per tag.
 const base = $('Merge: Factory Profiles').first().json;
 const idea = $('Parse Idea JSON').first().json.idea;
 
-const readJson = (nodeName) => {
+// Each source node is addressed by a literal lookup rather than through a
+// helper that takes the name as a string. build.py verifies every literal
+// node reference resolves; one hidden behind a variable is invisible to it.
+const readJson = (response) => {
   try {
-    return JSON.parse($(nodeName).first().json?.choices?.[0]?.message?.content || '{}');
+    return JSON.parse(agentContent(response) || '{}');
   } catch (e) {
     return {};
   }
 };
 
-const titleOut = readJson('OpenAI: SEO AI Title');
-const descriptionOut = readJson('OpenAI: SEO AI Description');
-const tagsOut = readJson('OpenAI: SEO AI Etsy Tags');
+const titleOut = readJson($('OpenAI: SEO AI Title').first().json);
+const descriptionOut = readJson($('OpenAI: SEO AI Description').first().json);
+const tagsOut = readJson($('OpenAI: SEO AI Etsy Tags').first().json);
 
 let title = String(titleOut.title || idea.product_name).replace(/\s+/g, ' ').trim();
 if (title.length > 140) title = title.slice(0, 137).replace(/[\s,|-]+$/, '') + '...';
@@ -895,7 +898,7 @@ return [{
 }];
 """.rstrip()
 
-JS_PARSE_METADATA = r"""
+JS_PARSE_METADATA = AGENT_CONTENT_JS + r"""
 // Metadata is the record of truth for the database and Google Drive, so every
 // field is clamped locally instead of trusted.
 const base = $('Merge: Factory Profiles').first().json;
@@ -905,7 +908,7 @@ const response = $input.first().json;
 
 let metadata = {};
 try {
-  metadata = JSON.parse(response?.choices?.[0]?.message?.content || '{}');
+  metadata = JSON.parse(agentContent(response) || '{}');
 } catch (e) {
   metadata = {};
 }
@@ -972,14 +975,14 @@ return [{
 }];
 """.rstrip()
 
-JS_PARSE_QA = r"""
+JS_PARSE_QA = AGENT_CONTENT_JS + r"""
 // The QA verdict decides whether anything reaches a marketplace at all.
 const base = $('Merge: Factory Profiles').first().json;
 const response = $input.first().json;
 
 let report;
 try {
-  report = JSON.parse(response?.choices?.[0]?.message?.content || '');
+  report = JSON.parse(agentContent(response) || '');
 } catch (e) {
   report = {
     passed: false,
@@ -1540,7 +1543,7 @@ return [{
 }];
 """.rstrip()
 
-JS_PARSE_DESIGN_QA = ASARRAY_JS + r"""
+JS_PARSE_DESIGN_QA = AGENT_CONTENT_JS + ASARRAY_JS +r"""
 
 // QA stage 3 - Design. Model verdict plus a deterministic geometry re-check,
 // because "will this text fit on the page" is arithmetic, not judgement.
@@ -1551,7 +1554,7 @@ const response = $input.first().json;
 
 let report;
 try {
-  report = JSON.parse(response?.choices?.[0]?.message?.content || '{}');
+  report = JSON.parse(agentContent(response) || '{}');
 } catch (e) {
   report = { passed: false, blockers: [`Design QA AI returned invalid JSON: ${e.message}`] };
 }
@@ -1631,7 +1634,7 @@ return [{
 }];
 """.rstrip()
 
-JS_PARSE_CONTENT_QA = ASARRAY_JS + r"""
+JS_PARSE_CONTENT_QA = AGENT_CONTENT_JS + ASARRAY_JS +r"""
 
 // QA stage 4 - Content: grammar, spelling, copyright, sensitive material.
 const response = $input.first().json;
@@ -1639,7 +1642,7 @@ const content = $('Parse Content JSON').first().json.content;
 
 let report;
 try {
-  report = JSON.parse(response?.choices?.[0]?.message?.content || '{}');
+  report = JSON.parse(agentContent(response) || '{}');
 } catch (e) {
   report = { passed: false, blockers: [`Content QA AI returned invalid JSON: ${e.message}`] };
 }

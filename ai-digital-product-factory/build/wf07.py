@@ -11,6 +11,7 @@ it happened to write first.
 """
 
 from common import (
+    AGENT_CONTENT_JS,
     ASARRAY_JS,
     RETRY, T_CODE, T_EXEC_TRIGGER, T_HTTP, T_IF, T_LOOP, T_NOOP, T_POSTGRES,
     Workflow, code, if_bool, loop_node, openai_chat, pos,
@@ -219,7 +220,7 @@ return [{
 }];
 """.rstrip()
 
-JS_PARSE_BATCH = ASARRAY_JS + r"""
+JS_PARSE_BATCH = AGENT_CONTENT_JS + ASARRAY_JS +r"""
 
 // Normalise one generated batch. A malformed batch is dropped, not fatal.
 const FACTORIES = ['planner','printable','canva','wallart','resume','spreadsheet','kids','svg'];
@@ -232,7 +233,7 @@ const normTitle = (t) => String(t).toLowerCase().replace(/[^a-z0-9 ]/g, ' ')
 
 let ideas = [];
 try {
-  const parsed = JSON.parse(response?.choices?.[0]?.message?.content || '{}');
+  const parsed = JSON.parse(agentContent(response) || '{}');
   ideas = Array.isArray(parsed.ideas) ? parsed.ideas : [];
 } catch (e) {
   ideas = [];

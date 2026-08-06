@@ -1,6 +1,7 @@
 """04 Publish Engine - Etsy draft listing + Gumroad / MiriCanvas package prep."""
 
 from common import (
+    AGENT_CONTENT_JS,
     RETRY, T_CODE, T_EXEC_TRIGGER, T_HTTP, T_IF, T_LOOP, T_NOOP, Workflow, code,
     etsy_http, if_bool, loop_node, openai_chat, pos,
 )
@@ -66,14 +67,14 @@ return [{
 }];
 """.rstrip()
 
-JS_PARSE_PUBLISHER = r"""
+JS_PARSE_PUBLISHER = AGENT_CONTENT_JS + r"""
 // The publisher verdict is advisory for compatibility and blocking for approval.
 const ctx = $('Build Publisher Prompt').first().json;
 const response = $input.first().json;
 
 let verdict = {};
 try {
-  verdict = JSON.parse(response?.choices?.[0]?.message?.content || '{}');
+  verdict = JSON.parse(agentContent(response) || '{}');
 } catch (e) {
   verdict = {};
 }
