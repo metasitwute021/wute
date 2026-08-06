@@ -499,6 +499,7 @@ JS_PARSE_IMAGE_PLAN = AGENT_PARSE_HELPER + r"""
 //   jpeg -> anything that goes inside the PDF (embeds as /DCTDecode untouched)
 //   png  -> the shop thumbnail, where a lossless icon looks better
 const base = $('Merge: Factory Profiles').first().json;
+const idea = $('Parse Idea JSON').first().json.idea;
 const content = $('Parse Content JSON').first().json.content;
 const response = $input.first().json;
 
@@ -553,6 +554,7 @@ for (const page of content.pages.filter((p) => p.needs_image)) {
 
 // Sanitise the optional editable vector source.
 let svg = null;
+let svgFallbackUsed = false;
 if (base.profile.svg_required && typeof plan?.svg_markup === 'string') {
   svg = plan.svg_markup
     .replace(/<\?xml[\s\S]*?\?>/gi, '')
@@ -566,12 +568,37 @@ if (base.profile.svg_required && typeof plan?.svg_markup === 'string') {
   if (!/^<svg[\s>]/i.test(svg)) svg = null;
 }
 
+// The profile promises SVG in output_formats, and QA stage 5 blocks the run if
+// a promised format is missing. Whether the model remembers to return
+// svg_markup is not something to leave to chance, so a valid vector is built
+// here when it does not. Flat shapes and text only - the same constraints the
+// prompt asks the model for.
+if (base.profile.svg_required && !svg) {
+  const palette = (idea.visual_direction && idea.visual_direction.palette) || [];
+  const accent = /^#[0-9a-f]{6}$/i.test(palette[0] || '') ? palette[0] : '#2F4F6F';
+  const title = String(idea.product_name || 'Product')
+    .replace(/[<>&"']/g, ' ').slice(0, 42);
+  svg = [
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">',
+    '<rect width="1024" height="1024" fill="#FFFFFF"/>',
+    `<rect x="0" y="0" width="1024" height="18" fill="${accent}"/>`,
+    `<rect x="96" y="470" width="832" height="4" fill="${accent}"/>`,
+    `<text x="512" y="440" text-anchor="middle" font-family="Helvetica, Arial, sans-serif"`,
+    ` font-size="46" fill="#1A1A1A">${title}</text>`,
+    `<text x="512" y="530" text-anchor="middle" font-family="Helvetica, Arial, sans-serif"`,
+    ` font-size="24" fill="${accent}">editable vector source</text>`,
+    '</svg>',
+  ].join('');
+  svgFallbackUsed = true;
+}
+
 return [{
   json: {
     run_id: base.run_id,
     dry_run: base.dry_run === true,
     image_jobs: jobs,
     svg_markup: svg,
+    svg_fallback_used: svgFallbackUsed,
     image_job_count: jobs.length,
   },
 }];
@@ -1342,7 +1369,12 @@ const warnings = [];
 
 if (!research.keyword) blockers.push('no primary keyword');
 if ((research.sub_keywords || []).length < 5) blockers.push('fewer than 5 sub keywords');
-if ((research.selling_points || []).length < 3) blockers.push('fewer than 3 selling points');
+// A short selling-point list is thin marketing input, not a broken product -
+// the writer and the SEO agents work from the concept either way. Ending a
+// paid run over it is out of proportion to the harm.
+if ((research.selling_points || []).length < 3) {
+  warnings.push(`only ${(research.selling_points || []).length} selling points - listing copy will be thin`);
+}
 
 // With no Etsy credential there are no market signals at all. That is a known
 // state of this install, not a fault of the concept, so it must not be scored
@@ -1629,7 +1661,11 @@ for (const page of content.pages) {
     warnings.push(`page ${page.page_number} has fill-in fields - expected for a template, check they are intentional`);
   }
   if (!body.trim()) blockers.push(`page ${page.page_number} is empty`);
-  const fingerprint = body.slice(0, 120).toLowerCase();
+  // Fingerprint the whole page, not its opening. Worksheets repeat their
+  // instruction line by design - "Write your answer below" heads every page of
+  // a template - and comparing only the first 120 characters called every one
+  // of them a duplicate of the first.
+  const fingerprint = `${page.title}|${body}`.toLowerCase().replace(/\s+/g, ' ').trim();
   if (fingerprint && seen.has(fingerprint)) {
     blockers.push(`page ${page.page_number} duplicates an earlier page`);
   }

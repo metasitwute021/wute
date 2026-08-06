@@ -211,8 +211,14 @@ return [{
       category: selected.category,
       target_customer: selected.target_customer || research.target_customer,
       keyword: (selected.keywords && selected.keywords[0]) || research.keyword,
-      sub_keywords: selected.keywords && selected.keywords.length
-        ? selected.keywords : research.sub_keywords,
+      // Merge, never replace. The winning idea carries three to five keywords;
+      // the research package carries up to fifteen. Overwriting one with the
+      // other dropped a run at QA stage 1 ("fewer than 5 sub keywords") and
+      // starved the Etsy tag builder, which needs thirteen distinct tags.
+      sub_keywords: [...new Set([
+        ...(selected.keywords || []),
+        ...(research.sub_keywords || []),
+      ].map((k) => String(k).toLowerCase().trim()).filter(Boolean))].slice(0, 15),
       price_suggestion_usd: selected.est_price_usd || research.price_suggestion_usd,
       difficulty: selected.difficulty || research.difficulty,
       idea_title: selected.title,
