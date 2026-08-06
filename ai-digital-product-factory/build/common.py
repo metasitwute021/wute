@@ -132,6 +132,25 @@ const agentFinish = (response) => {
 
 
 
+def tune_agent_retries(document: dict) -> dict:
+    """Back off long enough to outlast a per-minute quota.
+
+    The default is three tries five seconds apart, which is right for a flaky
+    connection and useless against a rate limit measured per minute - a free
+    Gemini key answers 429 and every retry lands inside the same window. Only
+    the header-authenticated agent nodes are touched.
+    """
+    for node in document["nodes"]:
+        if node["type"] != "n8n-nodes-base.httpRequest":
+            continue
+        if node["parameters"].get("genericAuthType") != "httpHeaderAuth":
+            continue
+        node["retryOnFail"] = True
+        node["maxTries"] = 5
+        node["waitBetweenTries"] = 20000
+    return document
+
+
 def rename_text_agents(document: dict) -> dict:
     """Rename the switched agent nodes so the canvas says what it calls.
 
@@ -575,8 +594,11 @@ CONFIG_DEFAULTS: dict = {
     "FACTORY_ROTATION": "planner,printable,canva,wallart,resume,spreadsheet,kids,svg",
     "ALERT_WEBHOOK_URL": "",
     # V2 - idea factory
-    "IDEA_TARGET_COUNT": 200,
-    "IDEA_BATCH_SIZE": 25,
+    # 120 ideas still fills the 50 -> 20 -> 5 funnel with room to reject;
+    # 200 mainly bought more requests, which a free tier charges for in
+    # quota rather than money.
+    "IDEA_TARGET_COUNT": 120,
+    "IDEA_BATCH_SIZE": 40,
     "DUPLICATE_SIMILARITY_THRESHOLD": 0.62,
     "ALLOW_PRODUCT_REVISION": "false",
     # V2 - budget

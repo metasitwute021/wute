@@ -53,7 +53,10 @@ if (!research.keyword) {
 
 const requested = Number(ctx.idea_count || $env.IDEA_TARGET_COUNT || 200);
 const target = Math.max(100, Math.min(500, Math.round(requested)));
-const batchSize = Math.max(10, Math.min(40, Number($env.IDEA_BATCH_SIZE || 25)));
+// Batch size is capped at 40 by the token budget, not by taste. A free-tier
+// quota counts requests per minute, so eight small batches trip it where
+// three large ones do not - and 8000 output tokens covers 40 ideas.
+const batchSize = Math.max(10, Math.min(40, Number($env.IDEA_BATCH_SIZE || 40)));
 
 return [{
   json: {

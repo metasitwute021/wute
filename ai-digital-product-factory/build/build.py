@@ -32,7 +32,7 @@ from wf06 import DDL_POSTGRES, DDL_SQLITE  # noqa: E402
 from schema_v2 import DDL_V2_POSTGRES, DDL_V2_SQLITE  # noqa: E402
 from common import (  # noqa: E402
     CONFIG_EXEMPT_NODES, CONFIG_NODE_NAME, make_cloud_compatible,
-    rename_text_agents, set_text_provider,
+    rename_text_agents, set_text_provider, tune_agent_retries,
 )
 
 WORKFLOWS = [
@@ -181,7 +181,8 @@ def main() -> int:
 
     for filename, builder in WORKFLOWS:
         workflow = builder()
-        document = rename_text_agents(make_cloud_compatible(workflow.to_dict()))
+        document = tune_agent_retries(
+            rename_text_agents(make_cloud_compatible(workflow.to_dict())))
         problems = validate(document, filename)
         path = os.path.join(workflows_dir, filename)
         with open(path, "w", encoding="utf-8") as fh:
