@@ -1344,6 +1344,12 @@ if (!research.keyword) blockers.push('no primary keyword');
 if ((research.sub_keywords || []).length < 5) blockers.push('fewer than 5 sub keywords');
 if ((research.selling_points || []).length < 3) blockers.push('fewer than 3 selling points');
 
+// With no Etsy credential there are no market signals at all. That is a known
+// state of this install, not a fault of the concept, so it must not be scored
+// as though the research came back weak - it failed a sound product outright.
+const hasMarketData = Object.keys(market).length > 0
+  && Number(market.competitor_count || 0) > 0;
+
 const competitors = Number(market.competitor_count || 0);
 if (competitors === 0) warnings.push('no competitor data - market signal unavailable');
 if (competitors > 90) warnings.push(`very crowded keyword (${competitors} competitors sampled)`);
@@ -1357,7 +1363,9 @@ if (research.difficulty === 'hard' && competitors > 80) {
 
 // Score: keyword quality, signal quality, headroom.
 const keywordScore = Math.min(10, (research.sub_keywords || []).length);
-const signalScore = market.signal_quality === 'good' ? 10 : market.signal_quality === 'thin' ? 6 : 3;
+const signalScore = !hasMarketData ? 6
+  : market.signal_quality === 'good' ? 10
+  : market.signal_quality === 'thin' ? 6 : 3;
 const demandScore = competitors > 0 ? Math.max(3, 10 - Math.floor(competitors / 20)) : 5;
 const score = Math.round(((keywordScore + signalScore + demandScore) / 3) * 10) / 10;
 
@@ -1604,12 +1612,21 @@ const warnings = [...(report.warnings || [])];
 
 // Deterministic backstop for the failures a proofreader would never miss but a
 // model sometimes waves through.
-const PLACEHOLDER = /(lorem ipsum|insert (text|your)|tbd|todo|xxx+|\[.*?\])/i;
+//
+// The bracket rule used to be /\[.*?\]/, which blocked every product built
+// around fill-in fields: a resume kit's [Your Name] and a kids worksheet's
+// [D O C T O R] both read as abandoned draft markers. Bracketed prompts are the
+// deliverable for a template, so they are reported and left to the reviewer.
+// What blocks is a marker no finished page should ever carry.
+const DRAFT_MARKER = /(lorem ipsum|\binsert (?:your |the )?(?:text|name|content)(?: here)?\b|\bTBD\b|\bTODO\b|\bFIXME\b|\bplaceholder\b|\bx{4,}\b|\{\{\s*\w+\s*\}\}|\bcoming soon\b)/i;
+const FILL_IN_FIELD = /\[[^\]\n]{1,60}\]|_{4,}/;
 const seen = new Set();
 for (const page of content.pages) {
   const body = page.lines.join(' ');
-  if (PLACEHOLDER.test(body) || PLACEHOLDER.test(page.title)) {
-    blockers.push(`page ${page.page_number} contains placeholder text`);
+  if (DRAFT_MARKER.test(body) || DRAFT_MARKER.test(page.title)) {
+    blockers.push(`page ${page.page_number} still carries a drafting marker`);
+  } else if (FILL_IN_FIELD.test(body)) {
+    warnings.push(`page ${page.page_number} has fill-in fields - expected for a template, check they are intentional`);
   }
   if (!body.trim()) blockers.push(`page ${page.page_number} is empty`);
   const fingerprint = body.slice(0, 120).toLowerCase();
