@@ -78,6 +78,9 @@ SECRET_PATTERNS = [
     (re.compile(r'"client_secret"\s*:\s*"[^"]{8,}"'), "OAuth client secret"),
     (re.compile(r'"refresh_token"\s*:\s*"[^"]{8,}"'), "OAuth refresh token"),
     (re.compile(r"AIza[A-Za-z0-9_\-]{30,}"), "Google API key"),
+    # Newer Google keys carry an "AQ." prefix instead of "AIza".
+    (re.compile(r"\bAQ\.[A-Za-z0-9_\-]{30,}"), "Google API key (AQ. form)"),
+    (re.compile(r"\bxoxb-[A-Za-z0-9\-]{20,}"), "Slack bot token"),
 ]
 
 
