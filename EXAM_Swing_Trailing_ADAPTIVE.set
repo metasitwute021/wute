@@ -1,0 +1,71 @@
+; ========================================================================
+;  Metasit XAUUSD EA — ADAPTIVE RISK preset (BANK-EARLY)
+;  สำหรับบัญชี The5ers Swing 1-Step (Trailing EOD 4%)  |  Target 6%
+;  ใช้กับไฟล์: Metasit_XAUUSD_Donchian_EA_ADAPTIVE_RISK.mq5
+;  โหลด: หน้า Inputs -> ปุ่ม Load -> เลือกไฟล์นี้
+; ========================================================================
+
+; ---- Entry (ค่ามาตรฐานที่พิสูจน์แล้ว ห้ามแก้) ----
+InpUseMomentumFilter=true
+InpMomentumPct=30.0
+InpADXMin=20.0
+InpSL_ATRMult=1.5
+
+; ---- Risk (adaptive คุมแทน — InpRiskPercent เป็นแค่ fallback ถ้าปิด adaptive) ----
+InpRiskPercent=0.5
+InpMaxPositions=1
+InpReentryCooldownBars=1
+InpMaxRiskCapPercent=1.7
+
+; ---- 🎚️ ADAPTIVE RISK LADDER (หัวใจของ preset นี้) ----
+InpAdaptiveRisk=true
+InpRiskRungHigh=1.0
+InpRiskRungMid=0.75
+InpRiskRungLow=0.5
+InpTrailDD_Percent=4.0
+InpRecoverBufferPct=2.5
+
+; ---- Break-even + Staged closes (BANK-EARLY) ----
+InpBreakEvenR=0.25
+InpUseBE_ATR=true
+InpBE_TriggerATR=1.0
+InpBE_BufferPts=200.0
+InpPartialR=2.0
+InpPartialPercent=40.0
+InpLockTrailUntilPartial=true
+InpUseFixedTP=false
+InpFixedTP_R=2.0
+InpUseStagedCloses=true
+InpStrongMoveSLPercent=60.0
+InpMiniMoveClosePercent=70.0
+InpStagedMomentumPct=30.0
+InpTrailWidest=true
+InpLetWinnersRun=false
+InpRunTrailWiden=1.5
+
+; ---- Drawdown protection (ปรับสำหรับ TRAILING 4%) ----
+; ⭐ DD LOCK from peak = เกราะหลักของ trailing (หยุดก่อนชน 4%)
+InpMaxDD_Percent=2.5
+InpMaxDD_ResumeBuffer=1.5
+InpDailyDD_Percent=2.0
+InpProfitTargetPercent=6.0
+InpMaxTotalLossPercent=3.5
+InpPeakDDStopPercent=3.0
+
+; ---- Weekend guard ----
+InpNoWeekendHold=true
+InpWeekendCloseHour=20
+
+; ---- News filter (LIVE ใช้ปฏิทิน MT5 อัตโนมัติ) ----
+InpEnableNewsFilter=true
+InpNewsMinutesBefore=90
+InpNewsMinutesAfter=30
+InpNewsCurrencies=USD
+InpUseFFNews=false
+InpFFNewsFile=ff_news.csv
+InpFFBlockImpact=High
+InpFFTimeOffsetHours=0
+InpFFCloseBeforeNews=false
+
+; ---- Confidence OFF (adaptive คุมความเสี่ยงแทนแล้ว) ----
+InpEnableConfidence=false
