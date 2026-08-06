@@ -1,6 +1,7 @@
 """01 Master Controller - triggers, factory routing, orchestration, error handling."""
 
 from common import (
+    ASARRAY_JS,
     RETRY, T_CODE, T_ERROR_TRIGGER, T_EXEC_WF, T_HTTP, T_IF, T_MANUAL, T_NOOP,
     T_SCHEDULE, T_STOP, T_WEBHOOK, Workflow, code, exec_workflow, if_bool, pos,
 )
@@ -184,7 +185,8 @@ return [{
 }];
 """.strip()
 
-JS_COMPOSE_PRODUCT = r"""
+JS_COMPOSE_PRODUCT = ASARRAY_JS + r"""
+
 // Contract for 03 Product Engine. V2: the research package is now narrowed by
 // the Idea Factory, so the product is built from the winning idea rather than
 // from the raw research concept.
@@ -216,8 +218,8 @@ return [{
       // other dropped a run at QA stage 1 ("fewer than 5 sub keywords") and
       // starved the Etsy tag builder, which needs thirteen distinct tags.
       sub_keywords: [...new Set([
-        ...(selected.keywords || []),
-        ...(research.sub_keywords || []),
+        ...asArray(selected.keywords),
+        ...asArray(research.sub_keywords),
       ].map((k) => String(k).toLowerCase().trim()).filter(Boolean))].slice(0, 15),
       price_suggestion_usd: selected.est_price_usd || research.price_suggestion_usd,
       difficulty: selected.difficulty || research.difficulty,

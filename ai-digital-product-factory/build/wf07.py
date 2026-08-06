@@ -11,6 +11,7 @@ it happened to write first.
 """
 
 from common import (
+    ASARRAY_JS,
     RETRY, T_CODE, T_EXEC_TRIGGER, T_HTTP, T_IF, T_LOOP, T_NOOP, T_POSTGRES,
     Workflow, code, if_bool, loop_node, openai_chat, pos,
 )
@@ -218,7 +219,8 @@ return [{
 }];
 """.rstrip()
 
-JS_PARSE_BATCH = r"""
+JS_PARSE_BATCH = ASARRAY_JS + r"""
+
 // Normalise one generated batch. A malformed batch is dropped, not fatal.
 const FACTORIES = ['planner','printable','canva','wallart','resume','spreadsheet','kids','svg'];
 const batch = $('Loop: Idea Batches').first().json;
@@ -252,7 +254,7 @@ const rows = ideas
       category: String(idea.category || 'Digital Downloads').slice(0, 80),
       factory,
       target_customer: String(idea.target_customer || '').slice(0, 300),
-      keywords: (idea.keywords || []).map((k) => String(k).toLowerCase().trim())
+      keywords: asArray(idea.keywords).map((k) => String(k).toLowerCase().trim())
         .filter(Boolean).slice(0, 15),
       demand_score: clamp(idea.demand_score, 0, 100),
       competition_score: clamp(idea.competition_score, 0, 100),

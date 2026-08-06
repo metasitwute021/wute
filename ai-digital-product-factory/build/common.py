@@ -69,6 +69,28 @@ COL = 300
 ROW = 190
 
 
+# Injected into every Code node that consumes a list from a model reply.
+ASARRAY_JS = """
+// Coerce a model-supplied value into an array. The contract says these fields
+// are arrays; models answer with a bare string, a comma-joined string or an
+// object of values often enough that `x || []` is not a guard at all - it only
+// catches null, and a run died on "(tagsOut.tags || []) is not iterable".
+// Interpreting the answer beats discarding it: the content is usually right,
+// only its container is wrong.
+const asArray = (value) => {
+  if (Array.isArray(value)) return value;
+  if (value === null || value === undefined || value === '') return [];
+  if (typeof value === 'string') {
+    return value.includes('\\n') || value.includes(',')
+      ? value.split(/[,\\n]/).map((s) => s.trim()).filter(Boolean)
+      : [value.trim()];
+  }
+  if (typeof value === 'object') return Object.values(value).flatMap(asArray);
+  return [value];
+};
+""".strip()
+
+
 def pos(col: float, row: float = 0):
     """Grid position helper so the imported canvas stays readable.
 

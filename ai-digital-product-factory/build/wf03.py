@@ -3,6 +3,7 @@
 import json
 
 from common import (
+    ASARRAY_JS,
     RETRY, T_CODE, T_EXEC_TRIGGER, T_HTTP, T_IF, T_LOOP, T_NOOP, T_POSTGRES,
     T_SET, T_SWITCH, Workflow, code, if_bool, loop_node, openai_chat,
     openai_image, pos, switch_equals,
@@ -299,7 +300,8 @@ return [{
 }];
 """.rstrip()
 
-AGENT_PARSE_HELPER = r"""
+AGENT_PARSE_HELPER = ASARRAY_JS + r"""
+
 // Read an OpenAI chat reply, or fail with something worth reading. A bare
 // "missing field" message costs a whole run and a support round-trip to
 // diagnose; the model's own reply, its finish_reason and the keys it did
@@ -431,12 +433,12 @@ const content = readAgentReply('Writer AI', response).data;
 // and the number is not decoration: the PDF prints it in the footer and the
 // illustrations are matched to pages by it, so a collision puts the same
 // artwork on two pages and silently overruns the profile's image budget.
-const pages = (content.pages || [])
+const pages = asArray(content.pages)
   .filter((p) => p && (p.title || (p.lines || []).length))
   .map((p, index) => ({
     page_number: index + 1,
     title: String(p.title || `Page ${index + 1}`).slice(0, 90),
-    lines: (p.lines || []).map((l) => String(l).slice(0, 400)).filter(Boolean),
+    lines: asArray(p.lines).map((l) => String(l).slice(0, 400)).filter(Boolean),
     needs_image: p.needs_image === true,
   }));
 
@@ -778,7 +780,8 @@ return [{
 }];
 """.rstrip()
 
-JS_VALIDATE_SEO = r"""
+JS_VALIDATE_SEO = ASARRAY_JS + r"""
+
 // Etsy rejects listings on hard limits, so the model output is repaired here
 // rather than trusted: 140 char title, exactly 13 tags, 20 chars per tag.
 const base = $('Merge: Factory Profiles').first().json;
@@ -808,9 +811,9 @@ const normaliseTag = (tag) => String(tag)
   .trim();
 
 const candidates = [
-  ...(tagsOut.tags || []),
-  ...(base.research.sub_keywords || []),
-  ...(base.research.long_tail || []),
+  ...asArray(tagsOut.tags),
+  ...asArray(base.research.sub_keywords),
+  ...asArray(base.research.long_tail),
   base.research.keyword,
   base.factory,
 ];
@@ -847,7 +850,7 @@ const finalDescription = description.toLowerCase().includes('digital download')
   ? description
   : `${description}\n\n${disclosure}`;
 
-const materials = (tagsOut.materials || ['digital file', 'pdf', 'printable'])
+const materials = (asArray(tagsOut.materials).length ? asArray(tagsOut.materials) : ['digital file', 'pdf', 'printable'])
   .map(normaliseTag)
   .filter(Boolean)
   .slice(0, 13);
@@ -1034,7 +1037,7 @@ return [{
 }];
 """.strip()
 
-JS_BUILD_PDF = PDF_LIB_JS + r"""
+JS_BUILD_PDF = ASARRAY_JS + PDF_LIB_JS + r"""
 
 // ---------------------------------------------------------------------------
 // Assemble the product PDF from the written content and the generated art.
@@ -1061,7 +1064,7 @@ pdfPages.push({
     '',
     content.intro_text || '',
     '',
-    ...(content.usage_instructions || []).map((line) => `- ${line}`),
+    ...asArray(content.usage_instructions).map((line) => `- ${line}`),
   ].filter((l) => l !== undefined),
   footer: footerLabel,
 });
@@ -1537,7 +1540,8 @@ return [{
 }];
 """.rstrip()
 
-JS_PARSE_DESIGN_QA = r"""
+JS_PARSE_DESIGN_QA = ASARRAY_JS + r"""
+
 // QA stage 3 - Design. Model verdict plus a deterministic geometry re-check,
 // because "will this text fit on the page" is arithmetic, not judgement.
 const base = $('Merge: Factory Profiles').first().json;
@@ -1552,8 +1556,8 @@ try {
   report = { passed: false, blockers: [`Design QA AI returned invalid JSON: ${e.message}`] };
 }
 
-const blockers = [...(report.blockers || [])];
-const warnings = [...(report.warnings || [])];
+const blockers = [...asArray(report.blockers)];
+const warnings = [...asArray(report.warnings)];
 
 // Deterministic re-check of the two things that actually break a PDF.
 const MARGIN_PT = 56;                       // matches the PDF writer
@@ -1627,7 +1631,8 @@ return [{
 }];
 """.rstrip()
 
-JS_PARSE_CONTENT_QA = r"""
+JS_PARSE_CONTENT_QA = ASARRAY_JS + r"""
+
 // QA stage 4 - Content: grammar, spelling, copyright, sensitive material.
 const response = $input.first().json;
 const content = $('Parse Content JSON').first().json.content;
@@ -1639,8 +1644,8 @@ try {
   report = { passed: false, blockers: [`Content QA AI returned invalid JSON: ${e.message}`] };
 }
 
-const blockers = [...(report.blockers || [])];
-const warnings = [...(report.warnings || [])];
+const blockers = [...asArray(report.blockers)];
+const warnings = [...asArray(report.warnings)];
 
 // Deterministic backstop for the failures a proofreader would never miss but a
 // model sometimes waves through.
@@ -1672,7 +1677,7 @@ for (const page of content.pages) {
   seen.add(fingerprint);
 }
 
-const issues = report.issues || [];
+const issues = asArray(report.issues);
 const scores = report.scores || {};
 const values = Object.values(scores).map(Number).filter((n) => !Number.isNaN(n));
 const score = values.length ? Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) / 10 : 5;

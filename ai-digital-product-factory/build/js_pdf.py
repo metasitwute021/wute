@@ -143,7 +143,10 @@ function buildPdf(spec) {
     // ---- text page: wrap, then break into as many pages as needed ---------
     const titleSize = page.title_size || (page.cover ? 30 : 18);
     const lines = [];
-    for (const raw of page.lines || []) {
+    // A page whose lines arrived as a single string still typesets.
+    const pageLines = Array.isArray(page.lines) ? page.lines
+      : (page.lines ? [String(page.lines)] : []);
+    for (const raw of pageLines) {
       for (const wrapped of wrapText(raw, bodySize, usableWidth)) lines.push(wrapped);
     }
 

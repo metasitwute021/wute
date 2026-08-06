@@ -1,6 +1,7 @@
 """02 Research Engine - Etsy market analysis + Research AI product concept."""
 
 from common import (
+    ASARRAY_JS,
     RETRY, T_CODE, T_EXEC_TRIGGER, T_HTTP, T_IF, T_NOOP, Workflow, code,
     etsy_http, if_bool, openai_chat, pos,
 )
@@ -238,7 +239,8 @@ const userPrompt = render(agent.user_template, {
 return [{ json: { ...ctx, seo_user_prompt: userPrompt } }];
 """.rstrip()
 
-JS_BUILD_OUTPUT = r"""
+JS_BUILD_OUTPUT = ASARRAY_JS + r"""
+
 // Final research contract returned to 01 Master Controller.
 const ctx = $('Build Keyword Expansion Prompt').first().json;
 const response = $input.first().json;
@@ -257,7 +259,7 @@ const clean = (list) => [...new Set(
     .filter((s) => s && s.length <= 20)
 )];
 
-const subKeywords = clean([...(research.sub_keywords || []), ...(expansion.sub_keywords || [])]).slice(0, 15);
+const subKeywords = clean([...asArray(research.sub_keywords), ...asArray(expansion.sub_keywords)]).slice(0, 15);
 
 return [{
   json: {
@@ -273,10 +275,10 @@ return [{
       keyword: String(research.keyword || ctx.search_keyword).toLowerCase(),
       sub_keywords: subKeywords,
       difficulty: String(research.difficulty || 'medium').toLowerCase(),
-      selling_points: research.selling_points || [],
+      selling_points: asArray(research.selling_points),
       price_suggestion_usd: research.price_suggestion_usd || ctx.market?.price_usd?.median || 5,
       market_gap: research.market_gap || null,
-      long_tail: clean(expansion.long_tail || []).slice(0, 15),
+      long_tail: clean(asArray(expansion.long_tail)).slice(0, 15),
     },
     market: ctx.market || {},
     researched_at: ctx.researched_at,

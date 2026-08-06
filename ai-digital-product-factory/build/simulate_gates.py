@@ -254,6 +254,65 @@ def negative_checks(tmp: str, code_of: dict) -> int:
     return failures
 
 
+SHAPES = {
+    "array (the contract)": ["resume template", "cv kit"],
+    "comma-joined string": "resume template, cv kit, job search",
+    "object of values": {"a": "resume template", "b": "cv kit"},
+    "one bare string": "resume template",
+    "absent": None,
+    "a number": 7,
+    "nested object of arrays": {"primary": ["resume template"], "secondary": ["cv kit"]},
+}
+
+
+def shape_checks(tmp: str, code_of: dict) -> int:
+    """A field the contract calls a list can arrive as anything.
+
+    `x || []` only catches null, so a model answering with an object put
+    "(tagsOut.tags || []) is not iterable" in front of a paid run. asArray
+    interprets the answer instead of discarding it; these prove it holds for
+    every shape seen so far, and that the content survives the coercion.
+    """
+    print("\n=== shape checks: a list field arriving as something else ===")
+    factory = next(f for f in FACTORIES if f["factory_key"] == "resume")
+    agent_nodes = ["OpenAI: SEO AI Title", "OpenAI: SEO AI Description",
+                   "OpenAI: SEO AI Etsy Tags"]
+    failures = 0
+    for label, tags in SHAPES.items():
+        data = fixture(factory)
+        data["agent_reply"] = {"choices": [{"finish_reason": "stop", "message": {
+            "content": json.dumps({"title": "Printable Resume Template",
+                                   "description": "A calm kit.", "tags": tags,
+                                   "materials": ["digital file"]})}}]}
+        harness = HARNESS % (json.dumps(data),
+                             json.dumps(code_of["Validate SEO Package"]),
+                             json.dumps("Validate SEO Package"))
+        harness = harness.replace(
+            "const $ = (name) => {",
+            f"const AGENT_NODES = {json.dumps(agent_nodes)};\n"
+            "const $ = (name) => {\n"
+            "  if (AGENT_NODES.includes(name)) return { first: () => ({ json: FIXTURE.agent_reply }) };")
+        harness = harness.replace("const INPUTS = {",
+                                  "const INPUTS = {\n  'Validate SEO Package': FIXTURE.agent_reply,")
+        harness = harness.replace("  const j = raw.export_qa || raw.qa || raw;",
+                                  "  const j = raw.seo || raw;")
+        harness = harness.replace("    blockers: j.blockers || [],",
+                                  "    blockers: [], tags: (j.tags || []).length,")
+        script = os.path.join(tmp, "shape.js")
+        with open(script, "w", encoding="utf-8") as fh:
+            fh.write(harness)
+        result = subprocess.run(["node", script], capture_output=True, text=True)
+        report = ({} if result.returncode else
+                  json.loads(result.stdout.strip().splitlines()[-1]))
+        if result.returncode or report.get("crashed") or report.get("tags") != 13:
+            detail = report.get("crashed") or result.stderr.strip().splitlines()[-1][:70]
+            print(f"  [FAIL] tags as {label:24s} {detail}")
+            failures += 1
+        else:
+            print(f"  [ok  ] tags as {label:24s} -> 13 Etsy tags")
+    return failures
+
+
 def main() -> int:
     with open(os.path.join(ROOT, "workflows", "03_product_engine.json"),
               encoding="utf-8") as fh:
@@ -293,6 +352,7 @@ def main() -> int:
                     failures += 1
 
         failures += negative_checks(tmp, code_of)
+        failures += shape_checks(tmp, code_of)
 
     print()
     if failures:
