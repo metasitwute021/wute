@@ -378,7 +378,10 @@ def openai_image(prompt_expr: str, size_expr: str, fmt_expr: str) -> dict:
         f"prompt: {prompt_expr}, "
         f"size: {size_expr}, "
         f"output_format: {fmt_expr}, "
-        "quality: $env.OPENAI_IMAGE_QUALITY || 'high', "
+        # Per job, not per install. A shop thumbnail and a printable page
+        # do not deserve the same spend, and quality is where the money
+        # in this pipeline actually goes.
+        "quality: $json.quality || $env.OPENAI_IMAGE_QUALITY || 'high', "
         "n: 1 }) }}"
     )
     return {
@@ -542,6 +545,16 @@ CONFIG_DEFAULTS: dict = {
     "GEMINI_MODEL_TEXT": "gemini-2.5-flash",
     "OPENAI_MODEL_IMAGE": "gpt-image-1",
     "OPENAI_IMAGE_QUALITY": "high",
+    # Per-role image quality. The cover is the picture a shopper decides on, so
+    # it stays at the top setting; page art is printed but sits behind the
+    # cover; the thumbnail is an icon. Raising these raises the bill roughly
+    # four-fold per step, so they are the first thing to reach for.
+    "IMAGE_QUALITY_COVER": "high",
+    "IMAGE_QUALITY_PAGE": "medium",
+    "IMAGE_QUALITY_SMALL": "low",
+    # Listing previews reuse art already generated for this product. Set to
+    # true to have the model draw separate mockups instead.
+    "GENERATE_SEPARATE_PREVIEWS": "false",
     "PROMPT_VERSION": "v1.0.0",
     # Etsy - empty means "not configured yet"; the run then skips publishing
     "ETSY_API_BASE": "https://openapi.etsy.com",

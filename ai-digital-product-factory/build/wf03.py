@@ -512,6 +512,16 @@ const decorate = (prompt) =>
   `${String(prompt || '').trim()} Art direction: ${style}. ` +
   'No text, no letters, no numbers, no watermark, no logo, no signature.';
 
+// Quality is set per role rather than per install. Every image used to be
+// generated at 'high', including the shop icon nobody sees above 200px and the
+// three listing previews - together those were two thirds of the bill for a
+// picture the customer never receives.
+const QUALITY = {
+  cover: $env.IMAGE_QUALITY_COVER || 'high',
+  page: $env.IMAGE_QUALITY_PAGE || 'medium',
+  small: $env.IMAGE_QUALITY_SMALL || 'low',
+};
+
 const jobs = [];
 jobs.push({
   role: 'cover',
@@ -519,6 +529,7 @@ jobs.push({
   prompt: decorate(plan?.cover?.prompt || `Cover artwork for ${content.cover_title}`),
   size: base.profile.cover_size,
   format: 'jpeg',
+  quality: QUALITY.cover,
 });
 jobs.push({
   role: 'thumbnail',
@@ -526,18 +537,29 @@ jobs.push({
   prompt: decorate(plan?.thumbnail?.prompt || `Square shop icon for ${content.cover_title}`),
   size: base.profile.thumbnail_size,
   format: 'png',
+  quality: QUALITY.small,
 });
 
+// Listing previews are shown beside the cover on the shop page. Drawing fresh
+// mockups for them costs as much as the product's own artwork and shows the
+// customer something that is not in the file they receive; by default they are
+// composed from art this run already paid for. Set GENERATE_SEPARATE_PREVIEWS
+// to true to go back to generating them.
+const separatePreviews = String($env.GENERATE_SEPARATE_PREVIEWS || 'false')
+  .toLowerCase() === 'true';
 const previews = Array.isArray(plan?.previews) ? plan.previews : [];
-for (let i = 0; i < base.profile.preview_count; i += 1) {
-  jobs.push({
-    role: 'preview',
-    key: `preview_${i + 1}`,
-    index: i + 1,
-    prompt: decorate(previews[i]?.prompt || `Lifestyle mockup ${i + 1} of ${content.cover_title}`),
-    size: base.profile.preview_size,
-    format: 'jpeg',
-  });
+if (separatePreviews) {
+  for (let i = 0; i < base.profile.preview_count; i += 1) {
+    jobs.push({
+      role: 'preview',
+      key: `preview_${i + 1}`,
+      index: i + 1,
+      prompt: decorate(previews[i]?.prompt || `Lifestyle mockup ${i + 1} of ${content.cover_title}`),
+      size: base.profile.preview_size,
+      format: 'jpeg',
+      quality: QUALITY.small,
+    });
+  }
 }
 
 const pagePrompts = new Map(
@@ -551,6 +573,7 @@ for (const page of content.pages.filter((p) => p.needs_image)) {
     prompt: decorate(pagePrompts.get(page.page_number) || page.title),
     size: base.profile.image_size,
     format: 'jpeg',
+    quality: QUALITY.page,
   });
 }
 
@@ -677,8 +700,24 @@ if (!byKey.cover || !byKey.thumbnail) {
   );
 }
 
-const previews = items.filter((j) => j.role === 'preview' && j.b64);
 const pages = items.filter((j) => j.role === 'page' && j.b64);
+
+// Previews are listing images, not deliverables. When none were generated they
+// are composed from artwork this run already produced - the cover first, then
+// page art - which shows the shopper what is actually inside the file and costs
+// nothing. Falling back to the cover alone keeps the count right for a product
+// whose pages carry no art.
+let previews = items.filter((j) => j.role === 'preview' && j.b64);
+let previewsReused = false;
+if (!previews.length) {
+  previewsReused = true;
+  const pool = [byKey.cover, ...pages].filter(Boolean);
+  previews = [];
+  for (let i = 0; i < base.profile.preview_count; i += 1) {
+    const source = pool[i % pool.length];
+    if (source) previews.push({ index: i + 1, b64: source.b64 });
+  }
+}
 
 return [{
   json: {
@@ -693,6 +732,7 @@ return [{
     image_stats: {
       requested: plan.image_job_count,
       generated: items.filter((j) => j.b64).length,
+      previews_reused: previewsReused,
       failed,
       placeholder: items.some((j) => j.placeholder),
     },
@@ -1428,10 +1468,31 @@ const profile = base.profile;
 const blockers = [];
 const warnings = [];
 
-const IMAGE_UNIT = Number($env.OPENAI_IMAGE_UNIT_COST_USD || 0.19);
+// Price the run the way it is actually configured. A flat per-image rate was
+// four times the real cost once quality became per-role, and this figure gates
+// the run on unit economics - overstating it rejects products that pay.
+const IMAGE_PRICE = {                    // approx USD per image, gpt-image-1
+  low:    { square: 0.011, portrait: 0.016 },
+  medium: { square: 0.042, portrait: 0.063 },
+  high:   { square: 0.167, portrait: 0.250 },
+};
+const priceOf = (quality, shape) => {
+  const band = IMAGE_PRICE[String(quality || 'high').toLowerCase()] || IMAGE_PRICE.high;
+  return band[shape];
+};
+
 const CHAT_RUN = Number($env.OPENAI_CHAT_RUN_COST_USD || 0.12);
-const images = 2 + profile.preview_count + profile.image_pages;
-const estCost = Math.round((images * IMAGE_UNIT + CHAT_RUN) * 100) / 100;
+const separatePreviews = String($env.GENERATE_SEPARATE_PREVIEWS || 'false')
+  .toLowerCase() === 'true';
+
+const images = 2 + profile.image_pages + (separatePreviews ? profile.preview_count : 0);
+const estCost = Math.round((
+  priceOf($env.IMAGE_QUALITY_COVER || 'high', 'portrait')
+  + priceOf($env.IMAGE_QUALITY_PAGE || 'medium', 'portrait') * profile.image_pages
+  + priceOf($env.IMAGE_QUALITY_SMALL || 'low', 'square')
+      * (1 + (separatePreviews ? profile.preview_count : 0))
+  + CHAT_RUN
+) * 100) / 100;
 
 const [minPrice, maxPrice] = profile.price_range_usd;
 const price = Math.min(maxPrice, Math.max(minPrice,
