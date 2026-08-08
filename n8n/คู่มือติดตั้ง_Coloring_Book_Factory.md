@@ -35,7 +35,7 @@
 ```
 Trigger → Config → Agent 1 Creative Director → Agent 2 Prompt Artist → Agent 3 Art Director QA
 → แตกรายการภาพ → Loop สร้างภาพทีละหน้า (gpt-image-1) → รวมเล่ม PDF (โค้ดล้วน ไม่ใช้บริการเสริม)
-→ ส่ง Gmail (ข้อความ KIT + แนบ PDF + cover.jpg)
+→ 🛒 ลงขาย Etsy (สร้างร่างสินค้า + อัปโหลดภาพปกและไฟล์) → ส่ง Gmail (ข้อความ KIT + ลิงก์สินค้า + แนบ PDF + cover.jpg)
 ```
 
 1. **Agent 1 — Creative Director**: สุ่มธีม เลือกตัวละคร (สัตว์/คน/คนคู่สัตว์ สลับกันไป) ตั้งชื่อเล่ม คิดฉาก 5 หน้า (ทุกฉากเป็นโมเดลห้อง isometric + มีสวน/ของนอกห้อง)
@@ -43,6 +43,7 @@ Trigger → Config → Agent 1 Creative Director → Agent 2 Prompt Artist → A
 3. **Agent 3 — Art Director QA**: ตรวจแก้ทุก prompt ก่อนจ่ายเงินสร้างภาพ (กันคำสี กันฉากซ้ำ กันของไม่เหมาะกับเด็ก)
 - Agents ทั้ง 3 เรียก OpenAI (gpt-4.1-mini) ตรงผ่าน HTTP โดย**ฝัง key ไว้แล้ว** — ไม่ต้องตั้ง credential OpenAI
 - ภาพไหนเจนไม่สำเร็จ ระบบไม่ล้มทั้งชุด: ทำต่อจนจบ แล้วรายงานในอีเมลว่าหน้าไหนหาย เพราะอะไร
+- 🛒 **ลงขาย Etsy อัตโนมัติ** (ทางเลือก): สร้างร่างสินค้าพร้อมชื่อ/คำโฆษณา/แท็ก + อัปโหลดภาพปกและไฟล์ PDF แล้วส่งลิงก์มาในอีเมล — ต้องตั้งค่าก่อน ดู `คู่มือลงขาย_Etsy.md` / ไม่ใช้ก็ตั้ง `etsy_enabled = false`
 
 ---
 
@@ -97,6 +98,9 @@ n8n → Workflows → ปุ่ม ⋯ → **Import from File** → เลือ
 | เปลี่ยนลายเส้น/สไตล์ภาพ | โหนด **Agent 2 - Prompt Artist** → แก้บล็อกสไตล์ล็อกใน system message |
 | เปลี่ยนอีเมลผู้รับ | โหนด **Send Gmail** → ช่อง To |
 | เปลี่ยนราคาแนะนำในอีเมล | โหนด **Build PDF + Email Pack** → แก้บรรทัด `[PRICE]` ในโค้ด |
+| เปิด/ปิดการลงขาย Etsy | โหนด **Config** → `etsy_enabled` (true/false) |
+| ให้ Etsy เปิดขายเองอัตโนมัติ | โหนด **Config** → `etsy_publish = true` (เสียค่าลงสินค้า $0.20/ชิ้นทันที) |
+| เปลี่ยนราคาขายบน Etsy | โหนด **Config** → `etsy_price` |
 | เปลี่ยน API key (กรณี key ถูกระงับ/หมุนใหม่) | แทนที่ค่าใน Header `Authorization` ทั้ง 4 โหนด: Agent 1, Agent 2, Agent 3, Generate Image |
 
 ---
@@ -112,11 +116,15 @@ n8n → Workflows → ปุ่ม ⋯ → **Import from File** → เลือ
 | Agent ตอบ JSON เพี้ยน / Build Page List error | นานๆ เกิดที — รันใหม่อีกครั้ง (โค้ดกันรั้ว ```json ให้แล้ว) |
 | หน้าระบายสีมีสีเทา/เงาปน | Agent 3 กรองอยู่แล้ว ถ้ายังเจอ เพิ่ม `absolutely no gray tones, no gradients` ในบล็อกสไตล์ Agent 2 |
 | อีเมลไม่มา แต่ workflow เขียว | เช็คโฟลเดอร์ Spam / เช็คว่า credential Gmail ยังเชื่อมอยู่ (เปิด credential กด Reconnect) |
+| อีเมลขึ้น ⚠️ เรื่อง Etsy | ดูวิธีแก้ในหัวข้อ "แก้ปัญหาที่พบบ่อย" ของ `คู่มือลงขาย_Etsy.md` |
 
 ---
 
 ## 📁 ไฟล์ในโฟลเดอร์นี้
 
-- `AI_Coloring_Book_Factory.json` — workflow เวอร์ชันปลอดภัย (key เป็น placeholder)
+- `AI_Coloring_Book_Factory.json` — workflow หลัก เวอร์ชันปลอดภัย (key เป็น placeholder)
+- `Etsy_Auth_Helper.json` — workflow ตัวช่วยขอสิทธิ์ Etsy (ใช้ครั้งเดียว)
 - `คู่มือติดตั้ง_Coloring_Book_Factory.md` — ไฟล์นี้
-- เวอร์ชัน `_WITH_KEYS` ที่ key ฝังครบ: ส่งให้ทางแชท ไม่เก็บบน GitHub
+- `คู่มือลงขาย_Etsy.md` — วิธีเชื่อม Etsy ตั้งแต่ขอแอปจนลงขายได้
+- `สรุปสำหรับทำคลิปสอน.md` — สรุปโปรเจกต์สำหรับทำสื่อการสอน
+- เวอร์ชัน `_WITH_KEYS` ที่ key OpenAI ฝังครบ: ส่งให้ทางแชท ไม่เก็บบน GitHub

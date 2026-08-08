@@ -54,13 +54,13 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        980,
-        60
+        960,
+        -180
       ],
       "parameters": {
-        "content": "## 📧 ส่งเข้า Gmail\nรวมเล่ม PDF (A4 แนวนอน) ด้วยโค้ดล้วน ไม่ใช้บริการเสริม → อีเมลข้อความ KIT + แนบ PDF + cover.jpg ไปที่ metasitwute021@gmail.com",
-        "width": 560,
-        "height": 160,
+        "content": "## 🛒 ลงขาย Etsy + 📧 ส่งเข้า Gmail\nรวมเล่ม PDF (A4 แนวนอน) ด้วยโค้ดล้วน ไม่ใช้บริการเสริม\n\n**Etsy:** สร้าง **ร่างสินค้า (draft)** พร้อมชื่อ/คำโฆษณา/แท็ก + อัปโหลดภาพปกและไฟล์ PDF ให้อัตโนมัติ แล้วส่งลิงก์มาในอีเมล — คุณกดเปิดขายเองทีหลัง (ตั้ง `etsy_publish = true` ใน Config ถ้าอยากให้เปิดขายเองอัตโนมัติ)\nต้องกรอกค่า etsy_* ใน Config ก่อน ดูวิธีใน `คู่มือลงขาย_Etsy.md`\nปิดการลงขาย: ตั้ง `etsy_enabled = false`\n\n**Gmail:** ส่งข้อความ UPLOAD KIT + ลิงก์สินค้า Etsy + แนบ PDF และ cover.jpg ไปที่ metasitwute021@gmail.com",
+        "width": 620,
+        "height": 340,
         "color": 6
       }
     },
@@ -140,6 +140,54 @@
               "name": "image_quality",
               "value": "high",
               "type": "string"
+            },
+            {
+              "id": "cfg-etsy-enabled",
+              "name": "etsy_enabled",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "cfg-etsy-keystring",
+              "name": "etsy_keystring",
+              "value": "YOUR_ETSY_KEYSTRING",
+              "type": "string"
+            },
+            {
+              "id": "cfg-etsy-refresh",
+              "name": "etsy_refresh_token",
+              "value": "YOUR_ETSY_REFRESH_TOKEN",
+              "type": "string"
+            },
+            {
+              "id": "cfg-etsy-shop",
+              "name": "etsy_shop_id",
+              "value": "YOUR_ETSY_SHOP_ID",
+              "type": "string"
+            },
+            {
+              "id": "cfg-etsy-taxonomy",
+              "name": "etsy_taxonomy_id",
+              "value": 0,
+              "type": "number"
+            },
+            {
+              "id": "cfg-etsy-price",
+              "name": "etsy_price",
+              "value": 3.5,
+              "type": "number"
+            },
+            {
+              "id": "cfg-etsy-quantity",
+              "name": "etsy_quantity",
+              "value": 999,
+              "type": "number"
+            },
+            {
+              "id": "cfg-etsy-publish",
+              "name": "etsy_publish",
+              "value": false,
+              "type": "boolean"
             }
           ]
         },
@@ -359,23 +407,70 @@
         280
       ],
       "parameters": {
-        "jsCode": "// รวมเล่ม PDF (A4 แนวนอน, JavaScript ล้วน) + เตรียมไฟล์แนบและข้อความอีเมลแบบ KIT\nfunction jpegInfo(buf) {\n  let i = 2;\n  while (i < buf.length - 8) {\n    if (buf[i] !== 0xff) { i++; continue; }\n    const marker = buf[i + 1];\n    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {\n      return { height: buf.readUInt16BE(i + 5), width: buf.readUInt16BE(i + 7), components: buf[i + 9] };\n    }\n    const len = buf.readUInt16BE(i + 2);\n    i += 2 + len;\n  }\n  return { width: 1536, height: 1024, components: 3 };\n}\n\nfunction buildPdf(images) {\n  const W = 841.89, H = 595.28, M = 18; // A4 landscape (points) + ขอบขาวรอบภาพ\n  const nObjs = 2 + images.length * 3;\n  const chunks = [];\n  let offset = 0;\n  const offsets = new Array(nObjs + 1).fill(0);\n  const push = (strOrBuf) => {\n    const b = Buffer.isBuffer(strOrBuf) ? strOrBuf : Buffer.from(strOrBuf, 'latin1');\n    chunks.push(b);\n    offset += b.length;\n  };\n  const beginObj = (n) => { offsets[n] = offset; push(n + ' 0 obj\\n'); };\n\n  push('%PDF-1.4\\n%\\xE2\\xE3\\xCF\\xD3\\n');\n  const pageObjNums = images.map((_, k) => 5 + k * 3);\n  beginObj(1);\n  push('<< /Type /Catalog /Pages 2 0 R >>\\nendobj\\n');\n  beginObj(2);\n  push('<< /Type /Pages /Kids [' + pageObjNums.map((n) => n + ' 0 R').join(' ') + '] /Count ' + images.length + ' >>\\nendobj\\n');\n\n  images.forEach((img, k) => {\n    const info = jpegInfo(img.buf);\n    const cs = info.components === 1 ? '/DeviceGray' : '/DeviceRGB';\n    const maxW = W - 2 * M, maxH = H - 2 * M;\n    const scale = Math.min(maxW / info.width, maxH / info.height);\n    const dw = info.width * scale, dh = info.height * scale;\n    const x = (W - dw) / 2, y = (H - dh) / 2;\n    const imgObj = 3 + k * 3, contObj = 4 + k * 3, pageObj = 5 + k * 3;\n\n    beginObj(imgObj);\n    push('<< /Type /XObject /Subtype /Image /Width ' + info.width + ' /Height ' + info.height +\n      ' /ColorSpace ' + cs + ' /BitsPerComponent 8 /Filter /DCTDecode /Length ' + img.buf.length + ' >>\\nstream\\n');\n    push(img.buf);\n    push('\\nendstream\\nendobj\\n');\n\n    const content = 'q ' + dw.toFixed(2) + ' 0 0 ' + dh.toFixed(2) + ' ' + x.toFixed(2) + ' ' + y.toFixed(2) + ' cm /Im0 Do Q';\n    beginObj(contObj);\n    push('<< /Length ' + content.length + ' >>\\nstream\\n' + content + '\\nendstream\\nendobj\\n');\n\n    beginObj(pageObj);\n    push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + W + ' ' + H + '] /Resources << /XObject << /Im0 ' +\n      imgObj + ' 0 R >> >> /Contents ' + contObj + ' 0 R >>\\nendobj\\n');\n  });\n\n  const xrefStart = offset;\n  push('xref\\n0 ' + (nObjs + 1) + '\\n0000000000 65535 f \\n');\n  for (let n = 1; n <= nObjs; n++) push(String(offsets[n]).padStart(10, '0') + ' 00000 n \\n');\n  push('trailer\\n<< /Size ' + (nObjs + 1) + ' /Root 1 0 R >>\\nstartxref\\n' + xrefStart + '\\n%%EOF\\n');\n  return Buffer.concat(chunks);\n}\n\nconst onePx = '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';\n\nconst entries = $input.all().map((item, idx) => ({ item, idx }));\nentries.sort((a, b) => a.item.json.index - b.item.json.index);\nconst meta = entries[0].item.json;\n\nconst good = [];\nconst failed = [];\nfor (const e of entries) {\n  if (e.item.json.failed || !e.item.binary || !e.item.binary.data) { failed.push(e.item.json); continue; }\n  let buf;\n  try { buf = await this.helpers.getBinaryDataBuffer(e.idx, 'data'); }\n  catch (err) { buf = Buffer.from(e.item.binary.data.data, 'base64'); }\n  good.push({ buf, json: e.item.json });\n}\nif (good.length === 0) {\n  throw new Error('ไม่มีภาพที่สร้างสำเร็จเลยสักภาพ — สาเหตุแรก: ' + ((failed[0] && failed[0].error_message) || 'unknown'));\n}\n\nconst pdfBuf = buildPdf(good.map(g => ({ buf: g.buf })));\nconst binary = {};\nbinary.data = await this.helpers.prepareBinaryData(pdfBuf, meta.pdf_name, 'application/pdf');\nconst coverEntry = good.find(g => g.json.kind === 'cover');\nbinary.cover = await this.helpers.prepareBinaryData(coverEntry ? coverEntry.buf : Buffer.from(onePx, 'base64'), 'cover.jpg', 'image/jpeg');\n\nlet warnBlock = '';\nif (failed.length) {\n  warnBlock = '\\n⚠️ ภาพเจนไม่สำเร็จ ' + failed.length + ' รูป: ' + failed.map(f => f.filename).join(', ');\n  const fe = failed[0].error_message || '';\n  if (fe) {\n    warnBlock += '\\nสาเหตุจาก OpenAI: ' + fe;\n    if (/quota|billing|insufficient/i.test(fe)) warnBlock += '\\n→ เครดิต OpenAI หมด! เติมเงินที่ platform.openai.com → Billing แล้วรันใหม่';\n    if (/must be verified|verification/i.test(fe)) warnBlock += '\\n→ บัญชี OpenAI ยังไม่ Verify Organization — ไปที่ platform.openai.com → Settings → Organization → Verify';\n  }\n  warnBlock += '\\n→ PDF ชุดนี้มีเฉพาะหน้าที่สำเร็จ (' + good.length + ' หน้า) ควรรันใหม่ก่อนนำไปขาย\\n';\n}\n\nconst pageCount = good.filter(g => g.json.kind === 'page').length;\nconst kit = [\n  '====== 🎨 COLORING BOOK UPLOAD KIT (คัดลอกวางตอนลงขายได้เลย) ======',\n  warnBlock,\n  '',\n  '[TITLE]',\n  meta.book_title,\n  '',\n  '[DESCRIPTION]',\n  meta.description || '-',\n  '',\n  '[ART THEME]  ' + meta.theme,\n  '[MAIN CHARACTER]  ' + (meta.main_character || '-'),\n  '[PAGES]  ปกสี 1 หน้า + หน้าระบายสีขาวดำ ' + pageCount + ' หน้า (A4 แนวนอน มีกรอบเว้นขอบกระดาษ)',\n  '[PRICE]  $3.50 (ช่วงแนะนำ $2.50 - $5.00)',\n  '[SEARCH KEYWORDS]  ' + ((meta.keywords || []).join(', ') || '-'),\n  '',\n  '[FILE]  แนบไฟล์ PDF รวมเล่มในอีเมลนี้: ' + meta.pdf_name,\n  '[PREVIEW/COVER]  ใช้ไฟล์ cover.jpg ในอีเมลนี้เป็นภาพปก/ภาพพรีวิวตอนลงขาย',\n  '',\n  'เหมาะสำหรับ: เด็กเล็ก - ประถม และสายระบายสีทุกวัย (Etsy / TPT / Amazon KDP)',\n  '===============================================',\n].join('\\n');\n\nreturn [{\n  json: {\n    book_title: meta.book_title,\n    theme: meta.theme,\n    main_character: meta.main_character || '',\n    pdf_name: meta.pdf_name,\n    total_pages: good.length,\n    has_failures: failed.length > 0,\n    kit: kit,\n  },\n  binary,\n}];"
+        "jsCode": "// รวมเล่ม PDF (A4 แนวนอน, JavaScript ล้วน) + เตรียมไฟล์แนบและข้อความอีเมลแบบ KIT\nfunction jpegInfo(buf) {\n  let i = 2;\n  while (i < buf.length - 8) {\n    if (buf[i] !== 0xff) { i++; continue; }\n    const marker = buf[i + 1];\n    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {\n      return { height: buf.readUInt16BE(i + 5), width: buf.readUInt16BE(i + 7), components: buf[i + 9] };\n    }\n    const len = buf.readUInt16BE(i + 2);\n    i += 2 + len;\n  }\n  return { width: 1536, height: 1024, components: 3 };\n}\n\nfunction buildPdf(images) {\n  const W = 841.89, H = 595.28, M = 18; // A4 landscape (points) + ขอบขาวรอบภาพ\n  const nObjs = 2 + images.length * 3;\n  const chunks = [];\n  let offset = 0;\n  const offsets = new Array(nObjs + 1).fill(0);\n  const push = (strOrBuf) => {\n    const b = Buffer.isBuffer(strOrBuf) ? strOrBuf : Buffer.from(strOrBuf, 'latin1');\n    chunks.push(b);\n    offset += b.length;\n  };\n  const beginObj = (n) => { offsets[n] = offset; push(n + ' 0 obj\\n'); };\n\n  push('%PDF-1.4\\n%\\xE2\\xE3\\xCF\\xD3\\n');\n  const pageObjNums = images.map((_, k) => 5 + k * 3);\n  beginObj(1);\n  push('<< /Type /Catalog /Pages 2 0 R >>\\nendobj\\n');\n  beginObj(2);\n  push('<< /Type /Pages /Kids [' + pageObjNums.map((n) => n + ' 0 R').join(' ') + '] /Count ' + images.length + ' >>\\nendobj\\n');\n\n  images.forEach((img, k) => {\n    const info = jpegInfo(img.buf);\n    const cs = info.components === 1 ? '/DeviceGray' : '/DeviceRGB';\n    const maxW = W - 2 * M, maxH = H - 2 * M;\n    const scale = Math.min(maxW / info.width, maxH / info.height);\n    const dw = info.width * scale, dh = info.height * scale;\n    const x = (W - dw) / 2, y = (H - dh) / 2;\n    const imgObj = 3 + k * 3, contObj = 4 + k * 3, pageObj = 5 + k * 3;\n\n    beginObj(imgObj);\n    push('<< /Type /XObject /Subtype /Image /Width ' + info.width + ' /Height ' + info.height +\n      ' /ColorSpace ' + cs + ' /BitsPerComponent 8 /Filter /DCTDecode /Length ' + img.buf.length + ' >>\\nstream\\n');\n    push(img.buf);\n    push('\\nendstream\\nendobj\\n');\n\n    const content = 'q ' + dw.toFixed(2) + ' 0 0 ' + dh.toFixed(2) + ' ' + x.toFixed(2) + ' ' + y.toFixed(2) + ' cm /Im0 Do Q';\n    beginObj(contObj);\n    push('<< /Length ' + content.length + ' >>\\nstream\\n' + content + '\\nendstream\\nendobj\\n');\n\n    beginObj(pageObj);\n    push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + W + ' ' + H + '] /Resources << /XObject << /Im0 ' +\n      imgObj + ' 0 R >> >> /Contents ' + contObj + ' 0 R >>\\nendobj\\n');\n  });\n\n  const xrefStart = offset;\n  push('xref\\n0 ' + (nObjs + 1) + '\\n0000000000 65535 f \\n');\n  for (let n = 1; n <= nObjs; n++) push(String(offsets[n]).padStart(10, '0') + ' 00000 n \\n');\n  push('trailer\\n<< /Size ' + (nObjs + 1) + ' /Root 1 0 R >>\\nstartxref\\n' + xrefStart + '\\n%%EOF\\n');\n  return Buffer.concat(chunks);\n}\n\nconst onePx = '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';\n\nconst entries = $input.all().map((item, idx) => ({ item, idx }));\nentries.sort((a, b) => a.item.json.index - b.item.json.index);\nconst meta = entries[0].item.json;\n\nconst good = [];\nconst failed = [];\nfor (const e of entries) {\n  if (e.item.json.failed || !e.item.binary || !e.item.binary.data) { failed.push(e.item.json); continue; }\n  let buf;\n  try { buf = await this.helpers.getBinaryDataBuffer(e.idx, 'data'); }\n  catch (err) { buf = Buffer.from(e.item.binary.data.data, 'base64'); }\n  good.push({ buf, json: e.item.json });\n}\nif (good.length === 0) {\n  throw new Error('ไม่มีภาพที่สร้างสำเร็จเลยสักภาพ — สาเหตุแรก: ' + ((failed[0] && failed[0].error_message) || 'unknown'));\n}\n\nconst pdfBuf = buildPdf(good.map(g => ({ buf: g.buf })));\nconst binary = {};\nbinary.data = await this.helpers.prepareBinaryData(pdfBuf, meta.pdf_name, 'application/pdf');\nconst coverEntry = good.find(g => g.json.kind === 'cover');\nbinary.cover = await this.helpers.prepareBinaryData(coverEntry ? coverEntry.buf : Buffer.from(onePx, 'base64'), 'cover.jpg', 'image/jpeg');\n\nlet warnBlock = '';\nif (failed.length) {\n  warnBlock = '\\n⚠️ ภาพเจนไม่สำเร็จ ' + failed.length + ' รูป: ' + failed.map(f => f.filename).join(', ');\n  const fe = failed[0].error_message || '';\n  if (fe) {\n    warnBlock += '\\nสาเหตุจาก OpenAI: ' + fe;\n    if (/quota|billing|insufficient/i.test(fe)) warnBlock += '\\n→ เครดิต OpenAI หมด! เติมเงินที่ platform.openai.com → Billing แล้วรันใหม่';\n    if (/must be verified|verification/i.test(fe)) warnBlock += '\\n→ บัญชี OpenAI ยังไม่ Verify Organization — ไปที่ platform.openai.com → Settings → Organization → Verify';\n  }\n  warnBlock += '\\n→ PDF ชุดนี้มีเฉพาะหน้าที่สำเร็จ (' + good.length + ' หน้า) ควรรันใหม่ก่อนนำไปขาย\\n';\n}\n\nconst pageCount = good.filter(g => g.json.kind === 'page').length;\nconst kit = [\n  '====== 🎨 COLORING BOOK UPLOAD KIT (คัดลอกวางตอนลงขายได้เลย) ======',\n  warnBlock,\n  '',\n  '[TITLE]',\n  meta.book_title,\n  '',\n  '[DESCRIPTION]',\n  meta.description || '-',\n  '',\n  '[ART THEME]  ' + meta.theme,\n  '[MAIN CHARACTER]  ' + (meta.main_character || '-'),\n  '[PAGES]  ปกสี 1 หน้า + หน้าระบายสีขาวดำ ' + pageCount + ' หน้า (A4 แนวนอน มีกรอบเว้นขอบกระดาษ)',\n  '[PRICE]  $3.50 (ช่วงแนะนำ $2.50 - $5.00)',\n  '[SEARCH KEYWORDS]  ' + ((meta.keywords || []).join(', ') || '-'),\n  '',\n  '[FILE]  แนบไฟล์ PDF รวมเล่มในอีเมลนี้: ' + meta.pdf_name,\n  '[PREVIEW/COVER]  ใช้ไฟล์ cover.jpg ในอีเมลนี้เป็นภาพปก/ภาพพรีวิวตอนลงขาย',\n  '',\n  'เหมาะสำหรับ: เด็กเล็ก - ประถม และสายระบายสีทุกวัย (Etsy / TPT / Amazon KDP)',\n  '===============================================',\n].join('\\n');\n\nreturn [{\n  json: {\n    book_title: meta.book_title,\n    theme: meta.theme,\n    main_character: meta.main_character || '',\n    description: meta.description || '',\n    keywords: meta.keywords || [],\n    pdf_name: meta.pdf_name,\n    total_pages: good.length,\n    coloring_pages: pageCount,\n    has_failures: failed.length > 0,\n    kit: kit,\n  },\n  binary,\n}];"
       }
     },
     {
-      "id": "cbf-18-gmail",
+      "id": "cbf-18-etsyif",
+      "name": "ขายบน Etsy?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        280
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "etsy-enabled-cond",
+              "leftValue": "={{ $('Config').first().json.etsy_enabled }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cbf-19-code",
+      "name": "Etsy - สร้างสินค้า (Draft)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        180
+      ],
+      "parameters": {
+        "jsCode": "// ลงขายบน Etsy อัตโนมัติ (Etsy Open API v3)\n// ขั้นตอน: ต่ออายุ access token -> สร้าง draft listing -> อัปโหลดภาพปก -> อัปโหลดไฟล์ PDF -> (ถ้าเปิดไว้) publish\n// โหนดนี้ส่งไฟล์แนบ (binary) ต่อไปให้ Gmail เหมือนเดิม ไม่ว่าจะสำเร็จหรือไม่\n\nconst cfg = $('Config').first().json;\nconst item = $input.first();\nconst info = item.json;\n\nconst API = 'https://openapi.etsy.com/v3/application';\nconst TOKEN_URLS = ['https://openapi.etsy.com/v3/public/oauth/token', 'https://api.etsy.com/v3/public/oauth/token'];\n\nconst out = (extra) => [{ json: { ...info, ...extra }, binary: item.binary }];\nconst block = (lines) => '\\n\\n====== 🛒 ETSY ======\\n' + lines.join('\\n') + '\\n====================';\n\nconst keystring = String(cfg.etsy_keystring || '').trim();\nconst shopId = String(cfg.etsy_shop_id || '').trim();\nconst taxonomyId = Number(cfg.etsy_taxonomy_id || 0);\nconst price = Number(cfg.etsy_price || 0);\nconst quantity = Number(cfg.etsy_quantity || 999);\nconst doPublish = cfg.etsy_publish === true || String(cfg.etsy_publish) === 'true';\n\n// refresh token: ใช้ตัวล่าสุดที่ Etsy คืนมา (เก็บใน workflow static data) ถ้ายังไม่มีค่อยใช้จาก Config\nconst store = $getWorkflowStaticData('global');\nlet refreshToken = String(store.etsy_refresh_token || cfg.etsy_refresh_token || '').trim();\n\n// ---- ตรวจว่าตั้งค่าครบหรือยัง (ยังไม่ครบก็ไม่ error แค่บอกในอีเมล) ----\nconst unset = v => !v || /^(YOUR_|PUT_|<)/i.test(String(v));\nconst missing = [];\nif (unset(keystring)) missing.push('etsy_keystring (API keystring จาก Etsy app)');\nif (unset(refreshToken)) missing.push('etsy_refresh_token (ได้จากสคริปต์ขอสิทธิ์ครั้งแรก)');\nif (unset(shopId)) missing.push('etsy_shop_id (เลข shop id ของร้าน)');\nif (!taxonomyId) missing.push('etsy_taxonomy_id (หมวดหมู่สินค้า)');\nif (!price) missing.push('etsy_price (ราคาขาย)');\nif (missing.length) {\n  return out({\n    etsy_status: 'not_configured',\n    etsy_block: block(['⚠️ ยังไม่ได้ลงขาย เพราะยังตั้งค่าไม่ครบในโหนด Config:', ...missing.map(m => '  - ' + m), 'ดูวิธีขอค่าเหล่านี้ในคู่มือ: คู่มือลงขาย_Etsy.md']),\n  });\n}\n\n// ---- helper: multipart/form-data ประกอบเองเป็น Buffer (แน่นอนกว่าให้ library เดา) ----\nfunction multipart(fields) {\n  const boundary = '----n8nEtsyBoundary' + Date.now().toString(16) + Math.random().toString(16).slice(2, 8);\n  const parts = [];\n  for (const f of fields) {\n    let head = '--' + boundary + '\\r\\nContent-Disposition: form-data; name=\"' + f.name + '\"';\n    if (f.filename) head += '; filename=\"' + f.filename + '\"';\n    head += '\\r\\n';\n    if (f.contentType) head += 'Content-Type: ' + f.contentType + '\\r\\n';\n    head += '\\r\\n';\n    parts.push(Buffer.from(head, 'utf8'));\n    parts.push(Buffer.isBuffer(f.buffer) ? f.buffer : Buffer.from(String(f.value == null ? '' : f.value), 'utf8'));\n    parts.push(Buffer.from('\\r\\n', 'utf8'));\n  }\n  parts.push(Buffer.from('--' + boundary + '--\\r\\n', 'utf8'));\n  return { body: Buffer.concat(parts), contentType: 'multipart/form-data; boundary=' + boundary };\n}\nconst parseBody = r => { if (r && typeof r === 'object') return r; try { return JSON.parse(String(r)); } catch (e) { return {}; } };\nconst errText = e => {\n  const b = (e && e.response && (e.response.body || e.response.data)) || e.cause || '';\n  const s = typeof b === 'string' ? b : JSON.stringify(b || {});\n  return (String(e && e.message || e) + ' ' + s).slice(0, 300);\n};\n\n// ---- เตรียมข้อมูล listing ให้ตรงกฎ Etsy ----\n// title: ไม่เกิน 140 ตัวอักษร และต้องขึ้นต้นด้วยตัวอักษร/ตัวเลข\nlet title = (info.book_title || 'Coloring Book') + ' | Printable Coloring Book, ' +\n  (info.coloring_pages || 5) + ' Pages, Kids Coloring Pages, Instant Download';\ntitle = title.replace(/[^A-Za-z0-9 ,.|'&-]/g, '').replace(/^[^A-Za-z0-9]+/, '').replace(/\\s+/g, ' ').trim().slice(0, 140).trim();\n\n// tags: สูงสุด 13 อัน อันละไม่เกิน 20 ตัวอักษร ใช้ได้เฉพาะตัวอักษร ตัวเลข - _ ' และเว้นวรรค ห้ามซ้ำ\nconst seen = new Set();\nconst tags = [];\nfor (const raw of [].concat(info.keywords || [], ['coloring book', 'coloring pages', 'printable', 'instant download', 'kids activity'])) {\n  const t = String(raw).replace(/[^A-Za-z0-9 '_-]/g, ' ').replace(/\\s+/g, ' ').trim().slice(0, 20).trim();\n  const k = t.toLowerCase();\n  if (t && !seen.has(k)) { seen.add(k); tags.push(t); }\n  if (tags.length >= 13) break;\n}\n\nconst description = [\n  info.description || '',\n  '',\n  '★ WHAT YOU GET',\n  '- 1 PDF file, ' + (info.total_pages || 6) + ' pages (A4 landscape, print-ready)',\n  '- 1 full-color cover page',\n  '- ' + (info.coloring_pages || 5) + ' black-and-white coloring pages with bold, easy-to-color lines',\n  '',\n  '★ INSTANT DOWNLOAD',\n  'This is a digital product. No physical item will be shipped. Download the file right after purchase and print it as many times as you like for personal use.',\n  '',\n  '★ HOW TO USE',\n  'Print on A4 or Letter paper (landscape). Works with crayons, colored pencils and markers.',\n  '',\n  'Theme: ' + (info.theme || '') + (info.main_character ? ' | Character: ' + info.main_character : ''),\n  '',\n  'For personal use only. Please do not resell or redistribute the files.',\n].join('\\n');\n\nconst notes = [];\ntry {\n  // ---- 1) ต่ออายุ access token (refresh token มีอายุ 90 วัน / access token 1 ชม.) ----\n  let tok = null, tokErr = '';\n  for (const url of TOKEN_URLS) {\n    try {\n      tok = parseBody(await this.helpers.httpRequest({\n        method: 'POST', url,\n        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },\n        body: 'grant_type=refresh_token&client_id=' + encodeURIComponent(keystring) + '&refresh_token=' + encodeURIComponent(refreshToken),\n        json: false, timeout: 30000,\n      }));\n      if (tok && tok.access_token) break;\n    } catch (e) { tokErr = errText(e); tok = null; }\n  }\n  if (!tok || !tok.access_token) throw new Error('ขอ access token ไม่สำเร็จ: ' + (tokErr || 'ไม่มี access_token ในคำตอบ'));\n  const accessToken = tok.access_token;\n  if (tok.refresh_token) store.etsy_refresh_token = tok.refresh_token; // Etsy หมุน refresh token ทุกครั้ง เก็บตัวใหม่ไว้ใช้รอบหน้า\n\n  const auth = { 'x-api-key': keystring, 'Authorization': 'Bearer ' + accessToken };\n\n  // ---- 2) สร้าง draft listing ----\n  const payload = {\n    quantity: quantity,\n    title: title,\n    description: description,\n    price: price,\n    who_made: 'i_did',\n    when_made: 'made_to_order',\n    taxonomy_id: taxonomyId,\n    type: 'download',\n    is_supply: false,\n    tags: tags,\n  };\n  if (cfg.etsy_shipping_profile_id) payload.shipping_profile_id = Number(cfg.etsy_shipping_profile_id);\n\n  let listing = null, createErr = '';\n  try {\n    listing = parseBody(await this.helpers.httpRequest({\n      method: 'POST', url: API + '/shops/' + shopId + '/listings',\n      headers: { ...auth, 'Content-Type': 'application/json' },\n      body: payload, json: true, timeout: 60000,\n    }));\n  } catch (e) {\n    createErr = errText(e);\n    // สำรอง: บางบัญชี Etsy รับเฉพาะ x-www-form-urlencoded (tags ส่งเป็น comma-separated)\n    const form = Object.entries({ ...payload, tags: tags.join(',') })\n      .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(String(v)))\n      .join('&');\n    listing = parseBody(await this.helpers.httpRequest({\n      method: 'POST', url: API + '/shops/' + shopId + '/listings',\n      headers: { ...auth, 'Content-Type': 'application/x-www-form-urlencoded' },\n      body: form, json: false, timeout: 60000,\n    }));\n    if (listing && listing.listing_id) notes.push('หมายเหตุ: ส่งแบบ JSON ไม่ผ่าน ใช้แบบ form แทน (' + createErr.slice(0, 80) + ')');\n  }\n  const listingId = listing && (listing.listing_id || (listing.results && listing.results[0] && listing.results[0].listing_id));\n  if (!listingId) throw new Error('สร้าง listing ไม่สำเร็จ: ' + (createErr || JSON.stringify(listing).slice(0, 250)));\n\n  // ---- 3) อัปโหลดภาพปกเป็นรูปสินค้า ----\n  try {\n    const cover = await this.helpers.getBinaryDataBuffer(0, 'cover');\n    const mp = multipart([\n      { name: 'image', filename: 'cover.jpg', contentType: 'image/jpeg', buffer: cover },\n      { name: 'rank', value: '1' },\n    ]);\n    await this.helpers.httpRequest({\n      method: 'POST', url: API + '/shops/' + shopId + '/listings/' + listingId + '/images',\n      headers: { ...auth, 'Content-Type': mp.contentType }, body: mp.body, json: false, timeout: 120000,\n    });\n  } catch (e) { notes.push('⚠️ อัปโหลดภาพปกไม่สำเร็จ: ' + errText(e).slice(0, 120)); }\n\n  // ---- 4) อัปโหลดไฟล์ PDF ที่ลูกค้าจะได้รับ ----\n  try {\n    const pdf = await this.helpers.getBinaryDataBuffer(0, 'data');\n    const mp = multipart([\n      { name: 'file', filename: info.pdf_name || 'coloring_book.pdf', contentType: 'application/pdf', buffer: pdf },\n      { name: 'name', value: info.pdf_name || 'coloring_book.pdf' },\n      { name: 'rank', value: '1' },\n    ]);\n    await this.helpers.httpRequest({\n      method: 'POST', url: API + '/shops/' + shopId + '/listings/' + listingId + '/files',\n      headers: { ...auth, 'Content-Type': mp.contentType }, body: mp.body, json: false, timeout: 180000,\n    });\n  } catch (e) { notes.push('⚠️ อัปโหลดไฟล์ PDF ไม่สำเร็จ: ' + errText(e).slice(0, 120)); }\n\n  // ---- 5) เปิดขายจริง (ถ้าเปิดสวิตช์ไว้ — Etsy คิดค่าลงสินค้า $0.20 ตอนนี้) ----\n  let state = 'draft';\n  if (doPublish) {\n    try {\n      await this.helpers.httpRequest({\n        method: 'PATCH', url: API + '/shops/' + shopId + '/listings/' + listingId,\n        headers: { ...auth, 'Content-Type': 'application/json' },\n        body: { state: 'active' }, json: true, timeout: 60000,\n      });\n      state = 'active';\n    } catch (e) { notes.push('⚠️ เปิดขายอัตโนมัติไม่สำเร็จ (ยังเป็น draft อยู่): ' + errText(e).slice(0, 120)); }\n  }\n\n  const editUrl = 'https://www.etsy.com/your/shops/me/tools/listings/' + listingId;\n  return out({\n    etsy_status: state,\n    etsy_listing_id: listingId,\n    etsy_url: editUrl,\n    etsy_block: block([\n      (state === 'active' ? '✅ ลงขายแล้ว (เปิดขายจริง)' : '✅ สร้างร่างสินค้า (draft) แล้ว รอคุณตรวจและกดเปิดขาย'),\n      'Listing ID: ' + listingId,\n      'แก้ไข/เปิดขาย: ' + editUrl,\n      'หน้าสินค้า (หลังเปิดขาย): https://www.etsy.com/listing/' + listingId,\n      'ราคา: ' + price + ' | จำนวน: ' + quantity + ' | แท็ก: ' + tags.join(', '),\n      ...notes,\n    ]),\n  });\n} catch (e) {\n  return out({\n    etsy_status: 'error',\n    etsy_block: block(['❌ ลงขาย Etsy ไม่สำเร็จ: ' + errText(e), ...notes, 'ไฟล์ PDF ยังแนบมาในอีเมลนี้ตามปกติ ลงขายเองได้']),\n  });\n}"
+      }
+    },
+    {
+      "id": "cbf-20-gmail",
       "name": "Send Gmail",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        980,
+        1420,
         280
       ],
       "parameters": {
         "sendTo": "metasitwute021@gmail.com",
-        "subject": "={{ ($json.has_failures ? '⚠️ ' : '') + '🎨 Coloring Book: ' + $json.book_title + ' (' + $json.theme + ')' }}",
+        "subject": "={{ ($json.has_failures ? '⚠️ ' : '') + '🎨 Coloring Book: ' + $json.book_title + ' (' + $json.theme + ')' + ($json.etsy_listing_id ? ' → Etsy #' + $json.etsy_listing_id : '') }}",
         "emailType": "text",
-        "message": "={{ $json.kit }}",
+        "message": "={{ $json.kit + ($json.etsy_block || \"\") }}",
         "options": {
           "attachmentsUi": {
             "attachmentsBinary": [
@@ -532,6 +627,35 @@
       ]
     },
     "Build PDF + Email Pack": {
+      "main": [
+        [
+          {
+            "node": "ขายบน Etsy?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ขายบน Etsy?": {
+      "main": [
+        [
+          {
+            "node": "Etsy - สร้างสินค้า (Draft)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Etsy - สร้างสินค้า (Draft)": {
       "main": [
         [
           {
