@@ -1741,13 +1741,42 @@ const warnings = [...asArray(report.warnings)];
 // [D O C T O R] both read as abandoned draft markers. Bracketed prompts are the
 // deliverable for a template, so they are reported and left to the reviewer.
 // What blocks is a marker no finished page should ever carry.
-const DRAFT_MARKER = /(lorem ipsum|\binsert (?:your |the )?(?:text|name|content)(?: here)?\b|\bTBD\b|\bTODO\b|\bFIXME\b|\bplaceholder\b|\bx{4,}\b|\{\{\s*\w+\s*\}\}|\bcoming soon\b)/i;
+// Two tiers, because some of these words are perfectly good English inside a
+// template's own instructions. "Replace the placeholder text with your name" is
+// the product working as intended; a line that reads only "Placeholder" is a
+// defect. The hard list has no innocent reading; the soft list only counts when
+// the marker is the content of a short line rather than part of a sentence.
+// Case-insensitive: 'Lorem ipsum' at the start of a sentence is the same
+// defect as 'lorem ipsum', and /x{4,}/i covers XXXX as well as xxxx.
+const DRAFT_MARKER_HARD = /(lorem ipsum|\bTODO\b|\bTBD\b|\bFIXME\b|\bx{4,}\b|\{\{\s*\w+\s*\}\})/i;
+const DRAFT_MARKER_SOFT = /\b(placeholder|coming soon|insert (?:your |the )?(?:text|name|content)(?: here)?)\b/i;
 const FILL_IN_FIELD = /\[[^\]\n]{1,60}\]|_{4,}/;
+
+const findMarker = (page) => {
+  for (const line of [page.title, ...page.lines]) {
+    const text = String(line || '').trim();
+    if (!text) continue;
+    const hard = text.match(DRAFT_MARKER_HARD);
+    if (hard) return { marker: hard[0], line: text };
+    const soft = text.match(DRAFT_MARKER_SOFT);
+    // A short line that is mostly the marker is a leftover; the same words in a
+    // full sentence are the template telling the buyer what to do.
+    if (soft && (text.length <= 40 || /\[[^\]]*placeholder[^\]]*\]/i.test(text))) {
+      return { marker: soft[0], line: text };
+    }
+  }
+  return null;
+};
+
 const seen = new Set();
 for (const page of content.pages) {
   const body = page.lines.join(' ');
-  if (DRAFT_MARKER.test(body) || DRAFT_MARKER.test(page.title)) {
-    blockers.push(`page ${page.page_number} still carries a drafting marker`);
+  const found = findMarker(page);
+  if (found) {
+    // Quote the evidence. "page 3 still carries a drafting marker" cost a paid
+    // run to turn into something anyone could act on.
+    blockers.push(`page ${page.page_number} still carries a drafting marker `
+      + `("${found.marker}" in: ${found.line.replace(/\s+/g, ' ').slice(0, 90)})`);
   } else if (FILL_IN_FIELD.test(body)) {
     warnings.push(`page ${page.page_number} has fill-in fields - expected for a template, check they are intentional`);
   }

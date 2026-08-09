@@ -411,6 +411,54 @@ console.log(JSON.stringify(cases.map((c) => [c, normaliseTag(c)])));
     return failures
 
 
+MARKER_CASES = [
+    ("instruction using the word", ["Replace the placeholder text with your own information."], False),
+    ("instruction, longer", ["Delete the sample content and insert your name here, then save a copy."], False),
+    ("leftover, alone", ["Placeholder"], True),
+    ("leftover, bracketed", ["Name: [placeholder text]"], True),
+    ("real TODO", ["TODO: write this page"], True),
+    ("Lorem ipsum capitalised", ["Lorem ipsum dolor sit amet."], True),
+    ("XXXX upper", ["Phone: XXXX"], True),
+    ("mustache leftover", ["Hello {{ first_name }}!"], True),
+    ("legit fill-in field", ["Name: [Your Name]   Date: ____________"], False),
+    ("clean prose", ["List three achievements you are proud of."], False),
+    ("coming soon banner", ["Coming soon"], True),
+    ("sentence about coming soon", ["More templates are coming soon, check the shop."], False),
+]
+
+
+def marker_checks(tmp: str, code_of: dict) -> int:
+    """A drafting marker must be told apart from the template's own wording.
+
+    'Replace the placeholder text with your name' is the product working as
+    designed; a line reading only 'Placeholder' is a defect. A flat word match
+    could not tell them apart and rejected a finished product after it had paid
+    for its images.
+    """
+    print("\n=== marker checks: leftover draft vs the template's own instructions ===")
+    js = code_of["QA Stage 4 Content"]
+    frag = js[js.index("const DRAFT_MARKER_HARD"):js.index("const seen = new Set();")]
+    script = os.path.join(tmp, "marker.js")
+    with open(script, "w", encoding="utf-8") as fh:
+        fh.write(frag + "\nconst CASES = " + json.dumps(MARKER_CASES) + ";\n" + """
+console.log(JSON.stringify(CASES.map(([label, lines, expect]) => {
+  const f = findMarker({ title: '', lines });
+  return [label, Boolean(f), expect, f ? f.marker : null];
+})));
+""")
+    result = subprocess.run(["node", script], capture_output=True, text=True)
+    if result.returncode:
+        print("  [FAIL] harness crashed:", result.stderr.strip().splitlines()[-1][:70])
+        return 1
+    failures = 0
+    for label, got, expect, marker in json.loads(result.stdout.strip().splitlines()[-1]):
+        ok = got == expect
+        failures += 0 if ok else 1
+        print(f"  [{'ok  ' if ok else 'FAIL'}] {'BLOCK' if got else 'pass '} {label:28s} "
+              f"{marker or ''}")
+    return failures
+
+
 def main() -> int:
     with open(os.path.join(ROOT, "workflows", "03_product_engine.json"),
               encoding="utf-8") as fh:
@@ -453,6 +501,7 @@ def main() -> int:
         failures += shape_checks(tmp, code_of)
         failures += provider_checks(tmp)
         failures += tag_checks(tmp, code_of)
+        failures += marker_checks(tmp, code_of)
 
     print()
     if failures:
