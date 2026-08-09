@@ -37,7 +37,8 @@
 ### 1.1 Import และกรอก Keystring
 1. Import ไฟล์ `Etsy_Auth_Helper.json` เข้า n8n (คนละ workflow กับตัวหลัก)
 2. ดับเบิลคลิกโหนด **Etsy Auth Config** → กรอก `etsy_keystring` (Keystring จาก https://www.etsy.com/developers)
-   (ช่อง `redirect_uri` ปล่อยว่างไว้ ระบบจะเดาจาก URL ของ n8n ให้เอง)
+   - ช่อง `redirect_uri` ปล่อยว่างไว้ ระบบจะเดาจาก URL ของ n8n ให้เอง
+   - ช่อง `etsy_shop_name` ปล่อยว่างไว้ก่อนได้ — ใส่เฉพาะกรณีระบบหา `etsy_shop_id` ไม่เจอ (ใส่ชื่อร้านที่อยู่หลัง `etsy.com/shop/`)
 3. ปิดหน้าต่าง → กด **Save**
 
 ### 1.2 เอา URL ไปตั้งเป็น Callback URL
@@ -133,7 +134,8 @@ Listing ID: 1234567890
 | `สร้าง listing ไม่สำเร็จ` + พูดถึง taxonomy | `etsy_taxonomy_id` ผิดหรือยังเป็น 0 → ใช้เลขจากรายการที่ตัวช่วยแนะนำ |
 | หน้าเว็บขึ้น `Error in workflow` หรือ "ไม่พบรหัสลับของรอบนี้" | ลืมกด **Active** ที่ workflow ตัวช่วย (n8n บันทึกรหัสลับเฉพาะตอนรันผ่าน Production Webhook) → เปิด Active แล้วเปิด URL ใหม่ตั้งแต่ต้น |
 | Etsy ขึ้น `The requested redirect URL is not permitted` | Callback URL ในแอป Etsy ไม่ตรงกับ URL ที่เปิด — ต้องเหมือนกันทุกตัวอักษร (ระวังคำว่า `webhook-test` และ `/` ท้ายสุด) |
-| `state ไม่ตรง` | เปิดลิงก์เก่าที่หมดอายุ → กด Execute โหนด "1. สร้างลิงก์ขอสิทธิ์" ใหม่ แล้วใช้ลิงก์ล่าสุด |
+| `state ไม่ตรง` | เปิดลิงก์เก่า → เปิด Production URL ใหม่ตั้งแต่ต้น (แบบไม่มี `?code=` ต่อท้าย) |
+| `etsy_shop_id` ขึ้นว่า "หาไม่เจอ" + 403 | Etsy ไม่ให้เรียกจุดนั้นด้วยสิทธิ์ที่มี → กรอก `etsy_shop_name` (ชื่อร้านหลัง `etsy.com/shop/`) ในโหนด Etsy Auth Config แล้วเปิด URL ใหม่ ระบบจะค้นจากชื่อร้านแทน |
 | ร่างสินค้าสร้างได้ แต่ไม่มีรูป/ไฟล์ | อีเมลจะเขียนเตือนไว้ — เข้าไปอัปโหลดเองในหน้าแก้ไขสินค้าได้ (ไฟล์ทั้งสองแนบมาในอีเมลแล้ว) |
 | อยากหยุดลงขายชั่วคราว | โหนด Config → `etsy_enabled = false` |
 
