@@ -369,6 +369,12 @@ _ARROW_ONE = re.compile(r"(?:^|[^\w$.])([A-Za-z_$][\w$]*)\s*=>")
 _LOOP_VAR = re.compile(r"\bfor\s*\(\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)")
 _CATCH = re.compile(r"\bcatch\s*\(\s*([A-Za-z_$][\w$]*)")
 _ROOT_USE = re.compile(r"(?<![.\w$])([A-Za-z_$][\w$]*)\s*\.")
+# A call to a name nothing declares fails the same way and was invisible to
+# the property-access pattern above.
+_CALL_USE = re.compile(r"(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(")
+_KEYWORDS = {"if", "for", "while", "switch", "catch", "return", "typeof",
+             "function", "new", "await", "throw", "case", "do", "else",
+             "in", "of", "instanceof", "void", "delete", "yield"}
 _NAME = re.compile(r"[A-Za-z_$][\w$]*")
 
 
@@ -405,8 +411,10 @@ def check_undeclared() -> list[str]:
                     if _NAME.fullmatch(name or ""):
                         declared.add(name)
 
+            used = set(_ROOT_USE.findall(code)) | (
+                set(_CALL_USE.findall(code)) - _KEYWORDS)
             unknown = sorted({
-                name for name in _ROOT_USE.findall(code)
+                name for name in used
                 if name not in declared and name not in JS_GLOBALS
             })
             if unknown:

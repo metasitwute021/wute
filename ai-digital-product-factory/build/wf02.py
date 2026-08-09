@@ -3,7 +3,7 @@
 from common import (
     AGENT_CONTENT_JS,
     ASARRAY_JS,
-    ETSY_TOKEN_NODE, etsy_token_node,
+    ETSY_TOKEN_NODE, KEYWORD_HELPER_JS, etsy_token_node,
     RETRY, T_CODE, T_EXEC_TRIGGER, T_HTTP, T_IF, T_NOOP, Workflow, code,
     etsy_http, if_bool, openai_chat, pos,
 )
@@ -188,7 +188,7 @@ return [{
 }];
 """.strip()
 
-JS_FALLBACK = r"""
+JS_FALLBACK = KEYWORD_HELPER_JS + r"""
 // Deterministic safety net so a bad completion degrades the run instead of
 // failing it. Built purely from the aggregated Etsy signals.
 const ctx = $input.first().json;
@@ -197,9 +197,8 @@ const tags = (market.top_tags || []).map((t) => t.value);
 const words = (market.top_title_words || []).map((t) => t.value);
 
 const keyword = (ctx.search_keyword || 'printable digital download').toLowerCase();
-const subKeywords = [...new Set([...tags, ...words])]
-  .filter((t) => t.length <= 20)
-  .slice(0, 13);
+const subKeywords = buildKeywords(
+  [tags, words], { keyword, factory: ctx.factory }, 5).slice(0, 13);
 
 return [{
   json: {
@@ -209,7 +208,7 @@ return [{
       category: 'Digital Downloads',
       target_customer: 'Etsy shoppers looking for an instant, ready-to-print digital file',
       keyword,
-      sub_keywords: subKeywords.length ? subKeywords : [keyword],
+      sub_keywords: subKeywords,
       difficulty: (market.competitor_count || 0) > 60 ? 'hard' : 'medium',
       selling_points: [
         'Instant download - no waiting and no shipping',
@@ -241,7 +240,7 @@ const userPrompt = render(agent.user_template, {
 return [{ json: { ...ctx, seo_user_prompt: userPrompt } }];
 """.rstrip()
 
-JS_BUILD_OUTPUT = AGENT_CONTENT_JS + ASARRAY_JS +r"""
+JS_BUILD_OUTPUT = AGENT_CONTENT_JS + ASARRAY_JS + KEYWORD_HELPER_JS + r"""
 
 // Final research contract returned to 01 Master Controller.
 const ctx = $('Build Keyword Expansion Prompt').first().json;
@@ -255,13 +254,11 @@ try {
 }
 
 const research = ctx.research || {};
-const clean = (list) => [...new Set(
-  (list || [])
-    .map((s) => String(s).toLowerCase().replace(/[^a-z0-9 ]/g, '').trim())
-    .filter((s) => s && s.length <= 20)
-)];
-
-const subKeywords = clean([...asArray(research.sub_keywords), ...asArray(expansion.sub_keywords)]).slice(0, 15);
+const subKeywords = buildKeywords(
+  [asArray(research.sub_keywords), asArray(expansion.sub_keywords)],
+  { keyword: research.keyword || ctx.search_keyword, factory: ctx.factory },
+  5,
+).slice(0, 15);
 
 return [{
   json: {
@@ -280,7 +277,8 @@ return [{
       selling_points: asArray(research.selling_points),
       price_suggestion_usd: research.price_suggestion_usd || ctx.market?.price_usd?.median || 5,
       market_gap: research.market_gap || null,
-      long_tail: clean(asArray(expansion.long_tail)).slice(0, 15),
+      long_tail: [...new Set(asArray(expansion.long_tail)
+        .map(toKeyword).filter((k) => k && k.length >= 3))].slice(0, 15),
     },
     market: ctx.market || {},
     researched_at: ctx.researched_at,

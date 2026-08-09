@@ -1436,7 +1436,11 @@ const blockers = [];
 const warnings = [];
 
 if (!research.keyword) blockers.push('no primary keyword');
-if ((research.sub_keywords || []).length < 5) blockers.push('fewer than 5 sub keywords');
+if ((research.sub_keywords || []).length < 5) {
+  // Quote what arrived. A bare count sent three runs looking in the wrong file.
+  blockers.push(`fewer than 5 sub keywords (got ${(research.sub_keywords || []).length}: `
+    + `${JSON.stringify(research.sub_keywords || []).slice(0, 140)})`);
+}
 // A short selling-point list is thin marketing input, not a broken product -
 // the writer and the SEO agents work from the concept either way. Ending a
 // paid run over it is out of proportion to the harm.

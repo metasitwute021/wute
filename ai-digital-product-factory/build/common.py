@@ -178,6 +178,53 @@ def rename_text_agents(document: dict) -> dict:
         blob = blob.replace(json.dumps(old)[1:-1], json.dumps(new)[1:-1])
     return json.loads(blob)
 
+# Shared by 02 and by anything that has to produce marketplace keywords.
+KEYWORD_HELPER_JS = """
+// Etsy caps a tag at 20 characters. Phrases longer than that used to be thrown
+// away, and a research package that answered in natural phrases - "printable
+// resume template for teachers" - arrived downstream with almost nothing left,
+// failing the gate that wants five. Trim to the last whole word instead: the
+// shortened phrase is still a real search term.
+const toKeyword = (value) => {
+  const cleaned = String(value == null ? '' : value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\\u0300-\\u036f]/g, '')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\\s+/g, ' ')
+    .trim();
+  if (cleaned.length <= 20) return cleaned;
+  const cut = cleaned.slice(0, 20);
+  const lastSpace = cut.lastIndexOf(' ');
+  return lastSpace > 0 ? cut.slice(0, lastSpace) : '';
+};
+
+// A keyword list that is always long enough to work with. Topping up from the
+// product's own words beats failing a paid run over the model's brevity, and
+// every filler here is a phrase shoppers really type.
+const buildKeywords = (sources, context, minimum) => {
+  const out = [];
+  const push = (value) => {
+    const k = toKeyword(value);
+    if (k && k.length >= 3 && !out.includes(k)) out.push(k);
+  };
+  for (const source of sources) for (const value of source || []) push(value);
+  if (out.length < (minimum || 5)) {
+    const keyword = String(context.keyword || '').trim();
+    const factory = String(context.factory || '').trim();
+    for (const filler of [
+      keyword, factory,
+      keyword && `printable ${keyword}`,
+      keyword && `${keyword} template`,
+      'instant download', 'digital download', 'printable pdf',
+      'editable template', 'print at home',
+    ]) push(filler);
+  }
+  return out;
+};
+""".strip()
+
+
 def pos(col: float, row: float = 0):
     """Grid position helper so the imported canvas stays readable.
 
