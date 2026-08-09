@@ -32,36 +32,39 @@
 
 ## ขั้นตอนที่ 1 — ขอสิทธิ์เข้าถึงร้าน (ทำครั้งเดียว)
 
-### 1.1 Import ตัวช่วย
-Import ไฟล์ `Etsy_Auth_Helper.json` เข้า n8n (คนละ workflow กับตัวหลัก)
+ตัวช่วยนี้ทำงานผ่าน **URL เดียว** ทั้งขาไปและขากลับ ไม่ต้องกด Execute ทีละโหนด
 
-### 1.2 เอา URL ปลายทางไปใส่ในแอป Etsy
-1. ในไฟล์ตัวช่วย เปิดโหนด **Webhook (รับ code จาก Etsy)** → คัดลอก **Production URL**
-   (หน้าตาประมาณ `https://ชื่อคุณ.app.n8n.cloud/webhook/etsy-callback`)
-2. ไปที่ https://www.etsy.com/developers/your-apps → เลือกแอปของคุณ
-3. วาง URL นั้นในช่อง **Callback URL** แล้วบันทึก
-4. คัดลอก **Keystring** ของแอปเก็บไว้ (นี่คือ `etsy_keystring`)
+### 1.1 Import และกรอก Keystring
+1. Import ไฟล์ `Etsy_Auth_Helper.json` เข้า n8n (คนละ workflow กับตัวหลัก)
+2. ดับเบิลคลิกโหนด **Etsy Auth Config** → กรอก `etsy_keystring` (Keystring จาก https://www.etsy.com/developers)
+   (ช่อง `redirect_uri` ปล่อยว่างไว้ ระบบจะเดาจาก URL ของ n8n ให้เอง)
+3. ปิดหน้าต่าง → กด **Save**
 
-### 1.3 กรอกค่าและกดขอสิทธิ์
-1. เปิดโหนด **Etsy Auth Config** กรอก 2 ค่า:
-   - `etsy_keystring` = Keystring จากข้อ 1.2
-   - `redirect_uri` = Production URL จากข้อ 1.2 (ต้องตรงกันเป๊ะ)
-2. **กดปุ่ม Active** เปิด workflow ตัวช่วยนี้ (สำคัญ ถ้าไม่เปิด Webhook จะไม่ทำงาน)
-3. กด Execute ที่โหนด **1. สร้างลิงก์ขอสิทธิ์** → จะได้ค่า `auth_url`
-4. คัดลอก `auth_url` ไปเปิดในเบราว์เซอร์ → ล็อกอิน Etsy → กด **Allow Access**
+### 1.2 เอา URL ไปตั้งเป็น Callback URL
+1. ดับเบิลคลิกโหนด **Webhook** → กดแท็บ **Production URL** → คัดลอก
+   (ต้องเป็น `/webhook/etsy-auth` — ถ้าเห็น `/webhook-test/` แปลว่ากดผิดแท็บ)
+2. ไปที่ https://www.etsy.com/developers → กด **⋮** ที่แอป → เข้าหน้าแก้ไข
+3. วาง URL ในช่อง **Callback URL** → **Save**
+   (ห้ามมี `/` ต่อท้าย ห้ามมีช่องว่าง)
+
+### 1.3 เปิด Active แล้วเปิด URL ในเบราว์เซอร์
+1. กดสวิตช์ **Active** ที่ workflow ตัวช่วย
+   ⚠️ **ห้ามข้ามข้อนี้** — n8n บันทึกรหัสลับของรอบนี้เฉพาะตอนทำงานผ่าน Production Webhook เท่านั้น ถ้าไม่ Active จะขึ้น "ลิงก์หมดอายุ"
+2. เอา Production URL เดิม **เปิดในเบราว์เซอร์** (แท็บใหม่)
+3. จะเห็นหน้าเว็บมีปุ่มสีส้ม **"ไปหน้าอนุญาตของ Etsy →"** → กด
+4. ที่หน้า Etsy กด **Grant access**
 
 ### 1.4 รับค่าที่ได้
-หน้าเว็บจะแสดงผลลัพธ์ให้ทันที:
-```json
-{
-  "etsy_refresh_token": "12345678.xxxxxxxxxxxxxxx",
-  "etsy_shop_id": "12345678",
-  "หมวดหมู่ที่แนะนำ_เลือก1อันใส่_etsy_taxonomy_id": [
-    { "taxonomy_id": 66, "path": "Paper & Party Supplies > Coloring Books" }
-  ]
-}
-```
-คัดลอกเก็บไว้ทั้งหมด แล้ว **ปิด Active** ของ workflow ตัวช่วยได้เลย (ใช้อีกครั้งเมื่อไม่ได้รันระบบเกิน 90 วัน)
+ระบบจะพากลับมาที่หน้าเดิม แล้วแสดงตารางค่าให้ครบ:
+
+| ค่า | ใช้ทำอะไร |
+|---|---|
+| `etsy_refresh_token` | กุญแจเข้าร้าน (ห้ามแชร์) |
+| `etsy_shop_id` | เลขร้านของคุณ |
+| `etsy_keystring` | Keystring (ตัวเดิม) |
+| ตารางหมวดหมู่ | เลือก 1 เลขไปใส่ `etsy_taxonomy_id` |
+
+คัดลอกเก็บไว้ แล้ว **ปิด Active** ของ workflow ตัวช่วยได้เลย
 
 ---
 
@@ -128,7 +131,8 @@ Listing ID: 1234567890
 | อีเมลขึ้น `⚠️ ยังไม่ได้ลงขาย เพราะยังตั้งค่าไม่ครบ` | ยังกรอกค่า etsy_* ในโหนด Config ไม่ครบ — อีเมลจะบอกว่าขาดช่องไหน |
 | `ขอ access token ไม่สำเร็จ` / 401 | refresh token หมดอายุ (เกิน 90 วันไม่ได้ใช้) หรือกรอกผิด → กลับไปทำขั้นตอนที่ 1 ใหม่ |
 | `สร้าง listing ไม่สำเร็จ` + พูดถึง taxonomy | `etsy_taxonomy_id` ผิดหรือยังเป็น 0 → ใช้เลขจากรายการที่ตัวช่วยแนะนำ |
-| Webhook ไม่ตอบตอนกด Allow Access | ลืมกด **Active** ที่ workflow ตัวช่วย หรือ Callback URL ในแอป Etsy ไม่ตรงกับ `redirect_uri` เป๊ะ |
+| หน้าเว็บขึ้น `Error in workflow` หรือ "ไม่พบรหัสลับของรอบนี้" | ลืมกด **Active** ที่ workflow ตัวช่วย (n8n บันทึกรหัสลับเฉพาะตอนรันผ่าน Production Webhook) → เปิด Active แล้วเปิด URL ใหม่ตั้งแต่ต้น |
+| Etsy ขึ้น `The requested redirect URL is not permitted` | Callback URL ในแอป Etsy ไม่ตรงกับ URL ที่เปิด — ต้องเหมือนกันทุกตัวอักษร (ระวังคำว่า `webhook-test` และ `/` ท้ายสุด) |
 | `state ไม่ตรง` | เปิดลิงก์เก่าที่หมดอายุ → กด Execute โหนด "1. สร้างลิงก์ขอสิทธิ์" ใหม่ แล้วใช้ลิงก์ล่าสุด |
 | ร่างสินค้าสร้างได้ แต่ไม่มีรูป/ไฟล์ | อีเมลจะเขียนเตือนไว้ — เข้าไปอัปโหลดเองในหน้าแก้ไขสินค้าได้ (ไฟล์ทั้งสองแนบมาในอีเมลแล้ว) |
 | อยากหยุดลงขายชั่วคราว | โหนด Config → `etsy_enabled = false` |

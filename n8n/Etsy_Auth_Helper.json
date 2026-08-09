@@ -7,26 +7,31 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -620,
-        -160
+        -680,
+        -200
       ],
       "parameters": {
-        "width": 520,
-        "height": 420,
+        "width": 540,
+        "height": 460,
         "color": 4,
-        "content": "## 🔑 ตัวช่วยขอสิทธิ์ Etsy (ทำครั้งเดียวจบ)\n\n**ขั้นที่ 1** เปิดโหนด **Webhook (รับ code จาก Etsy)** คัดลอก **Production URL** เก็บไว้\n\n**ขั้นที่ 2** เอา URL นั้นไปใส่เป็น **Callback URL** ในแอป Etsy ของคุณ (etsy.com/developers/your-apps)\n\n**ขั้นที่ 3** กรอก `etsy_keystring` และ `redirect_uri` (= URL จากขั้นที่ 1) ในโหนด **Etsy Auth Config**\n\n**ขั้นที่ 4** กด **Active** เปิด workflow นี้ (จำเป็น เพราะต้องใช้ Production URL) แล้วกด Execute โหนด **1. สร้างลิงก์ขอสิทธิ์**\n\n**ขั้นที่ 5** คัดลอก `auth_url` ที่ได้ ไปเปิดในเบราว์เซอร์ → กด **Allow Access**\n\n**ขั้นที่ 6** หน้าเว็บจะแสดง `etsy_refresh_token`, `etsy_shop_id` และรายการหมวดหมู่ให้ — คัดลอกไปใส่ในโหนด Config ของ workflow หลัก\n\nเสร็จแล้วปิด (ปิด Active) workflow นี้ได้เลย"
+        "content": "## 🔑 ตัวช่วยขอสิทธิ์ Etsy (ทำครั้งเดียวจบ)\n\nทุกอย่างทำผ่าน **URL เดียว** ไม่ต้องกด Execute ทีละโหนด\n\n**ขั้นที่ 1** ดับเบิลคลิกโหนด **Etsy Auth Config** → กรอก `etsy_keystring` (Keystring จาก etsy.com/developers) → ปิดหน้าต่าง → กด **Save**\n\n**ขั้นที่ 2** ดับเบิลคลิกโหนด **Webhook** → แท็บ **Production URL** → คัดลอก URL\n(หน้าตาแบบ `https://ชื่อคุณ.app.n8n.cloud/webhook/etsy-auth`)\n\n**ขั้นที่ 3** เอา URL นั้นไปใส่เป็น **Callback URL** ในแอป Etsy → Save\n\n**ขั้นที่ 4** กด **Active** เปิด workflow นี้ (สำคัญมาก — ถ้าไม่เปิด รหัสลับจะไม่ถูกบันทึก)\n\n**ขั้นที่ 5** เอา URL เดิมนั้น **เปิดในเบราว์เซอร์** → กดปุ่มสีส้ม → **Grant access**\n\n**ขั้นที่ 6** หน้าเว็บจะแสดง `etsy_refresh_token`, `etsy_shop_id`, `etsy_keystring` และเลขหมวดหมู่ — คัดลอกไปกรอกในโหนด **Config** ของ workflow หลัก\n\nเสร็จแล้วปิด Active ของ workflow นี้ได้เลย"
       }
     },
     {
-      "id": "etsyauth-02-manual",
-      "name": "กดเริ่มที่นี่",
-      "type": "n8n-nodes-base.manualTrigger",
-      "typeVersion": 1,
+      "id": "etsyauth-02-webhook",
+      "name": "Webhook (URL สำหรับขอสิทธิ์ + รับ code)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
       "position": [
-        -40,
+        -80,
         0
       ],
-      "parameters": {}
+      "webhookId": "a7f1c2d3-4b5e-4f60-9a12-etsyauth00001",
+      "parameters": {
+        "path": "etsy-auth",
+        "responseMode": "responseNode",
+        "options": {}
+      }
     },
     {
       "id": "etsyauth-03-config",
@@ -34,7 +39,7 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        180,
+        160,
         0
       ],
       "parameters": {
@@ -49,17 +54,18 @@
             {
               "id": "auth-redirect",
               "name": "redirect_uri",
-              "value": "YOUR_WEBHOOK_PRODUCTION_URL",
+              "value": "",
               "type": "string"
             }
           ]
         },
+        "includeOtherFields": true,
         "options": {}
       }
     },
     {
-      "id": "etsyauth-04-mkurl",
-      "name": "1. สร้างลิงก์ขอสิทธิ์",
+      "id": "etsyauth-04-handler",
+      "name": "Etsy Auth Handler",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -67,41 +73,36 @@
         0
       ],
       "parameters": {
-        "jsCode": "// สร้างลิงก์ขอสิทธิ์ Etsy (OAuth2 + PKCE) — เปิดลิงก์ที่ได้ในเบราว์เซอร์แล้วกดอนุญาต\nfunction sha256Bytes(msgBytes) {\n  const K = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,\n    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,\n    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,\n    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,\n    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,\n    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,\n    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,\n    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];\n  let h = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];\n  const l = msgBytes.length;\n  const withPad = new Uint8Array(((l + 72) >> 6) << 6); // ปัดขึ้นเป็นทวีคูณของ 64 ที่ >= l+9\n  withPad.set(msgBytes);\n  withPad[l] = 0x80;\n  const bitLen = l * 8;\n  const dv = new DataView(withPad.buffer);\n  dv.setUint32(withPad.length - 4, bitLen >>> 0, false);\n  dv.setUint32(withPad.length - 8, Math.floor(bitLen / 4294967296), false);\n  const w = new Uint32Array(64);\n  const rr = (x, n) => (x >>> n) | (x << (32 - n));\n  for (let i = 0; i < withPad.length; i += 64) {\n    for (let j = 0; j < 16; j++) w[j] = dv.getUint32(i + j * 4, false);\n    for (let j = 16; j < 64; j++) {\n      const s0 = rr(w[j-15],7) ^ rr(w[j-15],18) ^ (w[j-15] >>> 3);\n      const s1 = rr(w[j-2],17) ^ rr(w[j-2],19) ^ (w[j-2] >>> 10);\n      w[j] = (w[j-16] + s0 + w[j-7] + s1) >>> 0;\n    }\n    let [a,b,c,d,e,f,g,hh] = h;\n    for (let j = 0; j < 64; j++) {\n      const S1 = rr(e,6) ^ rr(e,11) ^ rr(e,25);\n      const ch = (e & f) ^ (~e & g);\n      const t1 = (hh + S1 + ch + K[j] + w[j]) >>> 0;\n      const S0 = rr(a,2) ^ rr(a,13) ^ rr(a,22);\n      const maj = (a & b) ^ (a & c) ^ (b & c);\n      const t2 = (S0 + maj) >>> 0;\n      hh = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b; b = a; a = (t1 + t2) >>> 0;\n    }\n    h = [(h[0]+a)>>>0,(h[1]+b)>>>0,(h[2]+c)>>>0,(h[3]+d)>>>0,(h[4]+e)>>>0,(h[5]+f)>>>0,(h[6]+g)>>>0,(h[7]+hh)>>>0];\n  }\n  const outBytes = new Uint8Array(32);\n  const odv = new DataView(outBytes.buffer);\n  h.forEach((v, i) => odv.setUint32(i * 4, v, false));\n  return outBytes;\n}\nfunction b64url(bytes) {\n  let s = '';\n  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);\n  return Buffer.from(s, 'latin1').toString('base64').replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');\n}\n\nconst cfg = $input.first().json;\nconst keystring = String(cfg.etsy_keystring || '').trim();\nconst redirectUri = String(cfg.redirect_uri || '').trim();\nif (!keystring || /^YOUR_/i.test(keystring)) throw new Error('ยังไม่ได้กรอก etsy_keystring ในโหนด Etsy Auth Config');\nif (!redirectUri || /^YOUR_/i.test(redirectUri)) throw new Error('ยังไม่ได้กรอก redirect_uri (คือ Production URL ของโหนด Webhook ในไฟล์นี้)');\n\n// code_verifier: สุ่ม 43 ตัวอักษรตามสเปก PKCE\nconst chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';\nlet rnd;\ntry { rnd = new Uint8Array(43); crypto.getRandomValues(rnd); }\ncatch (e) { rnd = new Uint8Array(43); for (let i = 0; i < 43; i++) rnd[i] = Math.floor(Math.random() * 256); }\nlet verifier = '';\nfor (let i = 0; i < 43; i++) verifier += chars[rnd[i] % chars.length];\n\nconst bytes = new Uint8Array(verifier.length);\nfor (let i = 0; i < verifier.length; i++) bytes[i] = verifier.charCodeAt(i);\nconst challenge = b64url(sha256Bytes(bytes));\nconst state = 'cbf' + Date.now().toString(36);\n\n// เก็บ verifier ไว้ให้โหนดฝั่ง Webhook ใช้แลก token\nconst store = $getWorkflowStaticData('global');\nstore.etsy_code_verifier = verifier;\nstore.etsy_state = state;\nstore.etsy_keystring = keystring;\nstore.etsy_redirect_uri = redirectUri;\n\nconst scopes = 'listings_r listings_w shops_r';\nconst authUrl = 'https://www.etsy.com/oauth/connect' +\n  '?response_type=code' +\n  '&client_id=' + encodeURIComponent(keystring) +\n  '&redirect_uri=' + encodeURIComponent(redirectUri) +\n  '&scope=' + encodeURIComponent(scopes) +\n  '&state=' + encodeURIComponent(state) +\n  '&code_challenge=' + encodeURIComponent(challenge) +\n  '&code_challenge_method=S256';\n\nreturn [{ json: {\n  ขั้นตอนต่อไป: 'คัดลอก auth_url ด้านล่างไปเปิดในเบราว์เซอร์ แล้วกด Allow Access — เสร็จแล้วหน้าเว็บจะแสดง refresh_token ให้เอง',\n  auth_url: authUrl,\n  scopes: scopes,\n  redirect_uri_ที่ต้องตั้งในแอป_Etsy: redirectUri,\n} }];"
+        "jsCode": "// ตัวช่วยขอสิทธิ์ Etsy — ทำงาน 2 จังหวะผ่าน URL เดียวกัน\n//   จังหวะ 1: เปิด URL เปล่า -> สร้างลิงก์ขออนุญาต (เก็บ code_verifier ไว้)\n//   จังหวะ 2: Etsy ส่งกลับมาพร้อม ?code= -> แลกเป็น refresh token + หา shop_id + หมวดหมู่\n// ทั้งสองจังหวะวิ่งผ่าน production webhook เท่านั้น static data จึงถูกบันทึกจริง\nfunction sha256Bytes(msgBytes) {\n  const K = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,\n    0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,\n    0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,\n    0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,\n    0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,\n    0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,\n    0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,\n    0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];\n  let h = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];\n  const l = msgBytes.length;\n  const withPad = new Uint8Array(((l + 72) >> 6) << 6); // ปัดขึ้นเป็นทวีคูณของ 64 ที่ >= l+9\n  withPad.set(msgBytes);\n  withPad[l] = 0x80;\n  const bitLen = l * 8;\n  const dv = new DataView(withPad.buffer);\n  dv.setUint32(withPad.length - 4, bitLen >>> 0, false);\n  dv.setUint32(withPad.length - 8, Math.floor(bitLen / 4294967296), false);\n  const w = new Uint32Array(64);\n  const rr = (x, n) => (x >>> n) | (x << (32 - n));\n  for (let i = 0; i < withPad.length; i += 64) {\n    for (let j = 0; j < 16; j++) w[j] = dv.getUint32(i + j * 4, false);\n    for (let j = 16; j < 64; j++) {\n      const s0 = rr(w[j-15],7) ^ rr(w[j-15],18) ^ (w[j-15] >>> 3);\n      const s1 = rr(w[j-2],17) ^ rr(w[j-2],19) ^ (w[j-2] >>> 10);\n      w[j] = (w[j-16] + s0 + w[j-7] + s1) >>> 0;\n    }\n    let [a,b,c,d,e,f,g,hh] = h;\n    for (let j = 0; j < 64; j++) {\n      const S1 = rr(e,6) ^ rr(e,11) ^ rr(e,25);\n      const ch = (e & f) ^ (~e & g);\n      const t1 = (hh + S1 + ch + K[j] + w[j]) >>> 0;\n      const S0 = rr(a,2) ^ rr(a,13) ^ rr(a,22);\n      const maj = (a & b) ^ (a & c) ^ (b & c);\n      const t2 = (S0 + maj) >>> 0;\n      hh = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b; b = a; a = (t1 + t2) >>> 0;\n    }\n    h = [(h[0]+a)>>>0,(h[1]+b)>>>0,(h[2]+c)>>>0,(h[3]+d)>>>0,(h[4]+e)>>>0,(h[5]+f)>>>0,(h[6]+g)>>>0,(h[7]+hh)>>>0];\n  }\n  const outBytes = new Uint8Array(32);\n  const odv = new DataView(outBytes.buffer);\n  h.forEach((v, i) => odv.setUint32(i * 4, v, false));\n  return outBytes;\n}\nfunction b64url(bytes) {\n  let s = '';\n  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);\n  return Buffer.from(s, 'latin1').toString('base64').replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');\n}\n\nconst inp = $input.first().json;\nconst q = inp.query || {};\nconst store = $getWorkflowStaticData('global');\n\nconst esc = s => String(s == null ? '' : s)\n  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\n\nconst page = (title, bodyHtml, color) => ({\n  html: '<!DOCTYPE html><html lang=\"th\"><head><meta charset=\"utf-8\">' +\n    '<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">' +\n    '<title>' + esc(title) + '</title><style>' +\n    'body{font-family:-apple-system,Segoe UI,Roboto,\"Noto Sans Thai\",sans-serif;background:#f6f7f9;margin:0;padding:24px;color:#1c1e21}' +\n    '.card{max-width:760px;margin:0 auto;background:#fff;border-radius:14px;padding:28px 32px;box-shadow:0 2px 14px rgba(0,0,0,.08)}' +\n    'h1{font-size:22px;margin:0 0 6px;color:' + (color || '#1c1e21') + '}' +\n    'p{line-height:1.7}code,pre{background:#f0f2f5;border-radius:8px;font-family:ui-monospace,Menlo,Consolas,monospace}' +\n    'code{padding:2px 6px;font-size:13px;word-break:break-all}' +\n    'pre{padding:14px;overflow-x:auto;font-size:13px;white-space:pre-wrap;word-break:break-all}' +\n    '.btn{display:inline-block;background:#f1641e;color:#fff;text-decoration:none;padding:14px 28px;border-radius:24px;font-weight:700;margin:14px 0}' +\n    'table{border-collapse:collapse;width:100%;margin-top:10px}' +\n    'th,td{border:1px solid #ddd;padding:9px 11px;text-align:left;font-size:14px;vertical-align:top}' +\n    'th{background:#f0f2f5;width:190px}.muted{color:#65676b;font-size:13px}' +\n    '</style></head><body><div class=\"card\">' + bodyHtml + '</div></body></html>',\n});\n\n// ---- ค่าตั้งต้น ----\nconst keystring = String(inp.etsy_keystring || '').trim();\nlet redirectUri = String(inp.redirect_uri || '').trim();\nif (!redirectUri || /^YOUR_/i.test(redirectUri)) {\n  const host = (inp.headers && (inp.headers['x-forwarded-host'] || inp.headers.host)) || '';\n  redirectUri = 'https://' + host + '/webhook/etsy-auth';\n}\n\nif (!keystring || /^YOUR_/i.test(keystring)) {\n  return [page('ยังไม่ได้ตั้งค่า', '<h1>⚠️ ยังไม่ได้กรอก Keystring</h1>' +\n    '<p>เปิด workflow นี้ใน n8n แล้วดับเบิลคลิกโหนด <b>Etsy Auth Config</b> กรอกช่อง <code>etsy_keystring</code> ' +\n    'ด้วย Keystring ของแอปจาก <b>etsy.com/developers</b> แล้วกด Save ก่อนครับ</p>', '#c9302c')];\n}\n\nconst parse = r => { if (r && typeof r === 'object') return r; try { return JSON.parse(String(r)); } catch (e) { return {}; } };\n\n/* ============ จังหวะ 2: Etsy ส่ง code กลับมา ============ */\nif (q.code || q.error) {\n  if (q.error) {\n    return [page('ไม่ได้รับอนุญาต', '<h1>❌ Etsy ปฏิเสธการขอสิทธิ์</h1><p><code>' + esc(q.error) + ' ' +\n      esc(q.error_description || '') + '</code></p><p>ลองเปิด URL นี้ใหม่แล้วกด <b>Grant access</b> ครับ</p>', '#c9302c')];\n  }\n  const verifier = store.etsy_code_verifier;\n  if (!verifier) {\n    return [page('ลิงก์หมดอายุ', '<h1>⚠️ ไม่พบรหัสลับของรอบนี้</h1>' +\n      '<p>ลิงก์นี้อาจเป็นของรอบเก่า หรือ workflow ถูกปิด Active ระหว่างทาง</p>' +\n      '<p>วิธีแก้: เปิด <code>' + esc(redirectUri) + '</code> ใหม่อีกครั้ง (แบบไม่มี ?code= ต่อท้าย) แล้วเริ่มใหม่ครับ</p>', '#c9302c')];\n  }\n  if (q.state && store.etsy_state && q.state !== store.etsy_state) {\n    return [page('ลิงก์ไม่ตรงกัน', '<h1>⚠️ state ไม่ตรง</h1><p>น่าจะเป็นลิงก์เก่า — เปิด <code>' +\n      esc(redirectUri) + '</code> ใหม่แล้วเริ่มอีกครั้งครับ</p>', '#c9302c')];\n  }\n\n  const form = 'grant_type=authorization_code' +\n    '&client_id=' + encodeURIComponent(store.etsy_keystring || keystring) +\n    '&redirect_uri=' + encodeURIComponent(store.etsy_redirect_uri || redirectUri) +\n    '&code=' + encodeURIComponent(q.code) +\n    '&code_verifier=' + encodeURIComponent(verifier);\n\n  let tok = {}, lastErr = '';\n  for (const url of ['https://openapi.etsy.com/v3/public/oauth/token', 'https://api.etsy.com/v3/public/oauth/token']) {\n    try {\n      tok = parse(await this.helpers.httpRequest({\n        method: 'POST', url,\n        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },\n        body: form, json: false, timeout: 30000,\n      }));\n      if (tok.access_token) break;\n    } catch (e) {\n      const b = (e && e.response && (e.response.body || e.response.data)) || '';\n      lastErr = String((e && e.message) || e) + ' ' + (typeof b === 'string' ? b : JSON.stringify(b));\n    }\n  }\n  if (!tok.access_token) {\n    return [page('แลก token ไม่สำเร็จ', '<h1>❌ แลก token ไม่สำเร็จ</h1><pre>' + esc(lastErr.slice(0, 600)) +\n      '</pre><p>ตรวจว่า Callback URL ในแอป Etsy ตรงกับ <code>' + esc(redirectUri) + '</code> เป๊ะๆ แล้วลองใหม่ครับ</p>', '#c9302c')];\n  }\n\n  store.etsy_refresh_token = tok.refresh_token;\n  const auth = { 'x-api-key': keystring, 'Authorization': 'Bearer ' + tok.access_token };\n\n  let shopId = '';\n  try {\n    const me = parse(await this.helpers.httpRequest({ url: 'https://openapi.etsy.com/v3/application/users/me', headers: auth, json: true, timeout: 30000 }));\n    if (me.shop_id) shopId = String(me.shop_id);\n  } catch (e) {}\n\n  let taxRows = '';\n  try {\n    const tx = parse(await this.helpers.httpRequest({ url: 'https://openapi.etsy.com/v3/application/seller-taxonomy/nodes', headers: { 'x-api-key': keystring }, json: true, timeout: 60000 }));\n    const found = [];\n    const walk = (nodes, trail) => {\n      for (const n of nodes || []) {\n        const p = trail.concat(n.name);\n        if (/colou?ring|digital print/i.test(n.name)) found.push({ id: n.id, path: p.join(' > ') });\n        if (n.children) walk(n.children, p);\n      }\n    };\n    walk(tx.results, []);\n    taxRows = found.slice(0, 8).map(f => '<tr><th>' + f.id + '</th><td>' + esc(f.path) + '</td></tr>').join('');\n  } catch (e) {}\n  if (!taxRows) taxRows = '<tr><td colspan=\"2\" class=\"muted\">หาหมวดหมู่อัตโนมัติไม่ได้ — ใช้ 2078 (Paper &amp; Party Supplies &gt; Paper &gt; Coloring Books) หรือเลือกเองภายหลังได้</td></tr>';\n\n  return [page('สำเร็จ',\n    '<h1>✅ เชื่อมต่อ Etsy สำเร็จ</h1>' +\n    '<p>คัดลอก 3 ค่านี้ไปกรอกในโหนด <b>Config</b> ของ workflow หลัก (AI Coloring Book Factory) ครับ</p>' +\n    '<table>' +\n    '<tr><th>etsy_refresh_token</th><td><code>' + esc(tok.refresh_token) + '</code></td></tr>' +\n    '<tr><th>etsy_shop_id</th><td><code>' + esc(shopId || '(หาไม่เจอ — ดูเลขได้ใน Shop Manager)') + '</code></td></tr>' +\n    '<tr><th>etsy_keystring</th><td><code>' + esc(keystring) + '</code></td></tr>' +\n    '</table>' +\n    '<h1 style=\"font-size:17px;margin-top:26px\">เลือก 1 อันใส่ etsy_taxonomy_id</h1><table>' + taxRows + '</table>' +\n    '<p class=\"muted\" style=\"margin-top:22px\">⚠️ อย่าแชร์หน้านี้ให้ใคร — refresh_token คือกุญแจเข้าร้านของคุณ<br>' +\n    'refresh_token มีอายุ 90 วัน แต่ workflow หลักจะต่ออายุให้เองทุกครั้งที่รัน<br>' +\n    'เสร็จแล้วปิด Active ของ workflow ตัวช่วยนี้ได้เลย</p>', '#2e7d32')];\n}\n\n/* ============ จังหวะ 1: สร้างลิงก์ขออนุญาต ============ */\nconst chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';\nlet rnd;\ntry { rnd = new Uint8Array(43); crypto.getRandomValues(rnd); }\ncatch (e) { rnd = new Uint8Array(43); for (let i = 0; i < 43; i++) rnd[i] = Math.floor(Math.random() * 256); }\nlet verifier = '';\nfor (let i = 0; i < 43; i++) verifier += chars[rnd[i] % chars.length];\n\nconst bytes = new Uint8Array(verifier.length);\nfor (let i = 0; i < verifier.length; i++) bytes[i] = verifier.charCodeAt(i);\nconst challenge = b64url(sha256Bytes(bytes));\nconst state = 'cbf' + Date.now().toString(36);\n\nstore.etsy_code_verifier = verifier;\nstore.etsy_state = state;\nstore.etsy_keystring = keystring;\nstore.etsy_redirect_uri = redirectUri;\n\nconst scopes = 'listings_r listings_w shops_r';\nconst authUrl = 'https://www.etsy.com/oauth/connect' +\n  '?response_type=code' +\n  '&client_id=' + encodeURIComponent(keystring) +\n  '&redirect_uri=' + encodeURIComponent(redirectUri) +\n  '&scope=' + encodeURIComponent(scopes) +\n  '&state=' + encodeURIComponent(state) +\n  '&code_challenge=' + encodeURIComponent(challenge) +\n  '&code_challenge_method=S256';\n\nreturn [page('ขอสิทธิ์ Etsy',\n  '<h1>🔑 เชื่อมต่อร้าน Etsy</h1>' +\n  '<p>กดปุ่มด้านล่างเพื่อไปหน้าอนุญาตของ Etsy แล้วกด <b>Grant access</b> — เสร็จแล้วระบบจะพากลับมาที่หน้านี้พร้อมค่าที่ต้องใช้</p>' +\n  '<p><a class=\"btn\" href=\"' + esc(authUrl) + '\">ไปหน้าอนุญาตของ Etsy →</a></p>' +\n  '<p class=\"muted\">Callback URL ที่ต้องตั้งไว้ในแอป Etsy ต้องตรงกับบรรทัดนี้เป๊ะๆ:<br><code>' + esc(redirectUri) + '</code></p>' +\n  '<p class=\"muted\">สิทธิ์ที่ขอ: ' + esc(scopes) + ' (ดู/สร้าง/แก้สินค้า และดูข้อมูลร้าน)</p>')];"
       }
     },
     {
-      "id": "etsyauth-05-webhook",
-      "name": "Webhook (รับ code จาก Etsy)",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
+      "id": "etsyauth-05-respond",
+      "name": "ตอบกลับหน้าเว็บ",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
       "position": [
-        180,
-        240
-      ],
-      "webhookId": "a7f1c2d3-4b5e-4f60-9a12-etsycallback01",
-      "parameters": {
-        "path": "etsy-callback",
-        "responseMode": "lastNode",
-        "options": {}
-      }
-    },
-    {
-      "id": "etsyauth-06-exchange",
-      "name": "2. แลก code เป็น refresh token",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        400,
-        240
+        640,
+        0
       ],
       "parameters": {
-        "jsCode": "// แลก code ที่ Etsy ส่งกลับมาเป็น refresh token + ดึง shop_id และหมวดหมู่ที่เกี่ยวกับ coloring book ให้ด้วย\nconst store = $getWorkflowStaticData('global');\nconst q = ($input.first().json.query) || {};\nconst code = q.code;\nconst keystring = store.etsy_keystring;\nconst redirectUri = store.etsy_redirect_uri;\nconst verifier = store.etsy_code_verifier;\n\nif (q.error) throw new Error('Etsy ปฏิเสธการขอสิทธิ์: ' + q.error + ' ' + (q.error_description || ''));\nif (!code) throw new Error('ไม่พบพารามิเตอร์ code จาก Etsy');\nif (!verifier) throw new Error('ไม่พบ code_verifier — ให้กลับไปกด Execute โหนด \"1. สร้างลิงก์ขอสิทธิ์\" ใหม่ก่อน แล้วค่อยเปิดลิงก์');\nif (q.state && store.etsy_state && q.state !== store.etsy_state) throw new Error('state ไม่ตรง อาจเป็นลิงก์เก่า ให้เริ่มใหม่');\n\nconst form = 'grant_type=authorization_code' +\n  '&client_id=' + encodeURIComponent(keystring) +\n  '&redirect_uri=' + encodeURIComponent(redirectUri) +\n  '&code=' + encodeURIComponent(code) +\n  '&code_verifier=' + encodeURIComponent(verifier);\n\nconst parse = r => { if (r && typeof r === 'object') return r; try { return JSON.parse(String(r)); } catch (e) { return {}; } };\nlet tok = {}, lastErr = '';\nfor (const url of ['https://openapi.etsy.com/v3/public/oauth/token', 'https://api.etsy.com/v3/public/oauth/token']) {\n  try {\n    tok = parse(await this.helpers.httpRequest({\n      method: 'POST', url,\n      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },\n      body: form, json: false, timeout: 30000,\n    }));\n    if (tok.access_token) break;\n  } catch (e) { lastErr = String((e && e.message) || e); }\n}\nif (!tok.access_token) throw new Error('แลก token ไม่สำเร็จ: ' + lastErr);\n\nstore.etsy_refresh_token = tok.refresh_token;\nconst auth = { 'x-api-key': keystring, 'Authorization': 'Bearer ' + tok.access_token };\n\n// shop_id\nlet shopId = '(หาไม่เจอ — ดูได้ที่ URL หน้าร้านของคุณ หรือใน Shop Manager)';\ntry {\n  const me = parse(await this.helpers.httpRequest({ url: 'https://openapi.etsy.com/v3/application/users/me', headers: auth, json: true, timeout: 30000 }));\n  if (me.shop_id) shopId = String(me.shop_id);\n} catch (e) {}\n\n// หมวดหมู่ (taxonomy) ที่มีคำว่า coloring — เอาไปใส่ etsy_taxonomy_id\nlet taxonomy = [];\ntry {\n  const tx = parse(await this.helpers.httpRequest({ url: 'https://openapi.etsy.com/v3/application/seller-taxonomy/nodes', headers: { 'x-api-key': keystring }, json: true, timeout: 60000 }));\n  const walk = (nodes, trail) => {\n    for (const n of nodes || []) {\n      const p = trail.concat(n.name);\n      if (/colou?ring|digital print|coloring book/i.test(n.name)) taxonomy.push({ taxonomy_id: n.id, path: p.join(' > ') });\n      if (n.children) walk(n.children, p);\n    }\n  };\n  walk(tx.results, []);\n  taxonomy = taxonomy.slice(0, 10);\n} catch (e) {}\n\nreturn [{ json: {\n  '✅ สำเร็จ': 'คัดลอกค่าด้านล่างไปใส่ในโหนด Config ของ workflow หลัก (AI Coloring Book Factory)',\n  etsy_refresh_token: tok.refresh_token,\n  etsy_shop_id: shopId,\n  หมวดหมู่ที่แนะนำ_เลือก1อันใส่_etsy_taxonomy_id: taxonomy,\n  หมายเหตุ: 'refresh_token มีอายุ 90 วัน แต่ workflow หลักจะต่ออายุให้เองทุกครั้งที่รัน ถ้าไม่ได้รันเกิน 90 วันค่อยมาขอใหม่ที่ไฟล์นี้',\n} }];"
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
       }
     }
   ],
   "connections": {
-    "กดเริ่มที่นี่": {
+    "Webhook (URL สำหรับขอสิทธิ์ + รับ code)": {
       "main": [
         [
           {
@@ -116,18 +117,18 @@
       "main": [
         [
           {
-            "node": "1. สร้างลิงก์ขอสิทธิ์",
+            "node": "Etsy Auth Handler",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Webhook (รับ code จาก Etsy)": {
+    "Etsy Auth Handler": {
       "main": [
         [
           {
-            "node": "2. แลก code เป็น refresh token",
+            "node": "ตอบกลับหน้าเว็บ",
             "type": "main",
             "index": 0
           }
