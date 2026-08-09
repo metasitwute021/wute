@@ -344,6 +344,38 @@ def gemini_chat(
     }
 
 
+
+ETSY_TOKEN_NODE = "Etsy: Access Token"
+
+
+def etsy_token_node() -> dict:
+    """HTTP Request node params that trade the refresh token for an access token.
+
+    Etsy access tokens last an hour; refresh tokens last ninety days and Etsy
+    returns a fresh one on every exchange. The reply is read by the node after
+    this one, which folds the access token into cfg so every Etsy call in the
+    run - and in any sub-workflow it starts - can read it.
+    """
+    body = (
+        "={{ 'grant_type=refresh_token&client_id=' "
+        "+ encodeURIComponent($env.ETSY_API_KEY) "
+        "+ '&refresh_token=' + encodeURIComponent($env.ETSY_REFRESH_TOKEN) }}"
+    )
+    return {
+        "method": "POST",
+        "url": "={{ $env.ETSY_API_BASE }}/v3/public/oauth/token",
+        "authentication": "none",
+        "sendHeaders": True,
+        "headerParameters": {"parameters": [
+            {"name": "Content-Type", "value": "application/x-www-form-urlencoded"},
+        ]},
+        "sendBody": True,
+        "contentType": "raw",
+        "rawContentType": "application/x-www-form-urlencoded",
+        "body": body,
+        "options": {"timeout": 30000},
+    }
+
 def openai_chat(
     system_expr: str,
     user_expr: str,
@@ -425,12 +457,22 @@ def etsy_http(method: str, url_expr: str, *, body_expr: str | None = None,
     params = {
         "method": method,
         "url": url_expr,
-        "authentication": "genericCredentialType",
-        "genericAuthType": "oAuth2Api",
+        # No n8n credential: Etsy mandates PKCE on the authorisation code flow
+        # and n8n's generic OAuth2 credential does not send a code_challenge, so
+        # connecting it simply fails. The suite holds a refresh token instead
+        # and exchanges it for an access token at the start of each run - which
+        # also means one fewer credential to create and keep in step.
+        "authentication": "none",
         "sendHeaders": True,
         "headerParameters": {
             "parameters": [
-                {"name": "x-api-key", "value": "={{ $env.ETSY_API_KEY }}"}
+                {"name": "x-api-key", "value": "={{ $env.ETSY_API_KEY }}"},
+                # Read from the exchange node in this same workflow rather than
+                # from cfg: the token is minted during the run, and Factory
+                # Config has already produced its item by then.
+                {"name": "Authorization",
+                 "value": ("={{ 'Bearer ' + $('" + ETSY_TOKEN_NODE +
+                           "').first().json.access_token }}")},
             ]
         },
         "options": {"timeout": timeout},
@@ -582,6 +624,10 @@ CONFIG_DEFAULTS: dict = {
     # Etsy - empty means "not configured yet"; the run then skips publishing
     "ETSY_API_BASE": "https://openapi.etsy.com",
     "ETSY_API_KEY": "",
+    # Obtained once with the Etsy Auth Helper workflow. Etsy requires PKCE,
+    # which n8n's generic OAuth2 credential does not perform, so the suite
+    # carries a refresh token and mints its own access token per run.
+    "ETSY_REFRESH_TOKEN": "",
     "ETSY_SHOP_ID": "",
     "ETSY_LISTING_STATE": "draft",
     "ETSY_TAXONOMY_ID": 2078,

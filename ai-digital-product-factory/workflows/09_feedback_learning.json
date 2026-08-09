@@ -28,7 +28,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// =====================================================================\n// FACTORY CONFIG - ศูนย์รวมค่าตั้งค่าของโรงงานทั้งหมด\n//\n// วิธีแก้ค่า (เลือกอย่างใดอย่างหนึ่ง):\n//   1. แก้ตัวเลข/ข้อความใน DEFAULTS ข้างล่างนี้ตรง ๆ (ง่ายสุด ใช้ได้ทุกแพลน)\n//   2. หรือตั้งใน n8n Variables (Settings > Variables) ชื่อเดียวกัน - จะทับ DEFAULTS\n//   3. หรือตั้ง environment variable (เฉพาะ self-hosted) - จะทับ DEFAULTS เช่นกัน\n//\n// แก้ที่ workflow 01 ตัวเดียวพอ: sub-workflow ทุกตัวรับ cfg ต่อจากแม่อัตโนมัติ\n// =====================================================================\nconst DEFAULTS = {\n  \"OPENAI_MODEL_TEXT\": \"gpt-4.1\",\n  \"GEMINI_API_BASE\": \"https://generativelanguage.googleapis.com\",\n  \"GEMINI_MODEL_TEXT\": \"gemini-flash-latest\",\n  \"OPENAI_MODEL_IMAGE\": \"gpt-image-1\",\n  \"OPENAI_IMAGE_QUALITY\": \"high\",\n  \"IMAGE_QUALITY_COVER\": \"high\",\n  \"IMAGE_QUALITY_PAGE\": \"medium\",\n  \"IMAGE_QUALITY_SMALL\": \"low\",\n  \"GENERATE_SEPARATE_PREVIEWS\": \"false\",\n  \"PROMPT_VERSION\": \"v1.0.0\",\n  \"ETSY_API_BASE\": \"https://openapi.etsy.com\",\n  \"ETSY_API_KEY\": \"\",\n  \"ETSY_SHOP_ID\": \"\",\n  \"ETSY_LISTING_STATE\": \"draft\",\n  \"ETSY_TAXONOMY_ID\": 2078,\n  \"GDRIVE_ROOT_FOLDER_ID\": \"root\",\n  \"DB_TYPE\": \"postgres\",\n  \"DB_SQLITE_PATH\": \"/home/node/.n8n/adpf.db\",\n  \"FACTORY_ROTATION\": \"planner,printable,canva,wallart,resume,spreadsheet,kids,svg\",\n  \"ALERT_WEBHOOK_URL\": \"\",\n  \"IDEA_TARGET_COUNT\": 120,\n  \"IDEA_BATCH_SIZE\": 40,\n  \"DUPLICATE_SIMILARITY_THRESHOLD\": 0.62,\n  \"ALLOW_PRODUCT_REVISION\": \"false\",\n  \"BUDGET_DAILY_USD\": 20,\n  \"BUDGET_MONTHLY_USD\": 300,\n  \"BUDGET_RUN_RESERVE_USD\": 3,\n  \"OPENAI_IMAGE_UNIT_COST_USD\": 0.19,\n  \"OPENAI_CHAT_RUN_COST_USD\": 0.12,\n  \"OPENAI_PRICE_OVERRIDE_JSON\": \"{}\",\n  \"LEARNING_WINDOW_DAYS\": 30,\n  \"LEARNING_MIN_SAMPLE\": 15,\n  \"AB_MIN_VIEWS_PER_ARM\": 200,\n  \"AB_MIN_RELATIVE_LIFT\": 0.2\n};\n\nconst first = $input.first();\nconst incoming = first && first.json ? first.json : {};\nconst parentCfg = incoming.cfg && typeof incoming.cfg === 'object' ? incoming.cfg : {};\n\n// ทั้ง $vars และ $env อาจไม่มีอยู่เลย (n8n Cloud) - แตะผ่าน try เท่านั้น\nconst readVars = (key) => {\n  try {\n    if (typeof $vars !== 'undefined' && $vars[key] !== undefined && $vars[key] !== '') {\n      return $vars[key];\n    }\n  } catch (e) { /* Variables not available on this plan */ }\n  return undefined;\n};\nconst readEnv = (key) => {\n  try {\n    if (typeof $env !== 'undefined' && $env[key] !== undefined && $env[key] !== '') {\n      return $env[key];\n    }\n  } catch (e) { /* env access blocked or not present */ }\n  return undefined;\n};\n\nconst cfg = {};\nconst sources = {};\nfor (const key of Object.keys(DEFAULTS)) {\n  if (parentCfg[key] !== undefined) { cfg[key] = parentCfg[key]; sources[key] = 'parent'; continue; }\n  const fromVars = readVars(key);\n  if (fromVars !== undefined) { cfg[key] = fromVars; sources[key] = 'variables'; continue; }\n  const fromEnv = readEnv(key);\n  if (fromEnv !== undefined) { cfg[key] = fromEnv; sources[key] = 'env'; continue; }\n  cfg[key] = DEFAULTS[key]; sources[key] = 'default';\n}\n\nreturn $input.all().map((item) => ({\n  json: { ...item.json, cfg, cfg_sources: sources },\n  binary: item.binary,\n}));\n"
+        "jsCode": "// =====================================================================\n// FACTORY CONFIG - ศูนย์รวมค่าตั้งค่าของโรงงานทั้งหมด\n//\n// วิธีแก้ค่า (เลือกอย่างใดอย่างหนึ่ง):\n//   1. แก้ตัวเลข/ข้อความใน DEFAULTS ข้างล่างนี้ตรง ๆ (ง่ายสุด ใช้ได้ทุกแพลน)\n//   2. หรือตั้งใน n8n Variables (Settings > Variables) ชื่อเดียวกัน - จะทับ DEFAULTS\n//   3. หรือตั้ง environment variable (เฉพาะ self-hosted) - จะทับ DEFAULTS เช่นกัน\n//\n// แก้ที่ workflow 01 ตัวเดียวพอ: sub-workflow ทุกตัวรับ cfg ต่อจากแม่อัตโนมัติ\n// =====================================================================\nconst DEFAULTS = {\n  \"OPENAI_MODEL_TEXT\": \"gpt-4.1\",\n  \"GEMINI_API_BASE\": \"https://generativelanguage.googleapis.com\",\n  \"GEMINI_MODEL_TEXT\": \"gemini-flash-latest\",\n  \"OPENAI_MODEL_IMAGE\": \"gpt-image-1\",\n  \"OPENAI_IMAGE_QUALITY\": \"high\",\n  \"IMAGE_QUALITY_COVER\": \"high\",\n  \"IMAGE_QUALITY_PAGE\": \"medium\",\n  \"IMAGE_QUALITY_SMALL\": \"low\",\n  \"GENERATE_SEPARATE_PREVIEWS\": \"false\",\n  \"PROMPT_VERSION\": \"v1.0.0\",\n  \"ETSY_API_BASE\": \"https://openapi.etsy.com\",\n  \"ETSY_API_KEY\": \"\",\n  \"ETSY_REFRESH_TOKEN\": \"\",\n  \"ETSY_SHOP_ID\": \"\",\n  \"ETSY_LISTING_STATE\": \"draft\",\n  \"ETSY_TAXONOMY_ID\": 2078,\n  \"GDRIVE_ROOT_FOLDER_ID\": \"root\",\n  \"DB_TYPE\": \"postgres\",\n  \"DB_SQLITE_PATH\": \"/home/node/.n8n/adpf.db\",\n  \"FACTORY_ROTATION\": \"planner,printable,canva,wallart,resume,spreadsheet,kids,svg\",\n  \"ALERT_WEBHOOK_URL\": \"\",\n  \"IDEA_TARGET_COUNT\": 120,\n  \"IDEA_BATCH_SIZE\": 40,\n  \"DUPLICATE_SIMILARITY_THRESHOLD\": 0.62,\n  \"ALLOW_PRODUCT_REVISION\": \"false\",\n  \"BUDGET_DAILY_USD\": 20,\n  \"BUDGET_MONTHLY_USD\": 300,\n  \"BUDGET_RUN_RESERVE_USD\": 3,\n  \"OPENAI_IMAGE_UNIT_COST_USD\": 0.19,\n  \"OPENAI_CHAT_RUN_COST_USD\": 0.12,\n  \"OPENAI_PRICE_OVERRIDE_JSON\": \"{}\",\n  \"LEARNING_WINDOW_DAYS\": 30,\n  \"LEARNING_MIN_SAMPLE\": 15,\n  \"AB_MIN_VIEWS_PER_ARM\": 200,\n  \"AB_MIN_RELATIVE_LIFT\": 0.2\n};\n\nconst first = $input.first();\nconst incoming = first && first.json ? first.json : {};\nconst parentCfg = incoming.cfg && typeof incoming.cfg === 'object' ? incoming.cfg : {};\n\n// ทั้ง $vars และ $env อาจไม่มีอยู่เลย (n8n Cloud) - แตะผ่าน try เท่านั้น\nconst readVars = (key) => {\n  try {\n    if (typeof $vars !== 'undefined' && $vars[key] !== undefined && $vars[key] !== '') {\n      return $vars[key];\n    }\n  } catch (e) { /* Variables not available on this plan */ }\n  return undefined;\n};\nconst readEnv = (key) => {\n  try {\n    if (typeof $env !== 'undefined' && $env[key] !== undefined && $env[key] !== '') {\n      return $env[key];\n    }\n  } catch (e) { /* env access blocked or not present */ }\n  return undefined;\n};\n\nconst cfg = {};\nconst sources = {};\nfor (const key of Object.keys(DEFAULTS)) {\n  if (parentCfg[key] !== undefined) { cfg[key] = parentCfg[key]; sources[key] = 'parent'; continue; }\n  const fromVars = readVars(key);\n  if (fromVars !== undefined) { cfg[key] = fromVars; sources[key] = 'variables'; continue; }\n  const fromEnv = readEnv(key);\n  if (fromEnv !== undefined) { cfg[key] = fromEnv; sources[key] = 'env'; continue; }\n  cfg[key] = DEFAULTS[key]; sources[key] = 'default';\n}\n\nreturn $input.all().map((item) => ({\n  json: { ...item.json, cfg, cfg_sources: sources },\n  binary: item.binary,\n}));\n"
       },
       "id": "adpf-adpf09feedbacklrn-factory-config",
       "name": "Factory Config",
@@ -114,16 +114,55 @@
     },
     {
       "parameters": {
+        "method": "POST",
+        "url": "={{ $('Factory Config').first().json.cfg.ETSY_API_BASE }}/v3/public/oauth/token",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/x-www-form-urlencoded",
+        "body": "={{ 'grant_type=refresh_token&client_id=' + encodeURIComponent($('Factory Config').first().json.cfg.ETSY_API_KEY) + '&refresh_token=' + encodeURIComponent($('Factory Config').first().json.cfg.ETSY_REFRESH_TOKEN) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "adpf09-etsy-access-token",
+      "name": "Etsy: Access Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1050,
+        190
+      ],
+      "notes": "Trades the refresh token for a one-hour access token. Etsy mandates PKCE on the authorisation code flow and n8n's OAuth2 credential does not send a code_challenge, so the suite carries a refresh token instead.",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
         "method": "GET",
         "url": "={{ $('Factory Config').first().json.cfg.ETSY_API_BASE }}/v3/application/shops/{{ $('Factory Config').first().json.cfg.ETSY_SHOP_ID }}/receipts?limit=100&was_paid=true",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "oAuth2Api",
+        "authentication": "none",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-api-key",
               "value": "={{ $('Factory Config').first().json.cfg.ETSY_API_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Etsy: Access Token').first().json.access_token }}"
             }
           ]
         },
@@ -201,14 +240,17 @@
       "parameters": {
         "method": "GET",
         "url": "={{ $('Factory Config').first().json.cfg.ETSY_API_BASE }}/v3/application/listings/{{ $json.listing_id }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "oAuth2Api",
+        "authentication": "none",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "x-api-key",
               "value": "={{ $('Factory Config').first().json.cfg.ETSY_API_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Etsy: Access Token').first().json.access_token }}"
             }
           ]
         },
@@ -683,6 +725,17 @@
       ]
     },
     "Postgres: Load Active Listings": {
+      "main": [
+        [
+          {
+            "node": "Etsy: Access Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Etsy: Access Token": {
       "main": [
         [
           {

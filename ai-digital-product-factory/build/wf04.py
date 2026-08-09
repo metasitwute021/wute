@@ -1,6 +1,7 @@
 """04 Publish Engine - Etsy draft listing + Gumroad / MiriCanvas package prep."""
 
 from common import (
+    ETSY_TOKEN_NODE, etsy_token_node,
     AGENT_CONTENT_JS,
     RETRY, T_CODE, T_EXEC_TRIGGER, T_HTTP, T_IF, T_LOOP, T_NOOP, Workflow, code,
     etsy_http, if_bool, loop_node, openai_chat, pos,
@@ -472,6 +473,8 @@ def build() -> Workflow:
 
     wf.add("Build Etsy Listing Payload", T_CODE, pos(7, 2), code(JS_BUILD_LISTING_PAYLOAD),
            notes="Clamps every Etsy field again - one bad field rejects the whole call.")
+    wf.add(ETSY_TOKEN_NODE, T_HTTP, pos(7.5, 2), etsy_token_node(),
+           notes="Trades the refresh token for a one-hour access token. Etsy mandates PKCE on the authorisation code flow and n8n's OAuth2 credential does not send a code_challenge, so the suite carries a refresh token instead.", **RETRY)
     wf.add(
         "Etsy: Create Draft Listing", T_HTTP, pos(8, 2),
         etsy_form(
@@ -580,7 +583,8 @@ def build() -> Workflow:
     wf.link("Check: Publisher Approved", "Build Etsy Listing Payload", 0)
     wf.link("Check: Publisher Approved", "Build Publish Failure", 1)
 
-    wf.link("Build Etsy Listing Payload", "Etsy: Create Draft Listing")
+    wf.link("Build Etsy Listing Payload", ETSY_TOKEN_NODE)
+    wf.link(ETSY_TOKEN_NODE, "Etsy: Create Draft Listing")
     wf.link("Etsy: Create Draft Listing", "Check: Listing Created", 0)
     wf.link("Etsy: Create Draft Listing", "Build Publish Failure", 1)
     wf.link("Check: Listing Created", "Enumerate Listing Images", 0)

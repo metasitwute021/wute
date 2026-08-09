@@ -11,6 +11,7 @@ quietly drifts into producing junk; a human flips the switch.
 """
 
 from common import (
+    ETSY_TOKEN_NODE, etsy_token_node,
     AGENT_CONTENT_JS,
     RETRY, T_CODE, T_EXEC_TRIGGER, T_HTTP, T_IF, T_LOOP, T_NOOP, T_POSTGRES,
     T_SCHEDULE, Workflow, code, etsy_http, if_bool, loop_node, openai_chat, pos,
@@ -603,6 +604,8 @@ def build() -> Workflow:
            notes="Every completed product with a live Etsy listing id inside the window.",
            onError="continueRegularOutput", alwaysOutputData=True, **RETRY)
 
+    wf.add(ETSY_TOKEN_NODE, T_HTTP, pos(3.5, 1), etsy_token_node(),
+           notes="Trades the refresh token for a one-hour access token. Etsy mandates PKCE on the authorisation code flow and n8n's OAuth2 credential does not send a code_challenge, so the suite carries a refresh token instead.", **RETRY)
     wf.add("Etsy: Get Shop Receipts", T_HTTP, pos(4, 1),
            etsy_http("GET",
                      "={{ $env.ETSY_API_BASE }}/v3/application/shops/{{ $env.ETSY_SHOP_ID }}"
@@ -725,7 +728,7 @@ def build() -> Workflow:
     wf.link("Trigger: Weekly Learning", "Prompt Library")
     wf.link("Receive Learning Request", "Prompt Library")
     wf.chain("Prompt Library", "Normalize Learning Input", "Postgres: Load Active Listings",
-             "Etsy: Get Shop Receipts", "Aggregate Receipts", "Split: Listings",
+             ETSY_TOKEN_NODE, "Etsy: Get Shop Receipts", "Aggregate Receipts", "Split: Listings",
              "Loop: Listings")
     wf.link("Loop: Listings", "Collect Sales Data", 0)
     wf.link("Loop: Listings", "Etsy: Get Listing Stats", 1)

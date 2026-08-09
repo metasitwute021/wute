@@ -3,6 +3,7 @@
 from common import (
     AGENT_CONTENT_JS,
     ASARRAY_JS,
+    ETSY_TOKEN_NODE, etsy_token_node,
     RETRY, T_CODE, T_EXEC_TRIGGER, T_HTTP, T_IF, T_NOOP, Workflow, code,
     etsy_http, if_bool, openai_chat, pos,
 )
@@ -321,6 +322,8 @@ def build() -> Workflow:
     wf.add("Skip Etsy Signals", T_CODE, pos(4, 2), code(JS_SKIP_ETSY),
            notes="Records why the market sample is missing so the run stays auditable.")
 
+    wf.add(ETSY_TOKEN_NODE, T_HTTP, pos(3.5, 0), etsy_token_node(),
+           notes="Trades the refresh token for a one-hour access token. Etsy mandates PKCE on the authorisation code flow and n8n's OAuth2 credential does not send a code_challenge, so the suite carries a refresh token instead.", **RETRY)
     wf.add(
         "Etsy: Search Active Listings", T_HTTP, pos(4, 0),
         etsy_http(
@@ -390,7 +393,8 @@ def build() -> Workflow:
         "Receive Research Request", "Prompt Library", "Normalize Research Input",
         "Check: Etsy Available",
     )
-    wf.link("Check: Etsy Available", "Etsy: Search Active Listings", 0)
+    wf.link("Check: Etsy Available", ETSY_TOKEN_NODE, 0)
+    wf.link(ETSY_TOKEN_NODE, "Etsy: Search Active Listings")
     wf.link("Check: Etsy Available", "Skip Etsy Signals", 1)
     wf.link("Etsy: Search Active Listings", "Etsy: Fetch Taxonomy Nodes")
     wf.link("Etsy: Fetch Taxonomy Nodes", "Aggregate Etsy Market Signals")
