@@ -418,6 +418,38 @@ def check_undeclared() -> list[str]:
     return problems
 
 
+# Words that ask an image model for type. A negated mention ("no labels") is
+# fine; an instruction to produce a typographic layout is not - the negative
+# suffix on every prompt cannot outrank it.
+TYPE_WORDS = re.compile(
+    r"\b(typograph\w*|lettering|wordmark|headline\w*|font\w*|calligraph\w*|"
+    r"serif|handwritten)\b", re.I)
+NEGATED = re.compile(r"\b(no|without|never|avoid|free of)\b[^,;]{0,30}$", re.I)
+
+
+def check_art_direction() -> list[str]:
+    """No factory may ask the image model for typography.
+
+    The resume profile read "professional typographic layout" while every
+    prompt ended "No text, no letters" - and the model resolved the
+    contradiction by drawing letter shapes that spell nothing. A page went out
+    reading 'Headliten / Subseneding'.
+    """
+    import wf03  # noqa: PLC0415
+    problems = []
+    for factory in wf03.FACTORIES:
+        art = factory["art_direction"]
+        for match in TYPE_WORDS.finditer(art):
+            if NEGATED.search(art[:match.start()]):
+                continue
+            problems.append(
+                f"{factory['factory_key']}: art_direction asks for "
+                f"'{match.group(0)}' - the image model will draw lettering")
+    print(f"[{'ok' if not problems else 'FAILED'}] art directions ask for imagery, "
+          f"not type ({len(wf03.FACTORIES)} factories)")
+    return problems
+
+
 def main() -> int:
     if subprocess.run(["node", "-v"], capture_output=True).returncode != 0:
         print("node is required for verify.py")
@@ -430,6 +462,7 @@ def main() -> int:
         problems += check_pdf(tmp)
     problems += check_input_fields()
     problems += check_undeclared()
+    problems += check_art_direction()
 
     if problems:
         print(f"\n{len(problems)} problem(s):")

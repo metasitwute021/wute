@@ -64,7 +64,7 @@ FACTORIES = [
             "print-and-use sheets (checklists, trackers, worksheets). Each sheet "
             "must work on its own without the others."
         ),
-        "art_direction": "clean editorial layout, one accent colour, high print contrast",
+        "art_direction": "clean editorial illustration, one accent colour, high print contrast, imagery only",
         "etsy_taxonomy_hint": "Paper & Party Supplies > Paper > Stationery",
         "price_range_usd": [3, 12],
         "gumroad_ready": True,
@@ -91,7 +91,7 @@ FACTORIES = [
             "slots and recommended image slots so it can be rebuilt in an "
             "editor. Include a page describing the licence and edit workflow."
         ),
-        "art_direction": "modern brandable template look, flat vector shapes, two-colour system",
+        "art_direction": "modern brandable graphic, flat vector shapes, two-colour system, imagery only",
         "etsy_taxonomy_hint": "Craft Supplies & Tools > Digital > Templates",
         "price_range_usd": [6, 24],
         "gumroad_ready": True,
@@ -144,7 +144,7 @@ FACTORIES = [
             "action verbs plus a tailoring checklist. Sample content must be "
             "realistic but clearly fictional."
         ),
-        "art_direction": "professional typographic layout, single accent rule, no decoration",
+        "art_direction": "restrained abstract composition, one horizontal accent rule, wide empty margins, imagery only",
         "etsy_taxonomy_hint": "Paper & Party Supplies > Paper > Stationery > Design & Templates",
         "price_range_usd": [5, 18],
         "gumroad_ready": True,
@@ -172,7 +172,7 @@ FACTORIES = [
             "worked example and a troubleshooting page. Formulas must be plain "
             "text and valid in both Google Sheets and Excel."
         ),
-        "art_direction": "data-dashboard aesthetic, muted chart palette, tidy grid",
+        "art_direction": "abstract chart forms - bars, dots and grid lines with no labels - muted palette",
         "etsy_taxonomy_hint": "Craft Supplies & Tools > Digital > Templates",
         "price_range_usd": [5, 22],
         "gumroad_ready": True,
@@ -508,9 +508,18 @@ const response = $input.first().json;
 const plan = readAgentReply('Designer AI', response).data;
 
 const style = base.profile.art_direction;
+// The negative alone is not enough: an art direction that asks for a
+// typographic layout wins, and the model answers with letter-shaped marks that
+// spell nothing - a run shipped a page reading 'Headliten / Subseneding'. So
+// say positively what the image is for, and why lettering is a defect rather
+// than a style choice.
 const decorate = (prompt) =>
   `${String(prompt || '').trim()} Art direction: ${style}. ` +
-  'No text, no letters, no numbers, no watermark, no logo, no signature.';
+  'This is decorative artwork only: every heading, label and caption is typeset ' +
+  'separately afterwards and printed over the page. Produce imagery with no ' +
+  'writing in it at all - no text, letters, words, numbers, captions, labels, ' +
+  'watermarks, logos or signatures. Letter-like shapes that do not spell real ' +
+  'words are the worst outcome; leave that space empty instead.';
 
 // Quality is set per role rather than per install. Every image used to be
 // generated at 'high', including the shop icon nobody sees above 200px and the
