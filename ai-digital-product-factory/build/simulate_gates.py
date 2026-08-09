@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -372,6 +373,44 @@ console.log(JSON.stringify({{ finish, prompt: usage && usage.prompt_tokens,
     return failures
 
 
+TAG_INPUTS = ["tech leadership resume", "ATS-Friendly Resume!", "cafe planner printable",
+              "resume template", "supercalifragilisticexpialidocious", "cv",
+              "printable resume for job seekers"]
+
+
+def tag_checks(tmp: str, code_of: dict) -> int:
+    """No Etsy tag may be cut mid-word.
+
+    The cap is 20 characters and it used to be applied with a plain slice, so a
+    listing shipped the tag 'tech leadership resu'. QA caught it as a spelling
+    error - correctly - after the run had already paid for its images.
+    """
+    print("\n=== tag checks: Etsy's 20-character cap ===")
+    js = code_of["Validate SEO Package"]
+    frag = js[js.index("const normaliseTag"):js.index("const candidates")]
+    script = os.path.join(tmp, "tags.js")
+    with open(script, "w", encoding="utf-8") as fh:
+        fh.write(frag + f"""
+const cases = {json.dumps(TAG_INPUTS)};
+console.log(JSON.stringify(cases.map((c) => [c, normaliseTag(c)])));
+""")
+    result = subprocess.run(["node", script], capture_output=True, text=True)
+    if result.returncode:
+        print("  [FAIL] harness crashed:", result.stderr.strip().splitlines()[-1][:70])
+        return 1
+    failures = 0
+    for source, tag in json.loads(result.stdout.strip().splitlines()[-1]):
+        clean = re.sub(r"[^a-z0-9 ]", " ", source.lower())
+        words = set(clean.split())
+        cut = bool(tag) and (len(tag) > 20 or any(w not in words for w in tag.split()))
+        if cut:
+            print(f"  [FAIL] {source!r} -> {tag!r}")
+            failures += 1
+        else:
+            print(f"  [ok  ] {(tag or '(dropped)'):22s} {len(tag):2d}  <- {source}")
+    return failures
+
+
 def main() -> int:
     with open(os.path.join(ROOT, "workflows", "03_product_engine.json"),
               encoding="utf-8") as fh:
@@ -413,6 +452,7 @@ def main() -> int:
         failures += negative_checks(tmp, code_of)
         failures += shape_checks(tmp, code_of)
         failures += provider_checks(tmp)
+        failures += tag_checks(tmp, code_of)
 
     print()
     if failures:

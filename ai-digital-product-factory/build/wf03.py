@@ -845,13 +845,26 @@ const tagsOut = readJson($('OpenAI: SEO AI Etsy Tags').first().json);
 let title = String(titleOut.title || idea.product_name).replace(/\s+/g, ' ').trim();
 if (title.length > 140) title = title.slice(0, 137).replace(/[\s,|-]+$/, '') + '...';
 
-const normaliseTag = (tag) => String(tag)
-  .toLowerCase()
-  .replace(/[^a-z0-9 ]/g, ' ')
-  .replace(/\s+/g, ' ')
-  .trim()
-  .slice(0, 20)
-  .trim();
+// Etsy caps a tag at 20 characters, and the cap used to be applied with a
+// plain slice - which cuts mid-word and ships 'tech leadership resu' to a
+// shopper. Trim back to the last whole word instead; a first word that is
+// already too long leaves nothing usable, so that candidate is dropped rather
+// than mangled.
+const normaliseTag = (tag) => {
+  const cleaned = String(tag)
+    .toLowerCase()
+    // Fold accents to their base letter first. Stripping them as punctuation
+    // turned 'resume' (written with acutes) into 'r sum'.
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (cleaned.length <= 20) return cleaned;
+  const cut = cleaned.slice(0, 20);
+  const lastSpace = cut.lastIndexOf(' ');
+  return lastSpace > 0 ? cut.slice(0, lastSpace) : '';
+};
 
 const candidates = [
   ...asArray(tagsOut.tags),
