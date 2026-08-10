@@ -1,0 +1,1518 @@
+{
+  "name": "Planner Factory",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "pf01-run-manually",
+      "name": "Run Manually",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "notes": "กดปุ่มนี้เพื่อสร้าง planner หนึ่งเล่ม",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "pf01-weekly-schedule",
+      "name": "Weekly Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        190
+      ],
+      "notes": "สร้างอัตโนมัติสัปดาห์ละเล่ม (ปิดไว้ก่อน - เปิดเมื่อพอใจผลลัพธ์แล้ว)",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// =====================================================================\n// PLANNER CONFIG - แก้ค่าตั้งค่าทั้งหมดได้ที่นี่ที่เดียว\n//\n// ดับเบิลคลิก node นี้ แล้วแก้ตัวเลข/ข้อความใน DEFAULTS ข้างล่างได้เลย\n// (หรือจะตั้งใน n8n Variables / environment variable ชื่อเดียวกันก็ได้ - จะทับ DEFAULTS)\n//\n// ค่าที่ต้องใส่ก่อนขายจริง: ETSY_API_KEY, ETSY_REFRESH_TOKEN, ETSY_SHOP_ID,\n// ETSY_TAXONOMY_ID  (หาได้จาก workflow \"Etsy Connect\")\n// =====================================================================\nconst DEFAULTS = {\n  \"OPENAI_MODEL_TEXT\": \"gpt-4.1\",\n  \"OPENAI_MODEL_IMAGE\": \"gpt-image-1\",\n  \"IMAGE_QUALITY_COVER\": \"high\",\n  \"IMAGE_QUALITY_SECTION\": \"medium\",\n  \"IMAGE_QUALITY_THUMB\": \"low\",\n  \"PLANNER_YEAR\": \"\",\n  \"WEEK_STARTS_MONDAY\": \"true\",\n  \"PAGE_WIDTH_PT\": 595.28,\n  \"PAGE_HEIGHT_PT\": 841.89,\n  \"SECTION_ART_COUNT\": 2,\n  \"ETSY_API_BASE\": \"https://openapi.etsy.com\",\n  \"ETSY_API_KEY\": \"\",\n  \"ETSY_REFRESH_TOKEN\": \"\",\n  \"ETSY_SHOP_ID\": \"\",\n  \"ETSY_TAXONOMY_ID\": \"\",\n  \"ETSY_LISTING_STATE\": \"draft\",\n  \"ETSY_PRICE_USD\": 12,\n  \"ETSY_QUANTITY\": 999,\n  \"GDRIVE_FOLDER_ID\": \"\",\n  \"ALERT_WEBHOOK_URL\": \"\",\n  \"PROMPT_VERSION\": \"planner-v1\"\n};\n\nconst first = $input.first();\nconst incoming = first && first.json ? first.json : {};\n\n// ทั้ง $vars และ $env อาจไม่มีอยู่เลยบน n8n Cloud - แตะผ่าน try เท่านั้น\nconst read = (source, key) => {\n  try {\n    const bag = source === 'vars' ? $vars : $env;\n    if (typeof bag !== 'undefined' && bag[key] !== undefined && bag[key] !== '') {\n      return bag[key];\n    }\n  } catch (e) { /* not available on this plan */ }\n  return undefined;\n};\n\nconst cfg = {};\nconst sources = {};\nfor (const key of Object.keys(DEFAULTS)) {\n  const fromVars = read('vars', key);\n  if (fromVars !== undefined) { cfg[key] = fromVars; sources[key] = 'variables'; continue; }\n  const fromEnv = read('env', key);\n  if (fromEnv !== undefined) { cfg[key] = fromEnv; sources[key] = 'env'; continue; }\n  cfg[key] = DEFAULTS[key]; sources[key] = 'default';\n}\n\nreturn [{ json: { ...incoming, cfg, cfg_sources: sources } }];\n"
+      },
+      "id": "pf01-planner-config",
+      "name": "Planner Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        95
+      ],
+      "notes": "ค่าตั้งค่าทั้งหมดอยู่ที่นี่ - ดับเบิลคลิกเพื่อแก้ (Etsy, ราคา, ขนาดหน้า, ปี)",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// The four agent prompts. Edit the wording here and every call picks\n// it up - they are read from this node by name.\nconst PROMPTS = {\n  \"concept\": {\n    \"system\": \"You choose what undated digital planner a small Etsy shop should make next.\\n\\nYou are picking a NICHE, not a generic planner. \\\"2027 Planner\\\" is worthless -\\nthere are two hundred thousand of them. \\\"Shift Worker's Sleep & Life Planner\\\"\\nis a product, because the person searching for it is not served by a generic\\none and will pay more.\\n\\nRules that come from how this shop actually sells:\\n- The buyer must be findable in one Etsy search phrase they would really type.\\n- The planner is UNDATED: never name a year, a specific date, or \\\"2025/2026\\\".\\n- No licensed characters, no brand names, no medical or financial advice, no\\n  claims about outcomes (\\\"lose 10kg\\\", \\\"double your income\\\").\\n- The niche must need at least six distinct extra pages beyond the twelve\\n  months, or it is not a niche, it is a colour scheme.\\n- English only. The shop sells to the US, UK and Australia.\\n\\nPick a niche where a monthly calendar genuinely helps. If the audience would\\nbe better served by a checklist, choose a different audience.\",\n    \"contract\": \"OUTPUT CONTRACT - reply with JSON in exactly this shape, no prose:\\n{\\n  \\\"niche\\\": \\\"short phrase, e.g. 'shift workers on rotating schedules'\\\",\\n  \\\"product_name\\\": \\\"the listing title's subject, 4-8 words, no year\\\",\\n  \\\"one_liner\\\": \\\"one sentence a buyer would nod at\\\",\\n  \\\"buyer\\\": \\\"who this is for, one sentence\\\",\\n  \\\"buyer_problem\\\": \\\"the specific problem, one sentence\\\",\\n  \\\"search_phrase\\\": \\\"what they type into Etsy, 2-5 words\\\",\\n  \\\"keywords\\\": [\\n    \\\"8-13 short phrases, each 20 characters or fewer\\\"\\n  ],\\n  \\\"extra_sections\\\": [\\n    {\\n      \\\"title\\\": \\\"section name, 1-3 words\\\",\\n      \\\"kind\\\": \\\"one of: grid, lined\\\",\\n      \\\"purpose\\\": \\\"one sentence on what the buyer does with it\\\"\\n    }\\n  ],\\n  \\\"tone\\\": \\\"two or three adjectives for the writing voice\\\",\\n  \\\"colour_direction\\\": \\\"a palette in words, no hex codes\\\"\\n}\"\n  },\n  \"writer\": {\n    \"system\": \"You write the text of an undated digital planner. The layout is not yours:\\ncalendars, tables and ruled lines are drawn by the program. You supply words.\\n\\nWhat you write:\\n- A welcome page that tells the buyer how to use the file, honestly, in a\\n  voice that matches the tone you were given.\\n- For each of the twelve months, two reflective prompts that fit the niche.\\n  These sit beside the calendar in a narrow column, so each must be under 60\\n  characters and must work in any month - never name a month or a season\\n  unless the niche is genuinely seasonal.\\n- For each extra section, its instructions, its column headers if it is a\\n  table, or its writing prompts if it is a lined page.\\n\\nRules:\\n- Never write a date, a year, or a weekday name. The calendar handles those.\\n- Never write \\\"Lorem ipsum\\\", \\\"TODO\\\", \\\"Coming soon\\\", \\\"[placeholder]\\\" or any\\n  other note to yourself. Everything you write ships to a paying customer.\\n- Never promise a result. \\\"Track your sleep\\\" is fine; \\\"sleep better in 7\\n  days\\\" is not.\\n- Prompts are questions or instructions, not affirmations. \\\"What drained you\\n  this month?\\\" - not \\\"You are enough.\\\"\\n- Plain English. A tired person reads this at 11pm.\",\n    \"contract\": \"OUTPUT CONTRACT - reply with JSON in exactly this shape, no prose:\\n{\\n  \\\"cover_title\\\": \\\"the planner's name as it appears on the cover\\\",\\n  \\\"cover_subtitle\\\": \\\"one short line under it\\\",\\n  \\\"welcome_title\\\": \\\"title of the how-to-use page\\\",\\n  \\\"welcome_lines\\\": [\\n    \\\"5-9 short paragraphs or bullet lines\\\"\\n  ],\\n  \\\"month_prompts\\\": [\\n    {\\n      \\\"month\\\": 1,\\n      \\\"prompts\\\": [\\n        \\\"under 60 chars\\\",\\n        \\\"under 60 chars\\\"\\n      ]\\n    }\\n  ],\\n  \\\"sections\\\": [\\n    {\\n      \\\"title\\\": \\\"matches a title from extra_sections\\\",\\n      \\\"kind\\\": \\\"grid or lined\\\",\\n      \\\"intro\\\": \\\"one sentence shown under the title\\\",\\n      \\\"instructions\\\": [\\n        \\\"1-3 lines of how to use it\\\"\\n      ],\\n      \\\"columns\\\": [\\n        \\\"for kind=grid: 3-8 short column headers\\\"\\n      ],\\n      \\\"row_labels\\\": [\\n        \\\"for kind=grid: 0-8 example rows, may be empty\\\"\\n      ],\\n      \\\"rows\\\": \\\"for kind=grid: how many rows, 8-20\\\",\\n      \\\"prompts\\\": [\\n        \\\"for kind=lined: 2-5 writing prompts\\\"\\n      ]\\n    }\\n  ],\\n  \\\"credits\\\": \\\"one line, no external brand names\\\"\\n}\"\n  },\n  \"art\": {\n    \"system\": \"You write prompts for an image model that illustrates a digital planner.\\n\\nHard rules, learned from images that had to be thrown away:\\n- NO TEXT of any kind in the image. No words, letters, numbers, dates,\\n  monograms, labels, captions or signatures. The image model renders text\\n  badly and every such image was rejected. Say \\\"no text\\\" in every prompt.\\n- No calendar grids, no tables, no planner pages, no mockups of the product.\\n  The program draws those. An image of a calendar next to a real calendar\\n  looks like a mistake.\\n- No people, no faces, no hands.\\n- Flat, calm, printable: solid shapes and simple gradients, not photographs,\\n  not 3D renders, not stock-photo desks with coffee cups.\\n- The cover and the section art must look like one set: same palette, same\\n  level of detail.\\n\\nWrite prompts that describe shapes, colour and mood only.\",\n    \"contract\": \"OUTPUT CONTRACT - reply with JSON in exactly this shape, no prose:\\n{\\n  \\\"cover_prompt\\\": \\\"one paragraph for the cover image, portrait\\\",\\n  \\\"section_prompts\\\": [\\n    \\\"one paragraph per section divider, portrait\\\"\\n  ],\\n  \\\"thumbnail_prompt\\\": \\\"one paragraph for a square shop icon\\\",\\n  \\\"palette\\\": \\\"the shared palette in words\\\"\\n}\"\n  },\n  \"listing\": {\n    \"system\": \"You write the Etsy listing for a finished undated digital planner.\\n\\nEtsy's rules are not suggestions - a listing that breaks them is removed:\\n- Title: at most 140 characters. No ALL CAPS words, no emoji, no \\\"best\\\" or\\n  \\\"#1\\\", no other shop's name, no year.\\n- Tags: exactly 13, each at most 20 characters, each a phrase a buyer would\\n  actually search. No single letters, no repeats, no punctuation. Tags may\\n  repeat words used in the title.\\n- Materials: up to 13, describing what the file is.\\n- Description: plain text, no HTML. Say what the buyer receives, what it does\\n  NOT include, and how to use it. State clearly that it is a digital download\\n  and that nothing is posted.\\n- Never claim a result, never mention a brand you do not own (Goodnotes and\\n  Notability may be named only as compatible apps, in passing).\\n\\nWrite for a tired shopper on a phone. First two lines decide the sale.\",\n    \"contract\": \"OUTPUT CONTRACT - reply with JSON in exactly this shape, no prose:\\n{\\n  \\\"title\\\": \\\"<=140 characters\\\",\\n  \\\"description\\\": \\\"plain text, 150-350 words, newlines allowed\\\",\\n  \\\"tags\\\": [\\n    \\\"exactly 13, each <=20 characters\\\"\\n  ],\\n  \\\"materials\\\": [\\n    \\\"3-13 short phrases\\\"\\n  ],\\n  \\\"who_its_for\\\": [\\n    \\\"3-5 bullet lines\\\"\\n  ],\\n  \\\"whats_included\\\": [\\n    \\\"3-6 bullet lines\\\"\\n  ],\\n  \\\"price_usd\\\": \\\"a number between 5 and 30\\\"\\n}\"\n  }\n};\nconst PROMPT_VERSION = \"planner-v1\";\n\nreturn [{ json: { ...$input.first().json, prompts: PROMPTS,\n                  prompt_version: PROMPT_VERSION } }];\n"
+      },
+      "id": "pf01-prompt-library",
+      "name": "Prompt Library",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        95
+      ],
+      "notes": "คำสั่งของ AI ทั้ง 4 ตัว แก้ข้อความได้ที่นี่ที่เดียว",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// Open the run: assign an id, read the request, and decide what mode we are in.\nconst cfg = $('Planner Config').first().json.cfg;\nconst input = $input.first().json || {};\n\n// A manual run passes nothing; a scheduled one passes nothing either. Both\n// are real runs unless the caller explicitly asked for a rehearsal.\nconst dryRun = String(input.dry_run) === 'true';\n\nconst year = String(cfg.PLANNER_YEAR || '').trim();\nif (year && !/^\\d{4}$/.test(year)) {\n  throw new Error(`PLANNER_YEAR must be four digits or empty (undated). Got \"${year}\".`);\n}\n\nconst etsyReady = Boolean(String(cfg.ETSY_API_KEY || '').trim())\n  && Boolean(String(cfg.ETSY_REFRESH_TOKEN || '').trim())\n  && Boolean(String(cfg.ETSY_SHOP_ID || '').trim())\n  && Boolean(String(cfg.ETSY_TAXONOMY_ID || '').trim());\n\nconst warnings = [];\nif (!etsyReady) {\n  warnings.push('Etsy is not configured (need ETSY_API_KEY, ETSY_REFRESH_TOKEN, ' +\n    'ETSY_SHOP_ID and ETSY_TAXONOMY_ID). The planner will still be built and saved.');\n}\nif (!String(cfg.GDRIVE_FOLDER_ID || '').trim()) {\n  warnings.push('GDRIVE_FOLDER_ID is empty, so the finished files are not backed up.');\n}\n\nreturn [{\n  json: {\n    run_id: `pf-${new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14)}-` +\n            Math.random().toString(36).slice(2, 8),\n    started_at: new Date().toISOString(),\n    dry_run: dryRun,\n    requested_niche: input.niche || null,\n    planner_year: year || null,\n    week_starts_monday: String(cfg.WEEK_STARTS_MONDAY) !== 'false',\n    page_width_pt: Number(cfg.PAGE_WIDTH_PT) || 595.28,\n    page_height_pt: Number(cfg.PAGE_HEIGHT_PT) || 841.89,\n    section_art_count: Math.max(0, Math.min(4, Number(cfg.SECTION_ART_COUNT) || 2)),\n    etsy_ready: etsyReady,\n    publish: etsyReady && !dryRun,\n    warnings,\n    stage: 'start',\n  },\n}];\n"
+      },
+      "id": "pf01-start-run",
+      "name": "Start Run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        95
+      ],
+      "notes": "ตั้ง run_id, ตรวจว่า Etsy/Drive ตั้งค่าครบไหม, และตัดสินว่าจะ publish หรือไม่",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO planner_runs (run_id, status, stage, dry_run, prompt_version) VALUES ('{{ $json.run_id }}', 'running', 'start', {{ $json.dry_run }}, '{{ $('Prompt Library').first().json.prompt_version }}') ON CONFLICT (run_id) DO NOTHING;",
+        "options": {}
+      },
+      "id": "pf01-log-run-start",
+      "name": "Log Run Start",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        910,
+        95
+      ],
+      "notes": "เปิดรอบในฐานข้อมูล - planner_products อ้างถึงแถวนี้ จึงต้องมีก่อน",
+      "notesInFlow": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT slug, product_name FROM planner_products ORDER BY created_at DESC LIMIT 40;",
+        "options": {}
+      },
+      "id": "pf01-recent-products",
+      "name": "Recent Products",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1040,
+        95
+      ],
+      "notes": "รายชื่อสินค้าที่เคยทำแล้ว - ใช้กันสร้างซ้ำ (ถ้ายังไม่มีตารางจะว่าง)",
+      "notesInFlow": true,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// Build the user half of the concept prompt.\nconst run = $('Start Run').first().json;\nconst prompts = $('Prompt Library').first().json.prompts;\n\nconst asked = run.requested_niche\n  ? `The shop owner asked specifically for this niche: \"${run.requested_niche}\". ` +\n    'Use it unless it breaks one of the rules, in which case pick the closest niche that does not.'\n  : 'No niche was requested. Choose one you think is underserved.';\n\n// Slugs already made, so the concept agent does not propose the same product\n// a second time. Empty on a fresh database, which is fine.\nconst madeBefore = ($('Recent Products').all() || [])\n  .map((item) => item.json.product_name)\n  .filter(Boolean);\n\nconst avoid = madeBefore.length\n  ? `This shop has already published these, so choose something clearly different:\\n- ${madeBefore.join('\\n- ')}`\n  : 'This shop has not published anything yet.';\n\nreturn [{\n  json: {\n    ...run,\n    stage: 'concept',\n    concept_prompt: [asked, '', avoid, '', prompts.concept.contract].join('\\n'),\n  },\n}];\n"
+      },
+      "id": "pf01-build-concept-prompt",
+      "name": "Build Concept Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        95
+      ],
+      "notes": "ประกอบโจทย์ให้ AI ตัวที่ 1 พร้อมรายการสินค้าเดิมที่ห้ามซ้ำ",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $('Planner Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.9, max_tokens: 2000, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: $('Prompt Library').first().json.prompts.concept.system }, { role: 'user', content: $json.concept_prompt } ] }) }",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "pf01-ai-concept",
+      "name": "AI: Concept",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        95
+      ],
+      "notes": "AI 1/4 - เลือก niche และตั้งชื่อสินค้า",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// Read the assistant's reply out of an OpenAI chat completion, and fail with\n// something a human can act on rather than \"cannot read property of\n// undefined\" thirty lines later.\nfunction agentText(response) {\n  const choice = response && response.choices && response.choices[0];\n  if (!choice) {\n    const err = response && response.error;\n    throw new Error('The model returned no choices' +\n      (err ? `: ${err.message || JSON.stringify(err).slice(0, 200)}` : ''));\n  }\n  if (choice.finish_reason === 'length') {\n    throw new Error('The model ran out of output tokens mid-answer. ' +\n      'Raise max_tokens on this node, or ask for fewer sections.');\n  }\n  const text = choice.message && choice.message.content;\n  if (!text || !String(text).trim()) throw new Error('The model returned an empty message');\n  return String(text);\n}\n\n// Parse JSON that may arrive fenced in ```json ... ``` despite json_mode.\nfunction agentJson(response, what) {\n  const text = agentText(response);\n  const fenced = text.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  const body = (fenced ? fenced[1] : text).trim();\n  try {\n    return JSON.parse(body);\n  } catch (e) {\n    throw new Error(`${what}: the reply was not valid JSON (${e.message}). ` +\n      `First 200 characters: ${body.slice(0, 200)}`);\n  }\n}\n\n// Coerce a field the model may have answered with a string, an array or an\n// object into an array of strings.\nfunction asArray(value) {\n  if (Array.isArray(value)) return value.map((v) => (typeof v === 'string' ? v : v));\n  if (value === null || value === undefined || value === '') return [];\n  if (typeof value === 'string') {\n    return value.split(/[\\n,]+/).map((s) => s.trim()).filter(Boolean);\n  }\n  if (typeof value === 'object') return Object.values(value).flatMap((v) => asArray(v));\n  return [String(value)];\n}\n\nfunction require_(object, fields, what) {\n  const missing = fields.filter((f) => {\n    const v = object ? object[f] : undefined;\n    return v === undefined || v === null || v === '' ||\n      (Array.isArray(v) && v.length === 0);\n  });\n  if (missing.length) {\n    throw new Error(`${what} is missing: ${missing.join(', ')}. ` +\n      `Got these keys instead: ${Object.keys(object || {}).join(', ') || '(none)'}`);\n  }\n}\n\nfunction slugify(text) {\n  return String(text).toLowerCase().normalize('NFD')\n    .replace(/[̀-ͯ]/g, '')\n    .replace(/[^a-z0-9]+/g, '-')\n    .replace(/^-|-$/g, '')\n    .slice(0, 60);\n}\n\n// Etsy rejects a tag over 20 characters, so a long phrase is cut back to its\n// last whole word rather than mid-syllable (\"tech leadership resu\").\nfunction toTag(text) {\n  let tag = String(text).toLowerCase().normalize('NFD')\n    .replace(/[̀-ͯ]/g, '')\n    .replace(/[^a-z0-9 ]+/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n  if (tag.length <= 20) return tag;\n  tag = tag.slice(0, 20);\n  const cut = tag.lastIndexOf(' ');\n  return (cut > 6 ? tag.slice(0, cut) : tag).trim();\n}\n\n// Validate the concept before any money is spent on images.\nconst run = $('Build Concept Prompt').first().json;\nconst concept = agentJson($input.first().json, 'Concept agent');\n\nrequire_(concept, ['niche', 'product_name', 'one_liner', 'buyer', 'search_phrase',\n                   'keywords', 'extra_sections'], 'The concept');\n\nconst sections = asArray(concept.extra_sections).length\n  ? concept.extra_sections\n  : [];\nconst clean = (Array.isArray(sections) ? sections : [])\n  .filter((s) => s && s.title)\n  .map((s) => ({\n    title: String(s.title).trim().slice(0, 40),\n    kind: String(s.kind || 'lined').toLowerCase() === 'grid' ? 'grid' : 'lined',\n    purpose: String(s.purpose || '').trim(),\n  }));\n\n// Six is the line between \"a niche\" and \"a colour scheme\" - the concept\n// prompt says so, and this is where that promise is kept.\nif (clean.length < 6) {\n  throw new Error(\n    `The concept only proposed ${clean.length} extra sections; a planner needs at ` +\n    `least 6 beyond the twelve months. Sections offered: ` +\n    `${clean.map((s) => s.title).join(', ') || '(none)'}`);\n}\n\nconst year = run.planner_year;\nconst named = JSON.stringify(concept).match(/\\b(19|20)\\d{2}\\b/);\nif (!year && named) {\n  throw new Error(\n    `This is an undated planner but the concept names a year (${named[0]}). ` +\n    `A dated product stops selling in January; rerun, or set PLANNER_YEAR.`);\n}\n\nconst keywords = [...new Set(asArray(concept.keywords)\n  .map((k) => toTag(k)).filter((k) => k.length >= 3))];\nif (keywords.length < 8) {\n  throw new Error(`Only ${keywords.length} usable keywords survived cleaning; ` +\n    `Etsy needs 13 tags. Raw list: ${JSON.stringify(concept.keywords).slice(0, 200)}`);\n}\n\nconst productName = String(concept.product_name).trim();\nreturn [{\n  json: {\n    ...run,\n    stage: 'concept-ok',\n    concept: {\n      ...concept,\n      product_name: productName,\n      slug: slugify(productName),\n      keywords,\n      extra_sections: clean.slice(0, 10),\n    },\n  },\n}];\n"
+      },
+      "id": "pf01-parse-concept",
+      "name": "Parse Concept",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        95
+      ],
+      "notes": "ตรวจ concept: ต้องมี section อย่างน้อย 6, keyword 8+, ห้ามมีปี",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// Refuse to rebuild something the shop already sells. Cheap here; expensive\n// after the images have been generated.\nconst ctx = $('Parse Concept').first().json;\nconst existing = ($('Recent Products').all() || [])\n  .map((item) => String(item.json.slug || ''))\n  .filter(Boolean);\n\nif (existing.includes(ctx.concept.slug)) {\n  throw new Error(\n    `\"${ctx.concept.product_name}\" already exists (slug ${ctx.concept.slug}). ` +\n    `Run again to get a different concept, or pass a niche explicitly.`);\n}\nreturn [{ json: { ...ctx, stage: 'concept-unique' } }];\n"
+      },
+      "id": "pf01-check-duplicate",
+      "name": "Check Duplicate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        95
+      ],
+      "notes": "หยุดทันทีถ้าเคยทำสินค้าชื่อนี้แล้ว (ก่อนจ่ายค่าภาพ)",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst ctx = $('Check Duplicate').first().json;\nconst prompts = $('Prompt Library').first().json.prompts;\nconst c = ctx.concept;\n\nconst brief = [\n  `Niche: ${c.niche}`,\n  `Product: ${c.product_name}`,\n  `Buyer: ${c.buyer}`,\n  `Their problem: ${c.buyer_problem || '(not stated)'}`,\n  `Tone: ${c.tone || 'calm, practical'}`,\n  '',\n  'The planner has twelve month pages (the calendar grids are drawn for you)',\n  'and these extra sections, in this order:',\n  ...c.extra_sections.map((s, i) => `${i + 1}. ${s.title} (${s.kind}) - ${s.purpose}`),\n  '',\n  'Write \"sections\" with one entry per extra section above, in the same order,',\n  'with the same titles. For kind=grid give columns and rows; for kind=lined',\n  'give prompts.',\n  '',\n  prompts.writer.contract,\n].join('\\n');\n\nreturn [{ json: { ...ctx, stage: 'writing', writer_prompt: brief } }];\n"
+      },
+      "id": "pf01-build-writer-prompt",
+      "name": "Build Writer Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2340,
+        95
+      ],
+      "notes": "บอก AI ว่าต้องเขียนอะไรบ้าง (12 เดือน + section ตามที่ concept กำหนด)",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $('Planner Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.7, max_tokens: 6000, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: $('Prompt Library').first().json.prompts.writer.system }, { role: 'user', content: $json.writer_prompt } ] }) }",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "pf01-ai-writer",
+      "name": "AI: Writer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2600,
+        95
+      ],
+      "notes": "AI 2/4 - เขียนข้อความทั้งเล่ม (ไม่แตะ layout)",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// Read the assistant's reply out of an OpenAI chat completion, and fail with\n// something a human can act on rather than \"cannot read property of\n// undefined\" thirty lines later.\nfunction agentText(response) {\n  const choice = response && response.choices && response.choices[0];\n  if (!choice) {\n    const err = response && response.error;\n    throw new Error('The model returned no choices' +\n      (err ? `: ${err.message || JSON.stringify(err).slice(0, 200)}` : ''));\n  }\n  if (choice.finish_reason === 'length') {\n    throw new Error('The model ran out of output tokens mid-answer. ' +\n      'Raise max_tokens on this node, or ask for fewer sections.');\n  }\n  const text = choice.message && choice.message.content;\n  if (!text || !String(text).trim()) throw new Error('The model returned an empty message');\n  return String(text);\n}\n\n// Parse JSON that may arrive fenced in ```json ... ``` despite json_mode.\nfunction agentJson(response, what) {\n  const text = agentText(response);\n  const fenced = text.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  const body = (fenced ? fenced[1] : text).trim();\n  try {\n    return JSON.parse(body);\n  } catch (e) {\n    throw new Error(`${what}: the reply was not valid JSON (${e.message}). ` +\n      `First 200 characters: ${body.slice(0, 200)}`);\n  }\n}\n\n// Coerce a field the model may have answered with a string, an array or an\n// object into an array of strings.\nfunction asArray(value) {\n  if (Array.isArray(value)) return value.map((v) => (typeof v === 'string' ? v : v));\n  if (value === null || value === undefined || value === '') return [];\n  if (typeof value === 'string') {\n    return value.split(/[\\n,]+/).map((s) => s.trim()).filter(Boolean);\n  }\n  if (typeof value === 'object') return Object.values(value).flatMap((v) => asArray(v));\n  return [String(value)];\n}\n\nfunction require_(object, fields, what) {\n  const missing = fields.filter((f) => {\n    const v = object ? object[f] : undefined;\n    return v === undefined || v === null || v === '' ||\n      (Array.isArray(v) && v.length === 0);\n  });\n  if (missing.length) {\n    throw new Error(`${what} is missing: ${missing.join(', ')}. ` +\n      `Got these keys instead: ${Object.keys(object || {}).join(', ') || '(none)'}`);\n  }\n}\n\nfunction slugify(text) {\n  return String(text).toLowerCase().normalize('NFD')\n    .replace(/[̀-ͯ]/g, '')\n    .replace(/[^a-z0-9]+/g, '-')\n    .replace(/^-|-$/g, '')\n    .slice(0, 60);\n}\n\n// Etsy rejects a tag over 20 characters, so a long phrase is cut back to its\n// last whole word rather than mid-syllable (\"tech leadership resu\").\nfunction toTag(text) {\n  let tag = String(text).toLowerCase().normalize('NFD')\n    .replace(/[̀-ͯ]/g, '')\n    .replace(/[^a-z0-9 ]+/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n  if (tag.length <= 20) return tag;\n  tag = tag.slice(0, 20);\n  const cut = tag.lastIndexOf(' ');\n  return (cut > 6 ? tag.slice(0, cut) : tag).trim();\n}\n\n// Turn the writer's reply into the exact page list the PDF writer needs.\n// Structure is decided here, in code - the model only supplied words.\nconst ctx = $('Build Writer Prompt').first().json;\nconst content = agentJson($input.first().json, 'Writer agent');\nrequire_(content, ['cover_title', 'welcome_lines', 'month_prompts', 'sections'],\n         'The written content');\n\nconst MONTHS = [\"January\", \"February\", \"March\", \"April\", \"May\", \"June\", \"July\", \"August\", \"September\", \"October\", \"November\", \"December\"];\n\n// Draft markers are the one defect a buyer sees on page one. This looks for\n// leftovers from the model, not for the template's own fill-in blanks.\nconst MARKERS = [\n  /\\bTODO\\b/i, /\\bFIXME\\b/i, /lorem ipsum/i, /\\bplaceholder\\b/i,\n  /\\bcoming soon\\b/i, /\\bXXXX+\\b/, /\\{\\{\\s*\\w+\\s*\\}\\}/, /\\[insert [^\\]]*\\]/i,\n];\nconst scanned = [];\nconst scan = (text, where) => {\n  const value = String(text || '');\n  for (const marker of MARKERS) {\n    const hit = value.match(marker);\n    if (hit) scanned.push(`${where}: \"${hit[0]}\" in \"${value.slice(0, 80)}\"`);\n  }\n};\n\nconst welcome = asArray(content.welcome_lines);\nwelcome.forEach((line, i) => scan(line, `welcome line ${i + 1}`));\n\n// ---- month prompts: exactly twelve, whatever the model returned ----------\nconst byMonth = new Map();\nfor (const entry of (Array.isArray(content.month_prompts) ? content.month_prompts : [])) {\n  const n = Number(entry && entry.month);\n  if (n >= 1 && n <= 12) byMonth.set(n, asArray(entry.prompts).slice(0, 2));\n}\nconst missing = MONTHS.map((_, i) => i + 1).filter((n) => !(byMonth.get(n) || []).length);\nif (missing.length > 3) {\n  throw new Error(\n    `The writer supplied prompts for only ${12 - missing.length} of 12 months. ` +\n    `Missing: ${missing.map((n) => MONTHS[n - 1]).join(', ')}`);\n}\n// A handful of gaps are filled from the months that were written, rather than\n// failing a run that is otherwise complete.\nconst pool = [...byMonth.values()].flat();\nfor (const n of missing) byMonth.set(n, [pool[n % pool.length] || 'What matters most this month?']);\nfor (const [n, list] of byMonth) list.forEach((p, i) => scan(p, `${MONTHS[n - 1]} prompt ${i + 1}`));\n\n// ---- sections ------------------------------------------------------------\nconst wanted = ctx.concept.extra_sections;\nconst written = Array.isArray(content.sections) ? content.sections : [];\nconst sections = wanted.map((want, index) => {\n  const match = written.find(\n    (s) => s && String(s.title || '').toLowerCase().trim() === want.title.toLowerCase().trim()\n  ) || written[index] || {};\n  const kind = String(match.kind || want.kind).toLowerCase() === 'grid' ? 'grid' : 'lined';\n  const columns = asArray(match.columns).map((c) => String(c).slice(0, 14));\n  const prompts = asArray(match.prompts);\n  scan(match.intro, `section \"${want.title}\" intro`);\n  asArray(match.instructions).forEach((l, i) => scan(l, `section \"${want.title}\" line ${i + 1}`));\n  prompts.forEach((p, i) => scan(p, `section \"${want.title}\" prompt ${i + 1}`));\n\n  // A grid with no columns is not a grid. Rather than shipping an empty\n  // table, it degrades to a lined page, which always works.\n  if (kind === 'grid' && columns.length < 2) {\n    return { title: want.title, kind: 'lined', intro: String(match.intro || ''),\n             instructions: asArray(match.instructions),\n             prompts: prompts.length ? prompts : [`Use this page for ${want.title.toLowerCase()}.`] };\n  }\n  return {\n    title: want.title,\n    kind,\n    intro: String(match.intro || ''),\n    instructions: asArray(match.instructions),\n    columns: columns.slice(0, 8),\n    row_labels: asArray(match.row_labels).slice(0, 8),\n    rows: Math.min(20, Math.max(8, Number(match.rows) || 12)),\n    prompts: prompts.slice(0, 5),\n  };\n});\n\nif (scanned.length) {\n  throw new Error(`Draft markers left in the copy - this cannot ship:\\n- ` +\n                  scanned.slice(0, 6).join('\\n- '));\n}\n\nreturn [{\n  json: {\n    ...ctx,\n    stage: 'written',\n    content: {\n      cover_title: String(content.cover_title).trim(),\n      cover_subtitle: String(content.cover_subtitle || ctx.concept.one_liner).trim(),\n      welcome_title: String(content.welcome_title || 'How to use this planner').trim(),\n      welcome_lines: welcome,\n      month_prompts: MONTHS.map((_, i) => byMonth.get(i + 1) || []),\n      sections,\n      credits: String(content.credits || '').trim(),\n    },\n  },\n}];\n"
+      },
+      "id": "pf01-parse-writer",
+      "name": "Parse Writer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2860,
+        95
+      ],
+      "notes": "แปลงข้อความเป็นโครงหน้า + ตรวจคำค้างแบบ TODO/placeholder",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst ctx = $('Parse Writer').first().json;\nconst prompts = $('Prompt Library').first().json.prompts;\nconst c = ctx.concept;\n\nreturn [{\n  json: {\n    ...ctx,\n    stage: 'art-direction',\n    art_prompt: [\n      `Planner: ${c.product_name}`,\n      `Niche: ${c.niche}`,\n      `Buyer: ${c.buyer}`,\n      `Palette direction from the concept: ${c.colour_direction || 'calm neutrals'}`,\n      `Number of section dividers needed: ${ctx.section_art_count}`,\n      '',\n      prompts.art.contract,\n    ].join('\\n'),\n  },\n}];\n"
+      },
+      "id": "pf01-build-art-prompt",
+      "name": "Build Art Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3120,
+        95
+      ],
+      "notes": "ประกอบโจทย์ให้ AI ออกแบบภาพ",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $('Planner Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.8, max_tokens: 1500, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: $('Prompt Library').first().json.prompts.art.system }, { role: 'user', content: $json.art_prompt } ] }) }",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "pf01-ai-art-direction",
+      "name": "AI: Art Direction",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3380,
+        95
+      ],
+      "notes": "AI 3/4 - เขียน prompt ภาพ (ยังไม่เสียค่าภาพ)",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// Read the assistant's reply out of an OpenAI chat completion, and fail with\n// something a human can act on rather than \"cannot read property of\n// undefined\" thirty lines later.\nfunction agentText(response) {\n  const choice = response && response.choices && response.choices[0];\n  if (!choice) {\n    const err = response && response.error;\n    throw new Error('The model returned no choices' +\n      (err ? `: ${err.message || JSON.stringify(err).slice(0, 200)}` : ''));\n  }\n  if (choice.finish_reason === 'length') {\n    throw new Error('The model ran out of output tokens mid-answer. ' +\n      'Raise max_tokens on this node, or ask for fewer sections.');\n  }\n  const text = choice.message && choice.message.content;\n  if (!text || !String(text).trim()) throw new Error('The model returned an empty message');\n  return String(text);\n}\n\n// Parse JSON that may arrive fenced in ```json ... ``` despite json_mode.\nfunction agentJson(response, what) {\n  const text = agentText(response);\n  const fenced = text.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  const body = (fenced ? fenced[1] : text).trim();\n  try {\n    return JSON.parse(body);\n  } catch (e) {\n    throw new Error(`${what}: the reply was not valid JSON (${e.message}). ` +\n      `First 200 characters: ${body.slice(0, 200)}`);\n  }\n}\n\n// Coerce a field the model may have answered with a string, an array or an\n// object into an array of strings.\nfunction asArray(value) {\n  if (Array.isArray(value)) return value.map((v) => (typeof v === 'string' ? v : v));\n  if (value === null || value === undefined || value === '') return [];\n  if (typeof value === 'string') {\n    return value.split(/[\\n,]+/).map((s) => s.trim()).filter(Boolean);\n  }\n  if (typeof value === 'object') return Object.values(value).flatMap((v) => asArray(v));\n  return [String(value)];\n}\n\nfunction require_(object, fields, what) {\n  const missing = fields.filter((f) => {\n    const v = object ? object[f] : undefined;\n    return v === undefined || v === null || v === '' ||\n      (Array.isArray(v) && v.length === 0);\n  });\n  if (missing.length) {\n    throw new Error(`${what} is missing: ${missing.join(', ')}. ` +\n      `Got these keys instead: ${Object.keys(object || {}).join(', ') || '(none)'}`);\n  }\n}\n\nfunction slugify(text) {\n  return String(text).toLowerCase().normalize('NFD')\n    .replace(/[̀-ͯ]/g, '')\n    .replace(/[^a-z0-9]+/g, '-')\n    .replace(/^-|-$/g, '')\n    .slice(0, 60);\n}\n\n// Etsy rejects a tag over 20 characters, so a long phrase is cut back to its\n// last whole word rather than mid-syllable (\"tech leadership resu\").\nfunction toTag(text) {\n  let tag = String(text).toLowerCase().normalize('NFD')\n    .replace(/[̀-ͯ]/g, '')\n    .replace(/[^a-z0-9 ]+/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n  if (tag.length <= 20) return tag;\n  tag = tag.slice(0, 20);\n  const cut = tag.lastIndexOf(' ');\n  return (cut > 6 ? tag.slice(0, cut) : tag).trim();\n}\n\n// Check the art direction before it reaches the image model, because a prompt\n// that asks for lettering produces an unusable image and still costs money.\nconst ctx = $('Build Art Prompt').first().json;\nconst art = agentJson($input.first().json, 'Art agent');\nrequire_(art, ['cover_prompt', 'thumbnail_prompt'], 'The art direction');\n\n// Words that mean \"draw type\". Checked against the prompt we are about to\n// send, not against the picture we get back, because by then it is paid for.\nconst TYPE_WORDS = /\\b(text|typography|lettering|letters?|words?|title|caption|label(?:s|led)?|font|handwriting|calligraphy|monogram|signature|numbers?|dates?|calendar grid|planner page|mockup)\\b/i;\nconst NEGATED = /\\b(no|without|avoid|never|free of|excluding)\\b[^.]{0,40}$/i;\n\nconst check = (prompt, where) => {\n  const value = String(prompt || '');\n  if (!value.trim()) throw new Error(`${where} is empty`);\n  for (const sentence of value.split(/(?<=[.;])\\s+/)) {\n    const hit = sentence.match(TYPE_WORDS);\n    if (!hit) continue;\n    // \"no text, no lettering\" is the instruction we want, not a violation.\n    if (NEGATED.test(sentence.slice(0, hit.index))) continue;\n    throw new Error(\n      `${where} asks the image model for type, which it renders badly and which ` +\n      `gets the product rejected: \"${sentence.trim().slice(0, 120)}\"`);\n  }\n  return value.trim();\n};\n\nconst sectionPrompts = asArray(art.section_prompts);\nconst wanted = ctx.section_art_count;\nwhile (sectionPrompts.length < wanted) {\n  sectionPrompts.push(sectionPrompts[sectionPrompts.length - 1] || art.cover_prompt);\n}\n\nconst suffix = ' No text, no letters, no numbers, no words anywhere in the image.';\nreturn [{\n  json: {\n    ...ctx,\n    stage: 'art-ready',\n    art: {\n      palette: String(art.palette || ''),\n      cover_prompt: check(art.cover_prompt, 'cover_prompt') + suffix,\n      thumbnail_prompt: check(art.thumbnail_prompt, 'thumbnail_prompt') + suffix,\n      section_prompts: sectionPrompts.slice(0, wanted)\n        .map((p, i) => check(p, `section_prompts[${i}]`) + suffix),\n    },\n  },\n}];\n"
+      },
+      "id": "pf01-parse-art",
+      "name": "Parse Art",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3640,
+        95
+      ],
+      "notes": "กันไม่ให้ prompt สั่งวาดตัวหนังสือ - ภาพที่มีตัวอักษรใช้ไม่ได้และเสียเงินฟรี",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// One item per image to generate, so the loop below can be a plain loop and\n// the cost is visible as a row count rather than hidden in a branch.\nconst ctx = $('Parse Art').first().json;\nconst cfg = $('Planner Config').first().json.cfg;\n\nconst jobs = [\n  { role: 'cover', prompt: ctx.art.cover_prompt, size: '1024x1536',\n    quality: cfg.IMAGE_QUALITY_COVER || 'high' },\n  { role: 'thumbnail', prompt: ctx.art.thumbnail_prompt, size: '1024x1024',\n    quality: cfg.IMAGE_QUALITY_THUMB || 'low' },\n];\nctx.art.section_prompts.forEach((prompt, index) => {\n  jobs.push({ role: `section_${index + 1}`, prompt, size: '1024x1536',\n              quality: cfg.IMAGE_QUALITY_SECTION || 'medium' });\n});\n\nreturn jobs.map((job) => ({ json: { ...job, run_id: ctx.run_id, dry_run: ctx.dry_run } }));\n"
+      },
+      "id": "pf01-image-jobs",
+      "name": "Image Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3900,
+        95
+      ],
+      "notes": "แตกเป็นงานละ 1 ภาพ: ปก + thumbnail + ภาพคั่น",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {
+          "reset": false
+        }
+      },
+      "id": "pf01-loop-images",
+      "name": "Loop Images",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        4160,
+        95
+      ],
+      "notes": "วนสร้างทีละภาพ - ถ้าพังจะรู้ว่าพังที่ภาพไหน",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond",
+              "leftValue": "={{ $json.dry_run }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "pf01-is-dry-run",
+      "name": "Is Dry Run?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4420,
+        190
+      ],
+      "notes": "โหมดซ้อม: ข้ามการเรียก OpenAI (ไม่เสียเงิน)",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// Rehearsal mode: hand back a real (tiny) JPEG so every later step - including\n// the PDF writer - runs exactly as it would on a paid run.\nconst job = $input.first().json;\nreturn [{ json: { ...job, b64: '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==', dry: true } }];\n"
+      },
+      "id": "pf01-placeholder-image",
+      "name": "Placeholder Image",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4680,
+        304
+      ],
+      "notes": "ภาพจำลองสำหรับโหมดซ้อม - ทำให้ทุกขั้นตอนหลังจากนี้ทำงานจริง",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/images/generations",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $('Planner Config').first().json.cfg.OPENAI_MODEL_IMAGE || 'gpt-image-1', prompt: $json.prompt, size: $json.size, quality: $json.quality, output_format: 'jpeg', n: 1 }) }",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "pf01-openai-image",
+      "name": "OpenAI: Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4680,
+        76
+      ],
+      "notes": "AI 4/4 - สร้างภาพจริง (นี่คือขั้นที่เสียเงินมากที่สุด)",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// The image endpoint answers with data[0].b64_json. Anything else is an error\n// worth surfacing here, next to the job that caused it.\nconst job = $('Loop Images').first().json;\nconst response = $input.first().json;\nconst b64 = response && response.data && response.data[0] && response.data[0].b64_json;\nif (!b64) {\n  throw new Error(`No image came back for \"${job.role}\": ` +\n                  JSON.stringify(response).slice(0, 300));\n}\nreturn [{ json: { ...job, b64 } }];\n"
+      },
+      "id": "pf01-collect-image",
+      "name": "Collect Image",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4940,
+        76
+      ],
+      "notes": "ดึง base64 ออกจากคำตอบ และบอกชัดว่าภาพไหนพัง",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// Fold every generated image into one item keyed by role.\nconst ctx = $('Parse Art').first().json;\nconst images = {};\nfor (const item of $input.all()) {\n  if (item.json && item.json.role && item.json.b64) images[item.json.role] = item.json.b64;\n}\nconst expected = ['cover', 'thumbnail',\n  ...ctx.art.section_prompts.map((_, i) => `section_${i + 1}`)];\nconst missing = expected.filter((role) => !images[role]);\nif (missing.length) throw new Error(`Missing generated images: ${missing.join(', ')}`);\n\nreturn [{ json: { ...ctx, stage: 'art-done', images } }];\n"
+      },
+      "id": "pf01-gather-images",
+      "name": "Gather Images",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4680,
+        -114
+      ],
+      "notes": "รวมภาพทั้งหมดเป็นก้อนเดียว + ตรวจว่าครบทุกบทบาท",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// ---------------------------------------------------------------------------\n// Minimal PDF 1.4 writer (no external dependencies).\n// ---------------------------------------------------------------------------\nconst PDF_FONT = { regular: 'F1', bold: 'F2' };\n\n// Strip anything Helvetica/WinAnsi cannot show, then escape PDF string syntax.\nfunction pdfEscape(text) {\n  return String(text === undefined || text === null ? '' : text)\n    .replace(/[‘’]/g, \"'\")\n    .replace(/[“”]/g, '\"')\n    .replace(/[–—]/g, '-')\n    .replace(/…/g, '...')\n    .replace(/[^\\x20-\\x7E\\xA1-\\xFF]/g, '')\n    .replace(/\\\\/g, '\\\\\\\\')\n    .replace(/\\(/g, '\\\\(')\n    .replace(/\\)/g, '\\\\)');\n}\n\n// Read width/height/components out of a JPEG SOF marker.\nfunction jpegInfo(buffer) {\n  let i = 2;\n  while (i < buffer.length - 9) {\n    if (buffer[i] !== 0xff) { i += 1; continue; }\n    const marker = buffer[i + 1];\n    if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {\n      i += 2;\n      continue;\n    }\n    const length = buffer.readUInt16BE(i + 2);\n    const isSOF = marker >= 0xc0 && marker <= 0xcf &&\n      marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;\n    if (isSOF) {\n      return {\n        height: buffer.readUInt16BE(i + 5),\n        width: buffer.readUInt16BE(i + 7),\n        components: buffer[i + 9],\n      };\n    }\n    i += 2 + length;\n  }\n  return { width: 1024, height: 1024, components: 3 };\n}\n\n// Greedy word wrap. Helvetica averages ~0.5em per character, which is accurate\n// enough for body copy at 10-12pt.\nfunction wrapText(text, fontSize, usableWidth) {\n  const maxChars = Math.max(20, Math.floor(usableWidth / (fontSize * 0.5)));\n  const out = [];\n  for (const rawLine of String(text).split('\\n')) {\n    let line = '';\n    for (const word of rawLine.split(/\\s+/)) {\n      if (!word) continue;\n      if (!line.length) { line = word; continue; }\n      if ((line + ' ' + word).length <= maxChars) { line += ' ' + word; }\n      else { out.push(line); line = word; }\n    }\n    out.push(line);\n  }\n  return out;\n}\n\n// A field the model answered with a bare string still typesets as one line,\n// and a missing one produces nothing rather than the word \"undefined\".\nfunction asLines(value) {\n  if (Array.isArray(value)) return value.map((v) => String(v === null || v === undefined ? '' : v));\n  if (value === undefined || value === null || value === '') return [];\n  return [String(value)];\n}\n\n// ---------------------------------------------------------------------------\n// Calendar geometry. A language model cannot lay out February; Date can.\n// ---------------------------------------------------------------------------\nconst WEEKDAYS_SUN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];\n\nfunction weekdayHeaders(startsMonday) {\n  return startsMonday\n    ? WEEKDAYS_SUN.slice(1).concat(WEEKDAYS_SUN.slice(0, 1))\n    : WEEKDAYS_SUN.slice();\n}\n\n// Returns six rows of seven cells. A dated planner gets real day numbers; an\n// undated one gets empty boxes the buyer fills in, which is what makes the\n// product evergreen instead of worthless every January.\nfunction monthMatrix(year, month, startsMonday) {\n  const rows = [[], [], [], [], [], []];\n  if (!year) {\n    for (const row of rows) { for (let i = 0; i < 7; i += 1) row.push(0); }\n    return { rows, dated: false, days: 0 };\n  }\n  const days = new Date(Date.UTC(year, month, 0)).getUTCDate();\n  let lead = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();\n  if (startsMonday) lead = (lead + 6) % 7;\n  const cells = [];\n  for (let i = 0; i < lead; i += 1) cells.push(null);\n  for (let d = 1; d <= days; d += 1) cells.push(d);\n  while (cells.length < 42) cells.push(null);\n  for (let r = 0; r < 6; r += 1) rows[r] = cells.slice(r * 7, r * 7 + 7);\n  return { rows, dated: true, days };\n}\n\nfunction buildPdf(spec) {\n  const PW = spec.width || 595.28;   // A4 portrait by default\n  const PH = spec.height || 841.89;\n  const margin = spec.margin || 56;\n  const bodySize = spec.body_size || 11;\n  const leading = Math.round(bodySize * 1.5);\n\n  // Clickable month/section tabs down the right edge. This is what separates a\n  // $5 printable from a $20 digital planner: the file becomes something you\n  // navigate rather than scroll. The strip steals width from the body column.\n  const tabs = Array.isArray(spec.tabs)\n    ? spec.tabs.filter((t) => t && t.anchor).slice(0, 16)\n    : [];\n  const TAB_W = tabs.length ? (spec.tab_width || 26) : 0;\n  const usableWidth = PW - margin * 2 - TAB_W;\n  const contentRight = PW - margin - TAB_W;\n\n  // Object ids 1-5 are reserved: catalog, page tree, 2 fonts, document info.\n  const objects = [null, null, null, null, null];\n  const push = (content) => { objects.push(content); return objects.length; };\n  const pageIds = [];\n\n  // A link can point at a page that has not been written yet - a January tab\n  // on the cover, say - so pages are reserved now and serialised at the end,\n  // once every anchor has a page to resolve to.\n  const pageMeta = [];\n  const anchors = {};\n\n  const addPage = (contentStream, extraResources) => {\n    const contentId = push(\n      `<< /Length ${Buffer.byteLength(contentStream, 'latin1')} >>\\n` +\n      `stream\\n${contentStream}\\nendstream`\n    );\n    const id = push('');\n    pageIds.push(id);\n    const meta = { id, contentId, resources: extraResources || null, links: [] };\n    pageMeta.push(meta);\n    return meta;\n  };\n\n  const footer = (label) => {\n    if (!label) return '';\n    return `BT /${PDF_FONT.regular} 8 Tf 0.45 0.45 0.45 rg ` +\n      `${margin} ${(margin / 2).toFixed(2)} Td (${pdfEscape(label)}) Tj ET 0 0 0 rg\\n`;\n  };\n\n  // Returns the drawing commands plus the link rectangles they imply. Links\n  // are collected rather than attached because the page object does not exist\n  // until its content stream has been measured.\n  const tabStrip = (activeAnchor) => {\n    if (!tabs.length) return { stream: '', links: [] };\n    const top = PH - margin;\n    const slot = (top - margin) / tabs.length;\n    const height = Math.min(slot - 3, 96);\n    const links = [];\n    let stream = '';\n    tabs.forEach((tab, index) => {\n      const y = top - slot * index - height;\n      const x = PW - TAB_W;\n      const active = activeAnchor && tab.anchor === activeAnchor;\n      const shade = active ? '0.25' : '0.88';\n      stream += `${shade} ${shade} ${shade} rg ` +\n        `${x.toFixed(2)} ${y.toFixed(2)} ${TAB_W.toFixed(2)} ${height.toFixed(2)} re f\\n`;\n      // A 90-degree text matrix so the label reads bottom-to-top in the tab.\n      stream += `BT /${PDF_FONT.bold} 8 Tf ${active ? '1 1 1' : '0.2 0.2 0.2'} rg ` +\n        `0 1 -1 0 ${(x + TAB_W / 2 + 3).toFixed(2)} ${(y + 7).toFixed(2)} Tm ` +\n        `(${pdfEscape(String(tab.label || '').slice(0, 14))}) Tj ET 0 0 0 rg\\n`;\n      links.push({ anchor: tab.anchor, rect: [x, y, x + TAB_W, y + height] });\n    });\n    return { stream, links };\n  };\n\n  // ---- drawing primitives ------------------------------------------------\n  const RULE = (shade) => `${shade} ${shade} ${shade} RG`;\n\n  const line = (x1, y1, x2, y2, width, shade) =>\n    `${width} w ${RULE(shade)} ${x1.toFixed(2)} ${y1.toFixed(2)} m ` +\n    `${x2.toFixed(2)} ${y2.toFixed(2)} l S 0 0 0 RG\\n`;\n\n  const label = (text, x, y, size, font, shade) =>\n    `BT /${font} ${size} Tf ${shade} ${shade} ${shade} rg ${x.toFixed(2)} ` +\n    `${y.toFixed(2)} Td (${pdfEscape(text)}) Tj ET 0 0 0 rg\\n`;\n\n  // Right-aligned text needs the string's width, and Helvetica's real widths\n  // are not uniform. 0.5em is the same approximation wrapText uses; a day\n  // number is two characters, so the error is under a point.\n  const labelRight = (text, x, y, size, font, shade) =>\n    label(text, x - String(text).length * size * 0.5, y, size, font, shade);\n\n  // A table drawn as lines, not as text: column rules, row rules, an optional\n  // shaded header band. Everything with a grid on the page goes through here.\n  // ``first_col_width`` widens column 0 for row labels. Without it a habit\n  // called \"Lights out by 11\" ran straight through the column rule and into\n  // Monday.\n  const table = (x, y, w, h, cols, rows, opts) => {\n    const options = opts || {};\n    const firstW = options.first_col_width || 0;\n    const colW = firstW ? (w - firstW) / Math.max(1, cols - 1) : w / cols;\n    const colX = (index) => (firstW\n      ? (index === 0 ? x : x + firstW + colW * (index - 1))\n      : x + colW * index);\n    const headerH = options.header_height || 0;\n    const bodyY = y - headerH;\n    const rowH = (h - headerH) / rows;\n    let stream = '';\n\n    if (headerH && options.header_shade !== undefined) {\n      const s = options.header_shade;\n      stream += `${s} ${s} ${s} rg ${x.toFixed(2)} ${bodyY.toFixed(2)} ` +\n        `${w.toFixed(2)} ${headerH.toFixed(2)} re f\\n`;\n    }\n    if (Array.isArray(options.headers)) {\n      options.headers.forEach((text, index) => {\n        stream += label(text, colX(index) + 6, bodyY + headerH / 2 - 3,\n                        options.header_size || 8, PDF_FONT.bold, 0.25);\n      });\n    }\n    for (let r = 0; r <= rows; r += 1) {\n      const ly = bodyY - rowH * r;\n      stream += line(x, ly, x + w, ly, 0.6, r === 0 ? 0.55 : 0.82);\n    }\n    if (headerH) stream += line(x, y, x + w, y, 0.6, 0.55);\n    for (let c = 0; c <= cols; c += 1) {\n      const lx = c === cols ? x + w : colX(c);\n      stream += line(lx, y, lx, bodyY - rowH * rows, 0.6, 0.82);\n    }\n    return { stream, colW, rowH, bodyY, firstW: firstW || colW, colX };\n  };\n\n  // A table of contents whose rows jump to the page they name. Rows that do\n  // not fit are counted, never quietly discarded: a contents list that stops\n  // short is worse than none at all, and it is invisible unless someone looks\n  // at the last page.\n  let droppedRows = 0;\n  const indexBlock = (entries, startY) => {\n    const links = [];\n    let stream = '';\n    let y = startY;\n    for (const entry of entries) {\n      if (!entry || !entry.anchor) continue;\n      if (y < margin + leading) { droppedRows += 1; continue; }\n      stream += `BT /${PDF_FONT.regular} ${bodySize} Tf ${margin} ${y.toFixed(2)} Td ` +\n        `(${pdfEscape(entry.label)}) Tj ET\\n`;\n      stream += `[1 3] 0 d 0.75 0.75 0.75 RG 0.6 w ` +\n        `${(margin + 8).toFixed(2)} ${(y - 3).toFixed(2)} m ` +\n        `${contentRight.toFixed(2)} ${(y - 3).toFixed(2)} l S [] 0 d 0 0 0 RG\\n`;\n      links.push({\n        anchor: entry.anchor,\n        rect: [margin - 4, y - 5, contentRight, y + bodySize + 2],\n      });\n      y -= leading * 1.7;\n    }\n    return { stream, links };\n  };\n\n  for (const page of spec.pages || []) {\n    // An anchor names the first page emitted for this spec entry, so a link\n    // lands on the section opener even when the section spills over.\n    const anchorSlot = pageIds.length;\n    if (page.anchor) anchors[page.anchor] = anchorSlot;\n\n    // ---- image page: fit the JPEG inside the page, centred -----------------\n    if (page.type === 'image' && page.jpeg_base64) {\n      const data = Buffer.from(page.jpeg_base64, 'base64');\n      const info = jpegInfo(data);\n      const bleed = page.full_bleed ? 0 : margin / 2;\n      // A full-bleed page keeps the whole sheet; anything else leaves the tab\n      // gutter clear so the strip never sits on top of the artwork.\n      const gutter = page.full_bleed ? 0 : TAB_W;\n      const scale = Math.min(\n        (PW - gutter - bleed * 2) / info.width,\n        (PH - bleed * 2) / info.height\n      );\n      const w = info.width * scale;\n      const h = info.height * scale;\n      const x = (PW - gutter - w) / 2;\n      const y = (PH - h) / 2;\n      const imageId = push(Buffer.concat([\n        Buffer.from(\n          `<< /Type /XObject /Subtype /Image /Width ${info.width} /Height ${info.height}` +\n          ` /ColorSpace ${info.components === 1 ? '/DeviceGray' : '/DeviceRGB'}` +\n          ` /BitsPerComponent 8 /Filter /DCTDecode /Length ${data.length} >>\\nstream\\n`,\n          'latin1'\n        ),\n        data,\n        Buffer.from('\\nendstream', 'latin1'),\n      ]));\n      let stream = `q ${w.toFixed(2)} 0 0 ${h.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)} cm /Im0 Do Q\\n`;\n      if (page.caption) {\n        stream += `BT /${PDF_FONT.regular} 10 Tf ${margin} ${(y - 18).toFixed(2)} Td ` +\n          `(${pdfEscape(page.caption)}) Tj ET\\n`;\n      }\n      stream += footer(page.footer);\n      const strip = page.full_bleed ? { stream: '', links: [] } : tabStrip(page.anchor);\n      const meta = addPage(stream + strip.stream, `/XObject << /Im0 ${imageId} 0 R >>`);\n      for (const link of strip.links) meta.links.push(link);\n      continue;\n    }\n\n    // ---- month page: calendar grid plus a side column ----------------------\n    if (page.type === 'month') {\n      const titleY = PH - margin - 22;\n      let stream = label(page.title || 'Month', margin, titleY, 24, PDF_FONT.bold, 0);\n      if (page.subtitle) {\n        stream += label(page.subtitle, margin, titleY - 18, 10, PDF_FONT.regular, 0.4);\n      }\n\n      // The side column carries the writing prompts the model produced. The\n      // calendar keeps whatever is left, so a longer prompt never squeezes a\n      // week off the page - the split is fixed.\n      const sideW = page.side_lines && page.side_lines.length ? 150 : 0;\n      const gridW = contentRight - margin - (sideW ? sideW + 14 : 0);\n      const gridTop = titleY - 40;\n      const gridH = gridTop - margin - 18;\n\n      const matrix = monthMatrix(\n        page.year ? Number(page.year) : null,\n        Number(page.month_number) || 1,\n        page.week_starts_monday !== false\n      );\n      // A month that fits in five weeks gets five taller rows instead of a\n      // blank strip along the bottom. Five is the floor so the twelve months\n      // do not all have different-sized boxes.\n      let weeks = matrix.rows.length;\n      while (weeks > 5 && matrix.rows[weeks - 1].every((d) => !d)) weeks -= 1;\n\n      const headers = weekdayHeaders(page.week_starts_monday !== false);\n      const grid = table(margin, gridTop, gridW, gridH, 7, weeks, {\n        headers, header_height: 18, header_shade: 0.93, header_size: 8,\n      });\n      stream += grid.stream;\n\n      matrix.rows.slice(0, weeks).forEach((row, r) => {\n        row.forEach((day, c) => {\n          if (!day) return;\n          stream += labelRight(String(day),\n                               margin + grid.colW * (c + 1) - 5,\n                               grid.bodyY - grid.rowH * r - 12,\n                               9, PDF_FONT.regular, 0.35);\n        });\n      });\n\n      if (sideW) {\n        const sx = contentRight - sideW;\n        let sy = gridTop;\n        stream += label(page.side_title || 'This month', sx, sy, 10, PDF_FONT.bold, 0.2);\n        sy -= 20;\n        for (const raw of page.side_lines) {\n          for (const wrapped of wrapText(raw, 9, sideW)) {\n            if (sy < margin + 30) break;\n            stream += label(wrapped, sx, sy, 9, PDF_FONT.regular, 0.35);\n            sy -= 13;\n          }\n          // A ruled answer space under each prompt - the point of a planner.\n          for (let i = 0; i < 2 && sy > margin + 24; i += 1) {\n            sy -= 12;\n            stream += line(sx, sy, sx + sideW, sy, 0.5, 0.85);\n          }\n          sy -= 12;\n        }\n      }\n\n      stream += footer(page.footer);\n      const strip = tabStrip(page.anchor);\n      const meta = addPage(stream + strip.stream, null);\n      for (const link of strip.links) meta.links.push(link);\n      continue;\n    }\n\n    // ---- grid page: a ruled table with column headers ----------------------\n    if (page.type === 'grid') {\n      const titleY = PH - margin - 18;\n      let stream = label(page.title || '', margin, titleY, 18, PDF_FONT.bold, 0);\n      let top = titleY - 16;\n      if (page.subtitle) {\n        stream += label(page.subtitle, margin, top, 10, PDF_FONT.regular, 0.4);\n        top -= 20;\n      }\n      for (const raw of asLines(page.lines)) {\n        for (const wrapped of wrapText(raw, 10, contentRight - margin)) {\n          stream += label(wrapped, margin, top, 10, PDF_FONT.regular, 0.3);\n          top -= 15;\n        }\n      }\n      top -= 10;\n\n      const headers = Array.isArray(page.columns) ? page.columns : [];\n      const rows = Math.max(1, Number(page.rows) || 12);\n      const rowLabels = asLines(page.row_labels);\n      const width = contentRight - margin;\n      // A label column only needs to be wide when there are labels for it.\n      const firstColW = rowLabels.length\n        ? Math.min(170, Math.max(90, width * 0.28))\n        : 0;\n      const grid = table(margin, top, width, top - margin - 16,\n                         Math.max(1, headers.length), rows, {\n        headers, header_height: 20, header_shade: 0.93, header_size: 8,\n        first_col_width: firstColW,\n      });\n      stream += grid.stream;\n\n      // Row labels turn an empty table into a filled-in tracker: the model\n      // supplies the habits, the writer supplies the boxes. Clipped to the\n      // column it lives in rather than to a guessed character count.\n      const labelSize = 8;\n      const maxChars = Math.max(6, Math.floor((grid.firstW - 12) / (labelSize * 0.5)));\n      rowLabels.forEach((text, index) => {\n        if (index >= rows) return;\n        stream += label(String(text).slice(0, maxChars), margin + 6,\n                        grid.bodyY - grid.rowH * (index + 1) + grid.rowH / 2 - 3,\n                        labelSize, PDF_FONT.regular, 0.3);\n      });\n\n      stream += footer(page.footer);\n      const strip = tabStrip(page.anchor);\n      const meta = addPage(stream + strip.stream, null);\n      for (const link of strip.links) meta.links.push(link);\n      continue;\n    }\n\n    // ---- lined page: prompts over ruled or dotted writing space ------------\n    if (page.type === 'lined') {\n      const titleY = PH - margin - 18;\n      let stream = label(page.title || '', margin, titleY, 18, PDF_FONT.bold, 0);\n      // The title needs air under it; without this the first prompt sat on\n      // the title's baseline and read as a subtitle.\n      let y = titleY - 30;\n      if (page.subtitle) {\n        stream += label(page.subtitle, margin, titleY - 16, 10, PDF_FONT.regular, 0.4);\n        y = titleY - 44;\n      }\n      const spacing = Math.max(14, Number(page.spacing) || 26);\n      const width = contentRight - margin;\n\n      for (const prompt of asLines(page.lines)) {\n        if (y < margin + spacing * 2) break;\n        for (const wrapped of wrapText(prompt, 11, width)) {\n          stream += label(wrapped, margin, y, 11, PDF_FONT.bold, 0.15);\n          y -= 16;\n        }\n        const answerLines = Math.max(1, Number(page.lines_per_prompt) || 3);\n        for (let i = 0; i < answerLines && y > margin + spacing; i += 1) {\n          y -= spacing;\n          stream += line(margin, y, margin + width, y, 0.5, 0.85);\n        }\n        y -= spacing * 0.6;\n      }\n\n      // Whatever is left becomes open writing space, ruled the same way, so a\n      // short prompt list does not leave half a sheet of nothing.\n      if (page.rule !== 'none') {\n        while (y > margin + spacing) {\n          y -= spacing;\n          stream += line(margin, y, margin + width, y, 0.5, 0.9);\n        }\n      }\n\n      stream += footer(page.footer);\n      const strip = tabStrip(page.anchor);\n      const meta = addPage(stream + strip.stream, null);\n      for (const link of strip.links) meta.links.push(link);\n      continue;\n    }\n\n    // ---- text page: wrap, then break into as many pages as needed ---------\n    const titleSize = page.title_size || (page.cover ? 30 : 18);\n    const lines = [];\n    for (const raw of asLines(page.lines)) {\n      for (const wrapped of wrapText(raw, bodySize, usableWidth)) lines.push(wrapped);\n    }\n\n    const firstTop = PH - margin - (page.title ? titleSize + 22 : 0);\n    // A contents list eats into the first page's line budget, otherwise the\n    // body copy under it would run off the bottom of the sheet.\n    const indexRows = Array.isArray(page.index) ? page.index.length : 0;\n    const indexHeight = indexRows ? indexRows * leading * 1.7 + leading : 0;\n    const linesFirstPage = Math.max(\n      1, Math.floor((firstTop - indexHeight - margin) / leading));\n    const linesNextPage = Math.max(1, Math.floor((PH - margin * 2) / leading));\n\n    let cursor = 0;\n    let chunkIndex = 0;\n    do {\n      const capacity = chunkIndex === 0 ? linesFirstPage : linesNextPage;\n      const chunk = lines.slice(cursor, cursor + capacity);\n      cursor += capacity;\n\n      let stream = '';\n      if (page.title && chunkIndex === 0) {\n        const titleY = PH - margin - titleSize;\n        stream += `BT /${PDF_FONT.bold} ${titleSize} Tf ${margin} ${titleY.toFixed(2)} Td ` +\n          `(${pdfEscape(page.title)}) Tj ET\\n`;\n        stream += `${margin} ${(titleY - 12).toFixed(2)} m ${contentRight.toFixed(2)} ` +\n          `${(titleY - 12).toFixed(2)} l 0.7 w 0.8 0.8 0.8 RG S 0 0 0 RG\\n`;\n      }\n      if (page.subtitle && chunkIndex === 0) {\n        stream += `BT /${PDF_FONT.regular} 13 Tf 0.35 0.35 0.35 rg ${margin} ` +\n          `${(PH - margin - titleSize - 34).toFixed(2)} Td (${pdfEscape(page.subtitle)}) Tj ET 0 0 0 rg\\n`;\n      }\n      let startY = (chunkIndex === 0 ? firstTop : PH - margin) -\n        (page.subtitle && chunkIndex === 0 ? 26 : 0);\n\n      // A clickable contents list, drawn above the body copy on the first page.\n      const pageLinks = [];\n      if (chunkIndex === 0 && Array.isArray(page.index) && page.index.length) {\n        // The subtitle sits only 14pt above the body baseline, which put the\n        // first contents row hard against it. A row is a tap target, so it\n        // gets a clear line of its own.\n        if (page.subtitle) startY -= leading;\n        const block = indexBlock(page.index, startY);\n        stream += block.stream;\n        for (const link of block.links) pageLinks.push(link);\n        startY -= page.index.length * leading * 1.7 + leading;\n      }\n\n      if (chunk.length) {\n        stream += `BT /${PDF_FONT.regular} ${bodySize} Tf ${leading} TL ` +\n          `${margin} ${startY.toFixed(2)} Td\\n`;\n        for (const line of chunk) stream += `(${pdfEscape(line)}) Tj T*\\n`;\n        stream += 'ET\\n';\n      }\n      stream += footer(page.footer);\n      const strip = tabStrip(page.anchor);\n      const meta = addPage(stream + strip.stream, null);\n      for (const link of pageLinks) meta.links.push(link);\n      for (const link of strip.links) meta.links.push(link);\n      chunkIndex += 1;\n    } while (cursor < lines.length);\n  }\n\n  if (!pageIds.length) {\n    addPage(`BT /${PDF_FONT.regular} 12 Tf 56 780 Td (Empty document) Tj ET\\n`, null);\n  }\n\n  // ---- resolve links, then serialise the reserved page objects ------------\n  // A link whose anchor never appeared is dropped rather than pointing\n  // somewhere arbitrary: a dead tab is worse than a plain one.\n  let brokenLinks = 0;\n  let linkCount = 0;\n  for (const meta of pageMeta) {\n    const annots = [];\n    for (const link of meta.links) {\n      const slot = anchors[link.anchor];\n      if (slot === undefined || pageIds[slot] === undefined) { brokenLinks += 1; continue; }\n      const [x1, y1, x2, y2] = link.rect;\n      annots.push(push(\n        `<< /Type /Annot /Subtype /Link /Border [0 0 0]` +\n        ` /Rect [${x1.toFixed(2)} ${y1.toFixed(2)} ${x2.toFixed(2)} ${y2.toFixed(2)}]` +\n        ` /Dest [${pageIds[slot]} 0 R /XYZ null null null] >>`\n      ));\n      linkCount += 1;\n    }\n    const resources =\n      `/Font << /F1 3 0 R /F2 4 0 R >>` + (meta.resources ? ' ' + meta.resources : '');\n    objects[meta.id - 1] =\n      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PW.toFixed(2)} ${PH.toFixed(2)}]` +\n      ` /Resources << ${resources} >> /Contents ${meta.contentId} 0 R` +\n      (annots.length ? ` /Annots [${annots.map((id) => `${id} 0 R`).join(' ')}]` : '') +\n      ` >>`;\n  }\n\n  const info = spec.info || {};\n  objects[0] = '<< /Type /Catalog /Pages 2 0 R >>';\n  objects[1] = `<< /Type /Pages /Count ${pageIds.length} /Kids [` +\n    pageIds.map((id) => `${id} 0 R`).join(' ') + '] >>';\n  objects[2] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';\n  objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';\n  objects[4] = '<< /Title (' + pdfEscape(info.title || 'Digital Product') + ')' +\n    ' /Author (' + pdfEscape(info.author || 'AI Digital Product Factory') + ')' +\n    ' /Subject (' + pdfEscape(info.subject || '') + ')' +\n    ' /Keywords (' + pdfEscape(info.keywords || '') + ')' +\n    ' /Creator (AI Digital Product Factory) /Producer (n8n) >>';\n\n  // ---- serialise: header, objects, xref table, trailer --------------------\n  const chunks = [];\n  let offset = 0;\n  const write = (value) => {\n    const buf = Buffer.isBuffer(value) ? value : Buffer.from(String(value), 'latin1');\n    chunks.push(buf);\n    offset += buf.length;\n  };\n\n  write('%PDF-1.4\\n%\\xE2\\xE3\\xCF\\xD3\\n');\n  const offsets = [];\n  objects.forEach((obj, index) => {\n    offsets[index] = offset;\n    write(`${index + 1} 0 obj\\n`);\n    write(obj);\n    write('\\nendobj\\n');\n  });\n\n  const xrefOffset = offset;\n  write(`xref\\n0 ${objects.length + 1}\\n`);\n  write('0000000000 65535 f \\n');\n  for (const o of offsets) write(`${String(o).padStart(10, '0')} 00000 n \\n`);\n  write(\n    `trailer\\n<< /Size ${objects.length + 1} /Root 1 0 R /Info 5 0 R >>\\n` +\n    `startxref\\n${xrefOffset}\\n%%EOF\\n`\n  );\n\n  return {\n    buffer: Buffer.concat(chunks),\n    page_count: pageIds.length,\n    link_count: linkCount,\n    broken_links: brokenLinks,\n    dropped_index_rows: droppedRows,\n  };\n}\n\n// ---------------------------------------------------------------------------\n// Assemble the planner. Every structural decision is made here, in code.\n// ---------------------------------------------------------------------------\nconst ctx = $('Gather Images').first().json;\nconst content = ctx.content;\nconst images = ctx.images;\nconst MONTHS = [\"January\", \"February\", \"March\", \"April\", \"May\", \"June\", \"July\", \"August\", \"September\", \"October\", \"November\", \"December\"];\n\nconst year = ctx.planner_year ? Number(ctx.planner_year) : null;\nconst footerLabel = `${ctx.concept.product_name} - personal use`;\n\n// ---- navigation ------------------------------------------------------------\n// Twelve month tabs plus Contents is thirteen, which is the most a tab strip\n// can carry legibly. The extra sections are reachable from the contents page.\nconst tabs = [{ label: 'Contents', anchor: 'contents' }].concat(\n  MONTHS.map((name, index) => ({ label: name.slice(0, 3), anchor: `m${index + 1}` })));\n\nconst contentsRows = MONTHS.map((name, index) => ({\n  label: year ? `${name} ${year}` : name,\n  anchor: `m${index + 1}`,\n})).concat(content.sections.map((section, index) => ({\n  label: section.title,\n  anchor: `s${index + 1}`,\n})));\n\n// Derived from the writer's geometry: title block, subtitle, margins and a\n// 1.7x row pitch. Cross-checked by the dropped-row guard at the end.\nconst rowsPerContentsPage = Math.max(8, Math.floor((ctx.page_height_pt - 200) / 29));\n\nconst pages = [];\n\n// 1. Cover: full-bleed art, then the title page.\npages.push({ type: 'image', jpeg_base64: images.cover, full_bleed: true });\npages.push({\n  type: 'text', cover: true, anchor: 'cover',\n  title: content.cover_title,\n  subtitle: content.cover_subtitle,\n  lines: ['', ctx.concept.one_liner, ''],\n  footer: footerLabel,\n});\n\n// 2. How to use.\npages.push({\n  type: 'text', anchor: 'welcome',\n  title: content.welcome_title,\n  lines: content.welcome_lines,\n  footer: footerLabel,\n});\n\n// 3. Contents, spilling onto as many sheets as it needs.\nfor (let row = 0; row < contentsRows.length; row += rowsPerContentsPage) {\n  const first = row === 0;\n  pages.push({\n    type: 'text',\n    title: first ? 'Contents' : 'Contents (continued)',\n    subtitle: first ? 'Tap a line to jump. The tabs on the right work from every page.' : undefined,\n    anchor: first ? 'contents' : undefined,\n    index: contentsRows.slice(row, row + rowsPerContentsPage),\n    footer: footerLabel,\n  });\n}\n\n// 4. Twelve months. The grid is computed, not written.\nMONTHS.forEach((name, index) => {\n  pages.push({\n    type: 'month',\n    title: year ? `${name} ${year}` : name,\n    subtitle: year ? undefined : 'Undated - write your own dates',\n    anchor: `m${index + 1}`,\n    month_number: index + 1,\n    year,\n    week_starts_monday: ctx.week_starts_monday,\n    side_title: 'This month',\n    side_lines: content.month_prompts[index],\n    footer: `${footerLabel} | ${name}`,\n  });\n});\n\n// 5. Section dividers and the extra sections.\nconst dividers = Object.keys(images).filter((role) => role.startsWith('section_')).sort();\ncontent.sections.forEach((section, index) => {\n  // Dividers are spread evenly through the sections rather than stacked at\n  // the front, so the file reads as chapters.\n  const every = Math.max(1, Math.ceil(content.sections.length / (dividers.length || 1)));\n  if (dividers.length && index % every === 0) {\n    const art = images[dividers[Math.min(dividers.length - 1, Math.floor(index / every))]];\n    if (art) pages.push({ type: 'image', jpeg_base64: art, caption: section.title,\n                          footer: footerLabel });\n  }\n  const base = {\n    anchor: `s${index + 1}`,\n    title: section.title,\n    subtitle: section.intro || undefined,\n    footer: `${footerLabel} | ${section.title}`,\n  };\n  if (section.kind === 'grid') {\n    pages.push({ ...base, type: 'grid', lines: section.instructions,\n                 columns: section.columns, rows: section.rows,\n                 row_labels: section.row_labels });\n  } else {\n    pages.push({ ...base, type: 'lined', lines: section.prompts,\n                 lines_per_prompt: 3 });\n  }\n});\n\n// 6. Licence.\npages.push({\n  type: 'text', title: 'Licence',\n  lines: [\n    'This planner is licensed for personal use by the buyer.',\n    '',\n    'You may print it as often as you like for yourself and your household,',\n    'and use it in any app that opens a PDF.',\n    '',\n    'You may not resell, redistribute, or share the file, and you may not sell',\n    'anything made by exporting or tracing its pages.',\n    '',\n    content.credits,\n  ].filter((line) => line !== undefined),\n  footer: footerLabel,\n});\n\nconst result = buildPdf({\n  width: ctx.page_width_pt,\n  height: ctx.page_height_pt,\n  tabs,\n  pages,\n  info: {\n    title: ctx.concept.product_name,\n    subject: ctx.concept.niche,\n    keywords: ctx.concept.keywords.join(', '),\n  },\n});\n\n// The two failures that are invisible in the data and obvious to a buyer.\nif (result.link_count < 12) {\n  throw new Error(`Only ${result.link_count} working links in the PDF ` +\n    `(${result.broken_links} dropped). The tabs are the product.`);\n}\nif (result.dropped_index_rows) {\n  throw new Error(`${result.dropped_index_rows} contents rows did not fit on the page. ` +\n    `rowsPerContentsPage (${rowsPerContentsPage}) is too high for a ${ctx.page_height_pt}pt sheet.`);\n}\n\nreturn [{\n  json: {\n    ...ctx,\n    stage: 'pdf-built',\n    pdf: {\n      base64: result.buffer.toString('base64'),\n      bytes: result.buffer.length,\n      page_count: result.page_count,\n      link_count: result.link_count,\n    },\n  },\n}];\n"
+      },
+      "id": "pf01-build-pdf",
+      "name": "Build PDF",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4940,
+        -114
+      ],
+      "notes": "ประกอบ PDF ทั้งเล่ม: ปก, สารบัญกดได้, ปฏิทิน 12 เดือน, section, ใบอนุญาต",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// The last gate before anything is published. Everything here is checkable\n// arithmetic - no model is asked whether its own work is good.\nconst ctx = $('Build PDF').first().json;\nconst problems = [];\nconst pdf = ctx.pdf;\n\nconst buffer = Buffer.from(pdf.base64, 'base64');\nif (buffer.slice(0, 8).toString('latin1').indexOf('%PDF-') !== 0) {\n  problems.push('the PDF does not start with a PDF header');\n}\nif (buffer.slice(-1024).toString('latin1').indexOf('%%EOF') === -1) {\n  problems.push('the PDF has no end-of-file marker');\n}\n\n// Twelve months, a contents page and a cover is 15 sheets before any extras.\nif (pdf.page_count < 20) {\n  problems.push(`only ${pdf.page_count} pages - a planner this thin will be returned`);\n}\nif (pdf.bytes < 40000) {\n  problems.push(`the file is only ${pdf.bytes} bytes, which means the art is missing`);\n}\nif (ctx.content.sections.length < 6) {\n  problems.push(`only ${ctx.content.sections.length} extra sections survived writing`);\n}\n\n// Every month must be reachable: twelve tabs on every page is the whole\n// difference between this and a stack of printables.\nif (pdf.link_count < ctx.pdf.page_count) {\n  problems.push(`${pdf.link_count} links across ${pdf.page_count} pages - ` +\n    'the tab strip is not on every page');\n}\n\nconst shortPrompts = ctx.content.month_prompts\n  .map((list, index) => ({ index, list }))\n  .filter((m) => !m.list.length);\nif (shortPrompts.length) {\n  problems.push(`months with no prompt: ${shortPrompts.map((m) => m.index + 1).join(', ')}`);\n}\n\nif (problems.length) {\n  throw new Error('QA rejected this planner:\\n- ' + problems.join('\\n- '));\n}\n\nreturn [{ json: { ...ctx, stage: 'qa-passed', qa: { passed: true, checks: 7 } } }];\n"
+      },
+      "id": "pf01-qa-gate",
+      "name": "QA Gate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5200,
+        -114
+      ],
+      "notes": "ด่านสุดท้าย - ตรวจด้วยตัวเลขล้วน ไม่ถาม AI ว่างานตัวเองดีไหม",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\nconst ctx = $('QA Gate').first().json;\nconst prompts = $('Prompt Library').first().json.prompts;\nconst c = ctx.concept;\n\nreturn [{\n  json: {\n    ...ctx,\n    stage: 'listing',\n    listing_prompt: [\n      `Product: ${c.product_name}`,\n      `Niche: ${c.niche}`,\n      `Buyer: ${c.buyer}`,\n      `Their problem: ${c.buyer_problem || '(not stated)'}`,\n      `They would search: ${c.search_phrase}`,\n      `Keyword ideas: ${c.keywords.join(', ')}`,\n      '',\n      `The finished file: a ${ctx.pdf.page_count}-page undated PDF planner with`,\n      `twelve tabbed month calendars, a tappable contents page, and these sections:`,\n      ...ctx.content.sections.map((s) => `- ${s.title}`),\n      '',\n      'It is a digital download. Nothing is posted.',\n      '',\n      prompts.listing.contract,\n    ].join('\\n'),\n  },\n}];\n"
+      },
+      "id": "pf01-build-listing-prompt",
+      "name": "Build Listing Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5460,
+        -114
+      ],
+      "notes": "ประกอบโจทย์เขียนหน้าขาย Etsy จากไฟล์ที่ทำเสร็จจริง",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $('Planner Config').first().json.cfg.OPENAI_MODEL_TEXT || 'gpt-4.1', temperature: 0.7, max_tokens: 2500, response_format: { type: 'json_object' }, messages: [ { role: 'system', content: $('Prompt Library').first().json.prompts.listing.system }, { role: 'user', content: $json.listing_prompt } ] }) }",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "pf01-ai-listing",
+      "name": "AI: Listing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5720,
+        -114
+      ],
+      "notes": "เขียนชื่อสินค้า คำอธิบาย และ 13 tags",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// Read the assistant's reply out of an OpenAI chat completion, and fail with\n// something a human can act on rather than \"cannot read property of\n// undefined\" thirty lines later.\nfunction agentText(response) {\n  const choice = response && response.choices && response.choices[0];\n  if (!choice) {\n    const err = response && response.error;\n    throw new Error('The model returned no choices' +\n      (err ? `: ${err.message || JSON.stringify(err).slice(0, 200)}` : ''));\n  }\n  if (choice.finish_reason === 'length') {\n    throw new Error('The model ran out of output tokens mid-answer. ' +\n      'Raise max_tokens on this node, or ask for fewer sections.');\n  }\n  const text = choice.message && choice.message.content;\n  if (!text || !String(text).trim()) throw new Error('The model returned an empty message');\n  return String(text);\n}\n\n// Parse JSON that may arrive fenced in ```json ... ``` despite json_mode.\nfunction agentJson(response, what) {\n  const text = agentText(response);\n  const fenced = text.match(/```(?:json)?\\s*([\\s\\S]*?)```/);\n  const body = (fenced ? fenced[1] : text).trim();\n  try {\n    return JSON.parse(body);\n  } catch (e) {\n    throw new Error(`${what}: the reply was not valid JSON (${e.message}). ` +\n      `First 200 characters: ${body.slice(0, 200)}`);\n  }\n}\n\n// Coerce a field the model may have answered with a string, an array or an\n// object into an array of strings.\nfunction asArray(value) {\n  if (Array.isArray(value)) return value.map((v) => (typeof v === 'string' ? v : v));\n  if (value === null || value === undefined || value === '') return [];\n  if (typeof value === 'string') {\n    return value.split(/[\\n,]+/).map((s) => s.trim()).filter(Boolean);\n  }\n  if (typeof value === 'object') return Object.values(value).flatMap((v) => asArray(v));\n  return [String(value)];\n}\n\nfunction require_(object, fields, what) {\n  const missing = fields.filter((f) => {\n    const v = object ? object[f] : undefined;\n    return v === undefined || v === null || v === '' ||\n      (Array.isArray(v) && v.length === 0);\n  });\n  if (missing.length) {\n    throw new Error(`${what} is missing: ${missing.join(', ')}. ` +\n      `Got these keys instead: ${Object.keys(object || {}).join(', ') || '(none)'}`);\n  }\n}\n\nfunction slugify(text) {\n  return String(text).toLowerCase().normalize('NFD')\n    .replace(/[̀-ͯ]/g, '')\n    .replace(/[^a-z0-9]+/g, '-')\n    .replace(/^-|-$/g, '')\n    .slice(0, 60);\n}\n\n// Etsy rejects a tag over 20 characters, so a long phrase is cut back to its\n// last whole word rather than mid-syllable (\"tech leadership resu\").\nfunction toTag(text) {\n  let tag = String(text).toLowerCase().normalize('NFD')\n    .replace(/[̀-ͯ]/g, '')\n    .replace(/[^a-z0-9 ]+/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n  if (tag.length <= 20) return tag;\n  tag = tag.slice(0, 20);\n  const cut = tag.lastIndexOf(' ');\n  return (cut > 6 ? tag.slice(0, cut) : tag).trim();\n}\n\n// Etsy rejects a bad listing after the upload, so the rules are enforced here.\nconst ctx = $('Build Listing Prompt').first().json;\nconst listing = agentJson($input.first().json, 'Listing agent');\nrequire_(listing, ['title', 'description', 'tags'], 'The listing');\n\nlet title = String(listing.title).replace(/\\s+/g, ' ').trim();\nif (title.length > 140) title = title.slice(0, 140).replace(/\\s+\\S*$/, '');\nif (/\\b[A-Z]{4,}\\b/.test(title)) {\n  throw new Error(`The listing title shouts, which Etsy penalises: \"${title}\"`);\n}\n\n// Thirteen tags, each at most twenty characters, no duplicates. Topped up\n// from the concept keywords rather than failing when the model is short.\nconst seen = new Set();\nconst tags = [];\nfor (const raw of asArray(listing.tags).concat(ctx.concept.keywords)) {\n  const tag = toTag(raw);\n  if (tag.length < 3 || seen.has(tag)) continue;\n  seen.add(tag);\n  tags.push(tag);\n  if (tags.length === 13) break;\n}\nif (tags.length < 13) {\n  throw new Error(`Only ${tags.length} usable tags after cleaning; Etsy wants 13. ` +\n    `From: ${JSON.stringify(listing.tags).slice(0, 200)}`);\n}\n\nconst description = String(listing.description).trim();\nif (description.length < 300) {\n  throw new Error(`The description is ${description.length} characters; ` +\n    'a listing that short does not convert.');\n}\nif (/<[a-z/][^>]*>/i.test(description)) {\n  throw new Error('The description contains HTML, which Etsy shows as raw tags.');\n}\n\nconst cfgPrice = Number($('Planner Config').first().json.cfg.ETSY_PRICE_USD);\nconst modelPrice = Number(listing.price_usd);\nconst price = Number.isFinite(cfgPrice) && cfgPrice > 0\n  ? cfgPrice\n  : (Number.isFinite(modelPrice) ? Math.min(30, Math.max(5, modelPrice)) : 12);\n\nreturn [{\n  json: {\n    ...ctx,\n    stage: 'listing-ready',\n    listing: {\n      title,\n      description: description + '\\n\\nThis is a digital download. Nothing will be ' +\n        'posted to you. You will receive the file(s) immediately after purchase.',\n      tags,\n      materials: asArray(listing.materials).map((m) => toTag(m)).filter(Boolean).slice(0, 13),\n      price_usd: price,\n    },\n  },\n}];\n"
+      },
+      "id": "pf01-parse-listing",
+      "name": "Parse Listing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5980,
+        -114
+      ],
+      "notes": "บังคับกติกา Etsy: title <=140, tag 13 อัน อันละ <=20 ตัวอักษร, ห้าม HTML",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond",
+              "leftValue": "={{ $('Start Run').first().json.publish }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "pf01-should-publish",
+      "name": "Should Publish?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6240,
+        -114
+      ],
+      "notes": "ยิงขึ้น Etsy เฉพาะเมื่อตั้งค่าครบและไม่ใช่โหมดซ้อม",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Planner Config').first().json.cfg.ETSY_API_BASE }}/v3/public/oauth/token",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/x-www-form-urlencoded"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/x-www-form-urlencoded",
+        "body": "={{ 'grant_type=refresh_token&client_id=' + encodeURIComponent($('Planner Config').first().json.cfg.ETSY_API_KEY) + '&refresh_token=' + encodeURIComponent($('Planner Config').first().json.cfg.ETSY_REFRESH_TOKEN) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "pf01-etsy-access-token",
+      "name": "Etsy: Access Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6500,
+        -228
+      ],
+      "notes": "แลก refresh token เป็น access token (Etsy บังคับ PKCE จึงใช้วิธีนี้)",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// The listing body. Etsy wants price as a number and tags as a comma string.\nconst ctx = $('Parse Listing').first().json;\nconst cfg = $('Planner Config').first().json.cfg;\n\nreturn [{\n  json: {\n    ...ctx,\n    stage: 'publishing',\n    etsy_body: {\n      quantity: Number(cfg.ETSY_QUANTITY) || 999,\n      title: ctx.listing.title,\n      description: ctx.listing.description,\n      price: Number(ctx.listing.price_usd),\n      who_made: 'i_did',\n      when_made: 'made_to_order',\n      taxonomy_id: Number(cfg.ETSY_TAXONOMY_ID),\n      listing_type: 'download',\n      // A draft is reviewable before it goes live; set ETSY_LISTING_STATE to\n      // 'active' once you trust the output.\n      state: String(cfg.ETSY_LISTING_STATE || 'draft').toLowerCase(),\n      tags: ctx.listing.tags.join(','),\n      materials: ctx.listing.materials.join(','),\n      should_auto_renew: false,\n      is_supply: false,\n      is_personalizable: false,\n    },\n  },\n}];\n"
+      },
+      "id": "pf01-prepare-etsy-draft",
+      "name": "Prepare Etsy Draft",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6760,
+        -228
+      ],
+      "notes": "ประกอบข้อมูลสินค้าตามรูปแบบที่ Etsy ต้องการ",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Planner Config').first().json.cfg.ETSY_API_BASE }}/v3/application/shops/{{ $('Planner Config').first().json.cfg.ETSY_SHOP_ID }}/listings",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $('Planner Config').first().json.cfg.ETSY_API_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Etsy: Access Token').first().json.access_token }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.etsy_body) }}"
+      },
+      "id": "pf01-etsy-create-listing",
+      "name": "Etsy: Create Listing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        7020,
+        -228
+      ],
+      "notes": "สร้างรายการขาย (state=draft เพื่อให้ตรวจก่อนเปิดจริง)",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// One item per upload: the shop images first, then the file itself.\nconst ctx = $('Prepare Etsy Draft').first().json;\nconst created = $input.first().json;\nconst listingId = created && (created.listing_id || created.results?.[0]?.listing_id);\nif (!listingId) {\n  throw new Error('Etsy created no listing id. Reply was: ' +\n    JSON.stringify(created).slice(0, 300));\n}\n\nconst uploads = [\n  { kind: 'image', rank: 1, role: 'cover', b64: ctx.images.cover,\n    name: `${ctx.concept.slug}-cover.jpg` },\n  { kind: 'image', rank: 2, role: 'thumbnail', b64: ctx.images.thumbnail,\n    name: `${ctx.concept.slug}-thumb.jpg` },\n];\nObject.keys(ctx.images)\n  .filter((role) => role.startsWith('section_'))\n  .sort()\n  .forEach((role, index) => {\n    uploads.push({ kind: 'image', rank: 3 + index, role, b64: ctx.images[role],\n                   name: `${ctx.concept.slug}-${role}.jpg` });\n  });\nuploads.push({ kind: 'file', rank: 1, role: 'pdf', b64: ctx.pdf.base64,\n               name: `${ctx.concept.slug}.pdf` });\n\nreturn uploads.map((upload) => ({\n  json: { ...upload, listing_id: listingId, run_id: ctx.run_id },\n}));\n"
+      },
+      "id": "pf01-plan-uploads",
+      "name": "Plan Uploads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7280,
+        -228
+      ],
+      "notes": "แตกเป็นงานอัปโหลด: ภาพร้านทุกใบ + ไฟล์ PDF",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {
+          "reset": false
+        }
+      },
+      "id": "pf01-loop-uploads",
+      "name": "Loop Uploads",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        7540,
+        -228
+      ],
+      "notes": "อัปโหลดทีละไฟล์ - Etsy จำกัดขนาดและจำนวนต่อครั้ง",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// Etsy takes multipart uploads, so each item needs its bytes as binary.\nconst job = $input.first().json;\nconst buffer = Buffer.from(job.b64, 'base64');\nreturn [{\n  json: { ...job, b64: undefined },\n  binary: {\n    upload: await this.helpers.prepareBinaryData(\n      buffer, job.name, job.kind === 'file' ? 'application/pdf' : 'image/jpeg'),\n  },\n}];\n"
+      },
+      "id": "pf01-to-binary",
+      "name": "To Binary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7800,
+        -152
+      ],
+      "notes": "แปลง base64 เป็นไฟล์จริงสำหรับอัปโหลดแบบ multipart",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond",
+              "leftValue": "={{ $json.kind === 'file' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "pf01-is-file",
+      "name": "Is File?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        8060,
+        -152
+      ],
+      "notes": "ไฟล์ PDF กับภาพร้านใช้คนละ endpoint",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Planner Config').first().json.cfg.ETSY_API_BASE }}/v3/application/shops/{{ $('Planner Config').first().json.cfg.ETSY_SHOP_ID }}/listings/{{ $json.listing_id }}/files",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $('Planner Config').first().json.cfg.ETSY_API_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Etsy: Access Token').first().json.access_token }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        },
+        "contentType": "multipart-form-data",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "upload"
+            },
+            {
+              "name": "name",
+              "value": "={{ $json.name }}"
+            },
+            {
+              "name": "rank",
+              "value": "={{ $json.rank }}"
+            }
+          ]
+        }
+      },
+      "id": "pf01-etsy-upload-file",
+      "name": "Etsy: Upload File",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        8320,
+        -76
+      ],
+      "notes": "อัปโหลดไฟล์ที่ผู้ซื้อจะได้รับ",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Planner Config').first().json.cfg.ETSY_API_BASE }}/v3/application/shops/{{ $('Planner Config').first().json.cfg.ETSY_SHOP_ID }}/listings/{{ $json.listing_id }}/images",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $('Planner Config').first().json.cfg.ETSY_API_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $('Etsy: Access Token').first().json.access_token }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        },
+        "contentType": "multipart-form-data",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "image",
+              "inputDataFieldName": "upload"
+            },
+            {
+              "name": "rank",
+              "value": "={{ $json.rank }}"
+            }
+          ]
+        }
+      },
+      "id": "pf01-etsy-upload-image",
+      "name": "Etsy: Upload Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        8320,
+        -228
+      ],
+      "notes": "อัปโหลดภาพที่แสดงในหน้าร้าน",
+      "notesInFlow": true,
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {},
+      "id": "pf01-collect-uploads",
+      "name": "Collect Uploads",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        8580,
+        -228
+      ],
+      "notes": "จุดรวมผลอัปโหลด",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// One summary item: what was made, what it cost, and where it went.\nconst ctx = $('QA Gate').first().json;\nconst listing = $('Parse Listing').first().json.listing || null;\n// Read the decision, not the publish branch: on a run that skipped Etsy, the\n// upload nodes never executed and $('Collect Uploads') would throw.\nconst published = $('Start Run').first().json.publish === true;\n\nreturn [{\n  json: {\n    run_id: ctx.run_id,\n    status: 'succeeded',\n    stage: 'done',\n    dry_run: ctx.dry_run,\n    product_name: ctx.concept.product_name,\n    slug: ctx.concept.slug,\n    niche: ctx.concept.niche,\n    search_phrase: ctx.concept.search_phrase,\n    keywords: ctx.concept.keywords,\n    page_count: ctx.pdf.page_count,\n    link_count: ctx.pdf.link_count,\n    pdf_bytes: ctx.pdf.bytes,\n    sections: ctx.content.sections.map((s) => s.title),\n    listing_title: listing ? listing.title : null,\n    listing_tags: listing ? listing.tags : [],\n    price_usd: listing ? listing.price_usd : null,\n    published,\n    warnings: ctx.warnings,\n    finished_at: new Date().toISOString(),\n  },\n}];\n"
+      },
+      "id": "pf01-summarise-run",
+      "name": "Summarise Run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8840,
+        -114
+      ],
+      "notes": "สรุปผลรอบนี้: ได้สินค้าอะไร กี่หน้า ลิงก์กี่จุด ขึ้น Etsy หรือยัง",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO planner_products (run_id, product_name, slug, niche, search_phrase, keywords,  page_count, link_count, pdf_bytes, listing_title, listing_tags, price_usd) VALUES ('{{ $json.run_id }}', '{{ $json.product_name.replace(/'/g, \"''\") }}', '{{ $json.slug }}', '{{ ($json.niche || '').replace(/'/g, \"''\") }}', '{{ ($json.search_phrase || '').replace(/'/g, \"''\") }}', '{{ JSON.stringify($json.keywords) }}'::jsonb, {{ $json.page_count }}, {{ $json.link_count }}, {{ $json.pdf_bytes }}, '{{ ($json.listing_title || '').replace(/'/g, \"''\") }}', '{{ JSON.stringify($json.listing_tags) }}'::jsonb, {{ $json.price_usd || 'NULL' }}) ON CONFLICT (slug) DO NOTHING;",
+        "options": {}
+      },
+      "id": "pf01-save-product",
+      "name": "Save Product",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        9100,
+        -114
+      ],
+      "notes": "บันทึกสินค้าลงฐานข้อมูล - ใช้กันสร้างซ้ำในรอบถัดไป",
+      "notesInFlow": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "id": "pf01-on-error",
+      "name": "On Error",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        570
+      ],
+      "notes": "รับทุกความล้มเหลวของ workflow นี้",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "\n// The Error Trigger path. Planner Config has not run here, so nothing is read\n// from it - this node only has the failure to work with.\nconst error = $input.first().json;\nconst execution = error.execution || {};\nconst trigger = error.trigger || {};\n\n// n8n keeps only the tail of a long message, so the useful part goes first.\nconst message = String(execution.error?.message || trigger.error?.message || 'unknown error');\nreturn [{\n  json: {\n    status: 'failed',\n    failed_node: execution.lastNodeExecuted || null,\n    message: message.slice(0, 900),\n    workflow: error.workflow?.name || 'Planner Factory',\n    execution_url: execution.url || null,\n    failed_at: new Date().toISOString(),\n  },\n}];\n"
+      },
+      "id": "pf01-format-error",
+      "name": "Format Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        570
+      ],
+      "notes": "เรียบเรียงข้อความ error ให้อ่านรู้เรื่อง (n8n เก็บเฉพาะท้ายข้อความ)",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE planner_runs SET status = 'failed', finished_at = now(), error_message = '{{ $json.message.replace(/'/g, \"''\") }}' WHERE status = 'running';",
+        "options": {}
+      },
+      "id": "pf01-log-failure",
+      "name": "Log Failure",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        520,
+        570
+      ],
+      "notes": "ปิดรอบที่ค้างอยู่ให้เป็น failed",
+      "notesInFlow": true,
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Run Manually": {
+      "main": [
+        [
+          {
+            "node": "Planner Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Weekly Schedule": {
+      "main": [
+        [
+          {
+            "node": "Planner Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Planner Config": {
+      "main": [
+        [
+          {
+            "node": "Prompt Library",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prompt Library": {
+      "main": [
+        [
+          {
+            "node": "Start Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Run": {
+      "main": [
+        [
+          {
+            "node": "Log Run Start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Run Start": {
+      "main": [
+        [
+          {
+            "node": "Recent Products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recent Products": {
+      "main": [
+        [
+          {
+            "node": "Build Concept Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Concept Prompt": {
+      "main": [
+        [
+          {
+            "node": "AI: Concept",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Concept": {
+      "main": [
+        [
+          {
+            "node": "Parse Concept",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Concept": {
+      "main": [
+        [
+          {
+            "node": "Check Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Duplicate": {
+      "main": [
+        [
+          {
+            "node": "Build Writer Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Writer Prompt": {
+      "main": [
+        [
+          {
+            "node": "AI: Writer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Writer": {
+      "main": [
+        [
+          {
+            "node": "Parse Writer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Writer": {
+      "main": [
+        [
+          {
+            "node": "Build Art Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Art Prompt": {
+      "main": [
+        [
+          {
+            "node": "AI: Art Direction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Art Direction": {
+      "main": [
+        [
+          {
+            "node": "Parse Art",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Art": {
+      "main": [
+        [
+          {
+            "node": "Image Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Image Jobs": {
+      "main": [
+        [
+          {
+            "node": "Loop Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Images": {
+      "main": [
+        [
+          {
+            "node": "Gather Images",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Dry Run?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Dry Run?": {
+      "main": [
+        [
+          {
+            "node": "Placeholder Image",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "OpenAI: Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: Image": {
+      "main": [
+        [
+          {
+            "node": "Collect Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Image": {
+      "main": [
+        [
+          {
+            "node": "Loop Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Placeholder Image": {
+      "main": [
+        [
+          {
+            "node": "Loop Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gather Images": {
+      "main": [
+        [
+          {
+            "node": "Build PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build PDF": {
+      "main": [
+        [
+          {
+            "node": "QA Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "QA Gate": {
+      "main": [
+        [
+          {
+            "node": "Build Listing Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Listing Prompt": {
+      "main": [
+        [
+          {
+            "node": "AI: Listing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: Listing": {
+      "main": [
+        [
+          {
+            "node": "Parse Listing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Listing": {
+      "main": [
+        [
+          {
+            "node": "Should Publish?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Publish?": {
+      "main": [
+        [
+          {
+            "node": "Etsy: Access Token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Summarise Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Etsy: Access Token": {
+      "main": [
+        [
+          {
+            "node": "Prepare Etsy Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Etsy Draft": {
+      "main": [
+        [
+          {
+            "node": "Etsy: Create Listing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Etsy: Create Listing": {
+      "main": [
+        [
+          {
+            "node": "Plan Uploads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan Uploads": {
+      "main": [
+        [
+          {
+            "node": "Loop Uploads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Uploads": {
+      "main": [
+        [
+          {
+            "node": "Collect Uploads",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "To Binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "To Binary": {
+      "main": [
+        [
+          {
+            "node": "Is File?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is File?": {
+      "main": [
+        [
+          {
+            "node": "Etsy: Upload File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Etsy: Upload Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Etsy: Upload File": {
+      "main": [
+        [
+          {
+            "node": "Loop Uploads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Etsy: Upload Image": {
+      "main": [
+        [
+          {
+            "node": "Loop Uploads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Uploads": {
+      "main": [
+        [
+          {
+            "node": "Summarise Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarise Run": {
+      "main": [
+        [
+          {
+            "node": "Save Product",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "On Error": {
+      "main": [
+        [
+          {
+            "node": "Format Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Error": {
+      "main": [
+        [
+          {
+            "node": "Log Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "executionTimeout": 3600,
+    "timezone": "Asia/Bangkok"
+  },
+  "pinData": {},
+  "staticData": null,
+  "meta": {
+    "instanceId": "planner-factory"
+  },
+  "tags": [
+    {
+      "name": "planner-factory"
+    }
+  ]
+}
