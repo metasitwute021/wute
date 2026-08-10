@@ -134,6 +134,14 @@ def fixture(factory: dict) -> dict:
                 "pages": pages, "credits": "Made by the studio.",
             }},
             "Validate SEO Package": {"seo": seo},
+            "Parse Metadata JSON": {"metadata": {
+                "product_name": idea["product_name"],
+                "license": "Personal use licence",
+                "category": "paper & party supplies",
+                "prompt_version": "v2",
+                "generated_at": "2026-01-01T00:00:00Z",
+                "tags": ["planner", "printable"],
+            }},
             "Collect Generated Images": {"images": {
                 "cover": {"b64": PLACEHOLDER_JPEG},
                 "thumbnail": {"b64": PLACEHOLDER_PNG},
@@ -459,6 +467,143 @@ console.log(JSON.stringify(CASES.map(([label, lines, expect]) => {
     return failures
 
 
+NAV_HARNESS = """
+const FIXTURE = %s;
+const NODE_JS = %s;
+
+const $ = (name) => {
+  if (!(name in FIXTURE.nodes)) throw new Error('unmocked node: ' + name);
+  return { first: () => ({ json: FIXTURE.nodes[name] }), all: () => [{ json: FIXTURE.nodes[name] }] };
+};
+const $input = { first: () => ({ json: {} }), all: () => [{ json: {} }] };
+const $env = {};
+
+const run = new Function('$', '$input', '$env', 'return (async () => {' + NODE_JS + '})();');
+run($, $input, $env).then((out) => {
+  const j = out[0].json;
+  require('fs').writeFileSync(process.argv[2], Buffer.from(j.pdf_base64, 'base64'));
+  console.log(JSON.stringify({
+    pages: j.pdf_page_count, links: j.pdf_link_count, navigable: j.pdf_navigable,
+  }));
+}).catch((e) => console.log(JSON.stringify({ crashed: String(e.message).slice(0, 240) })));
+"""
+
+
+def _build_pdf(tmp: str, code_of: dict, data: dict) -> tuple[dict, bytes]:
+    script = os.path.join(tmp, "nav.js")
+    output = os.path.join(tmp, "nav.pdf")
+    if os.path.exists(output):
+        os.remove(output)
+    with open(script, "w", encoding="utf-8") as fh:
+        fh.write(NAV_HARNESS % (json.dumps(data),
+                                json.dumps(code_of["Build PDF Document"])))
+    result = subprocess.run(["node", script, output], capture_output=True, text=True)
+    if result.returncode != 0:
+        return {"crashed": result.stderr.strip().splitlines()[-1][:200]}, b""
+    report = json.loads(result.stdout.strip().splitlines()[-1])
+    blob = b""
+    if os.path.exists(output):
+        with open(output, "rb") as fh:
+            blob = fh.read()
+    return report, blob
+
+
+def nav_checks(tmp: str, code_of: dict) -> int:
+    """The planner's tabs and contents page, built by the real Code node.
+
+    Navigation is the whole difference between a $5 printable and a digital
+    planner, and it is invisible in the JSON: only the assembled PDF says
+    whether a tab actually points anywhere.
+    """
+    failures = 0
+    print("\n=== navigation (planner is the only hyperlinked profile) ===")
+
+    for factory in FACTORIES:
+        data = fixture(factory)
+        report, blob = _build_pdf(tmp, code_of, data)
+        key = factory["factory_key"]
+        if report.get("crashed"):
+            print(f"  [CRASH] {key:12s} {report['crashed']}")
+            failures += 1
+            continue
+
+        want_nav = factory["hyperlinked"]
+        annots = blob.count(b"/Subtype /Link")
+        if report["navigable"] != want_nav:
+            print(f"  [FAIL ] {key:12s} navigable={report['navigable']}, expected {want_nav}")
+            failures += 1
+        elif not want_nav:
+            if report["links"] or annots:
+                print(f"  [FAIL ] {key:12s} plain profile grew {report['links']} links")
+                failures += 1
+            else:
+                print(f"  [pass ] {key:12s} plain PDF, {report['pages']} pages, no links")
+        else:
+            # Tabs repeat on every page, so the count scales with the document.
+            expected = report["pages"] - 1
+            if report["links"] < expected:
+                print(f"  [FAIL ] {key:12s} {report['links']} links across "
+                      f"{report['pages']} pages - the strip is not on every page")
+                failures += 1
+            elif annots != report["links"]:
+                print(f"  [FAIL ] {key:12s} builder claims {report['links']} links, "
+                      f"the file carries {annots}")
+                failures += 1
+            else:
+                print(f"  [pass ] {key:12s} {report['pages']} pages, {annots} links, "
+                      f"contents page + tab strip")
+
+    planner = next(f for f in FACTORIES if f["hyperlinked"])
+
+    # One tab per section, not one per page: repeating spreads share a title,
+    # and a strip with 24 entries is unusable on a tablet.
+    data = fixture(planner)
+    for page in data["nodes"]["Parse Content JSON"]["content"]["pages"]:
+        page["title"] = "Monthly Overview"
+    report, blob = _build_pdf(tmp, code_of, data)
+    if report.get("crashed"):
+        print(f"  [CRASH] dedupe: {report['crashed']}")
+        failures += 1
+    else:
+        # Contents + one section tab = 2 tabs per page, plus the contents rows.
+        per_page = 2
+        pages_with_tabs = report["pages"] - 1
+        rows = len(data["nodes"]["Parse Content JSON"]["content"]["pages"])
+        if report["links"] != per_page * pages_with_tabs + rows:
+            print(f"  [FAIL ] repeated titles produced {report['links']} links, "
+                  f"expected {per_page * pages_with_tabs + rows} (tabs did not collapse)")
+            failures += 1
+        else:
+            print(f"  [pass ] 24 identically-titled pages collapse to 1 section tab")
+
+    # The rows-per-page formula is arithmetic against the writer's geometry, so
+    # it is checked on every sheet size a factory could be given rather than
+    # only on the A4 the planner happens to use today.
+    for label, height in (("A4", 841.89), ("Letter", 792), ("A4 landscape", 595.28),
+                          ("A5", 595.28), ("Tabloid", 1224)):
+        data = fixture(planner)
+        data["nodes"]["Merge: Factory Profiles"]["profile"]["page_height_pt"] = height
+        report, _ = _build_pdf(tmp, code_of, data)
+        if report.get("crashed"):
+            print(f"  [FAIL ] contents on {label} ({height}pt): {report['crashed']}")
+            failures += 1
+        else:
+            print(f"  [pass ] contents fits {label:12s} ({height}pt) "
+                  f"-> {report['pages']} pages")
+
+    # And the guard: a hyperlinked profile must not ship without working links.
+    data = fixture(planner)
+    data["nodes"]["Parse Content JSON"]["content"]["pages"] = []
+    report, _ = _build_pdf(tmp, code_of, data)
+    if "Navigation failed" in str(report.get("crashed", "")):
+        print("  [pass ] a planner with no navigable pages is stopped, not shipped")
+    else:
+        print(f"  [FAIL ] empty planner slipped past the navigation guard: {report}")
+        failures += 1
+
+    return failures
+
+
 def main() -> int:
     with open(os.path.join(ROOT, "workflows", "03_product_engine.json"),
               encoding="utf-8") as fh:
@@ -502,6 +647,7 @@ def main() -> int:
         failures += provider_checks(tmp)
         failures += tag_checks(tmp, code_of)
         failures += marker_checks(tmp, code_of)
+        failures += nav_checks(tmp, code_of)
 
     print()
     if failures:

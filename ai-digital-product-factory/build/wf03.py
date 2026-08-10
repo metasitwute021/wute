@@ -32,6 +32,10 @@ FACTORIES = [
         "preview_count": 3,
         "output_formats": ["PDF", "PNG", "JPG", "JSON", "TXT"],
         "svg_required": False,
+        # The tab strip and the tappable contents page are what turn this from
+        # a printable into a digital planner people use on a tablet, so it is
+        # the one profile that asks the PDF writer for navigation.
+        "hyperlinked": True,
         "content_schema": (
             "A dated-agnostic planner: cover, how-to-use page, then repeating "
             "spreads (monthly overview, weekly layout, daily focus, habit "
@@ -59,6 +63,7 @@ FACTORIES = [
         "preview_count": 3,
         "output_formats": ["PDF", "PNG", "JPG", "JSON", "TXT"],
         "svg_required": False,
+        "hyperlinked": False,
         "content_schema": (
             "A focused printable pack: cover, instructions, then standalone "
             "print-and-use sheets (checklists, trackers, worksheets). Each sheet "
@@ -85,6 +90,7 @@ FACTORIES = [
         "preview_count": 3,
         "output_formats": ["PDF", "PNG", "JPG", "SVG", "JSON", "TXT"],
         "svg_required": True,
+        "hyperlinked": False,
         "content_schema": (
             "An editable template kit: cover, brand/style guide page, then "
             "template pages. Every template page must list its editable text "
@@ -112,6 +118,7 @@ FACTORIES = [
         "preview_count": 3,
         "output_formats": ["PDF", "PNG", "JPG", "JSON", "TXT"],
         "svg_required": False,
+        "hyperlinked": False,
         "content_schema": (
             "A wall art set: cover, a short printing/sizing guide (2:3, 3:4, "
             "4:5, ISO ratios), then one page per artwork with a title and a "
@@ -138,6 +145,7 @@ FACTORIES = [
         "preview_count": 3,
         "output_formats": ["PDF", "PNG", "JPG", "SVG", "JSON", "TXT"],
         "svg_required": True,
+        "hyperlinked": False,
         "content_schema": (
             "A resume kit: cover, ATS rules page, a filled example resume, a "
             "blank structure page, a matching cover-letter page, and a page of "
@@ -165,6 +173,7 @@ FACTORIES = [
         "preview_count": 3,
         "output_formats": ["PDF", "PNG", "JPG", "JSON", "TXT"],
         "svg_required": False,
+        "hyperlinked": False,
         "content_schema": (
             "A spreadsheet system delivered as documentation plus a printable "
             "companion: cover, setup guide, one page per sheet listing exact "
@@ -193,6 +202,7 @@ FACTORIES = [
         "preview_count": 3,
         "output_formats": ["PDF", "PNG", "JPG", "SVG", "JSON", "TXT"],
         "svg_required": True,
+        "hyperlinked": False,
         "content_schema": (
             "An age-appropriate activity pack for ages 3-8: cover, a parent "
             "guide page, then activity pages (tracing, counting, matching, "
@@ -221,6 +231,7 @@ FACTORIES = [
         "preview_count": 3,
         "output_formats": ["SVG", "PDF", "PNG", "JPG", "JSON", "TXT"],
         "svg_required": True,
+        "hyperlinked": False,
         "content_schema": (
             "A cut-file bundle: cover, a machine compatibility page (Cricut, "
             "Silhouette, ScanNCut), a sizing/weeding tips page, then one page "
@@ -1116,6 +1127,62 @@ const metadata = $('Parse Metadata JSON').first().json.metadata;
 const pageImages = new Map((imageSet.pages || []).map((p) => [Number(p.page_number), p.b64]));
 const footerLabel = `${idea.product_name} - ${metadata.license}`;
 
+// ---- navigation ----------------------------------------------------------
+// A digital planner is bought for its navigation. Tabs and the contents page
+// are derived from the written pages rather than asked of the agent, so they
+// can never disagree with what the document actually contains.
+const navigable = String(base.profile.hyperlinked) === 'true';
+const anchorFor = (page) => `p${page.page_number}`;
+
+// About 14 characters fit in a tab rotated on its side. Cutting at 14 gave
+// "Monthly Overvi" and "Year at", so filler words go first and then only whole
+// words are kept: "Year at a Glance" reads as "Year Glance", not as a stump.
+const TAB_STOP_WORDS = new Set([
+  'a', 'an', 'the', 'at', 'of', 'for', 'and', 'to', 'in', 'on', 'my', 'your',
+]);
+const tabLabel = (title) => {
+  const words = String(title || '')
+    .replace(/[^A-Za-z0-9 &]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w && !TAB_STOP_WORDS.has(w.toLowerCase()));
+  let label = '';
+  for (const word of words) {
+    const next = label ? `${label} ${word}` : word;
+    if (next.length > 14) break;
+    label = next;
+  }
+  return label || (words[0] || '').slice(0, 14);
+};
+
+let navTabs = [];
+let contentsRows = [];
+if (navigable) {
+  const seen = new Set();
+  for (const page of content.pages) {
+    contentsRows.push({
+      label: `${page.page_number}. ${page.title}`,
+      anchor: anchorFor(page),
+    });
+    const label = tabLabel(page.title);
+    // Repeating spreads share a title on purpose - one tab per section, not
+    // one per page, or the strip is unreadable by March.
+    if (!label || seen.has(label.toLowerCase())) continue;
+    seen.add(label.toLowerCase());
+    navTabs.push({ label, anchor: anchorFor(page) });
+  }
+  navTabs = navTabs.slice(0, 11);
+  navTabs.unshift({ label: 'Contents', anchor: 'contents' });
+}
+
+// How many contents rows fit on one sheet. A fixed cap of 16 silently left the
+// back half of a 24-page planner off the list, so the contents spills onto as
+// many pages as it needs instead.
+// Derived from the writer's own geometry - title block, subtitle, margins and
+// a 1.7x row pitch - and cross-checked by the dropped-row count below.
+const rowsPerContentsPage = Math.max(
+  8, Math.floor((Number(base.profile.page_height_pt) - 200) / 29));
+
 const pdfPages = [];
 
 // 1. Cover
@@ -1134,11 +1201,27 @@ pdfPages.push({
   footer: footerLabel,
 });
 
-// 2. Body
+// 2. Contents (navigable profiles only)
+for (let row = 0; navigable && row < contentsRows.length; row += rowsPerContentsPage) {
+  const first = row === 0;
+  pdfPages.push({
+    type: 'text',
+    title: first ? 'Contents' : 'Contents (continued)',
+    subtitle: first
+      ? 'Tap a line to jump. The tabs on the right work from every page.'
+      : undefined,
+    anchor: first ? 'contents' : undefined,
+    index: contentsRows.slice(row, row + rowsPerContentsPage),
+    footer: footerLabel,
+  });
+}
+
+// 3. Body
 for (const page of content.pages) {
   pdfPages.push({
     type: 'text',
     title: page.title,
+    anchor: navigable ? anchorFor(page) : undefined,
     lines: page.lines,
     footer: `${footerLabel} | page ${page.page_number}`,
   });
@@ -1153,7 +1236,7 @@ for (const page of content.pages) {
   }
 }
 
-// 3. Colophon
+// 4. Colophon
 pdfPages.push({
   type: 'text',
   title: 'Licence and credits',
@@ -1174,6 +1257,7 @@ const result = buildPdf({
   width: base.profile.page_width_pt,
   height: base.profile.page_height_pt,
   pages: pdfPages,
+  tabs: navTabs,
   info: {
     title: metadata.product_name,
     subject: base.research.keyword,
@@ -1181,12 +1265,31 @@ const result = buildPdf({
   },
 });
 
+// A navigable product that shipped without working links is the one defect a
+// buyer notices immediately, so it fails here rather than at the listing.
+if (navigable && result.link_count < 8) {
+  throw new Error(
+    `Navigation failed: this profile is hyperlinked but the PDF carries only ` +
+    `${result.link_count} working links (${result.broken_links} dropped). ` +
+    `Check that every written page has a title.`
+  );
+}
+if (result.dropped_index_rows) {
+  throw new Error(
+    `Contents truncated: ${result.dropped_index_rows} of ${contentsRows.length} ` +
+    `rows did not fit. rowsPerContentsPage (${rowsPerContentsPage}) is too high ` +
+    `for a ${base.profile.page_height_pt}pt page.`
+  );
+}
+
 return [{
   json: {
     run_id: base.run_id,
     pdf_base64: result.buffer.toString('base64'),
     pdf_bytes: result.buffer.length,
     pdf_page_count: result.page_count,
+    pdf_link_count: result.link_count,
+    pdf_navigable: navigable,
   },
 }];
 """.rstrip()
