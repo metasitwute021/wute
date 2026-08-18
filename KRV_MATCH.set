@@ -1,0 +1,79 @@
+; ========================================================================
+;  KRV-MATCH preset — เลียนแบบ KRV V.19 จาก inputs ที่เห็นในภาพ (best-effort)
+;  ⚠️ ใช้ "แบ็คเทสเทียบ KRV" เท่านั้น — ไม่ปลอดภัยสำหรับ prop!
+;     (Confidence เปิด + DD guard หลวม = DD จะสูง)
+;  บางค่าเป็นการ "เดา" (มี [GUESS]) เพราะไม่มีซอร์ส KRV → iterate ทีหลัง
+; ========================================================================
+
+; ---- ENTRY (เหมือน KRV เป๊ะ — ยืนยันได้) ----
+InpDonchianPeriod=20
+InpMAPeriod=50
+InpADXPeriod=14
+InpADXMin=20.0
+InpUseMomentumFilter=true
+InpMomentumPct=30.0
+
+; ---- STOP LOSS (KRV StopLossBuffer=0.5 -> โหมด Donchian buffer 0.5) [GUESS] ----
+InpSLMode=1
+InpSL_ATRPeriod=16
+InpSL_DonchBufferMult=0.5
+
+; ---- RISK ----
+InpRiskPercent=1.0
+InpMaxPositions=1
+InpReentryCooldownBars=1
+InpMaxRiskCapPercent=5.0
+
+; ---- BREAK-EVEN (KRV BreakEvenATRMultiplier=1.5) ----
+InpUseBE_ATR=true
+InpBE_TriggerATR=1.5
+InpBreakEvenR=0.25
+InpBE_BufferPts=200.0
+
+; ---- PARTIAL (KRV 40% @ 1.0 RR) ----
+InpPartialR=1.0
+InpPartialPercent=40.0
+InpLockTrailUntilPartial=true
+InpUseFixedTP=false
+
+; ---- STAGED CLOSES (KRV StrongMove/MiniMove; threshold = [GUESS]) ----
+InpUseStagedCloses=true
+InpStagedMinProfitR=0.5
+InpStrongMoveATRMult=2.75
+InpStrongMoveSLPercent=60.0
+InpMiniMoveATRMult=2.0
+InpMiniMoveClosePercent=80.0
+InpStagedMomentumPct=30.0
+
+; ---- TRAILING (KRV ATR trail 14/5.125; Tr2/Tr3 ตรงกับ KRV อยู่แล้ว) ----
+InpTr1_ATRPeriod=14
+InpTr1_ATRMult=5.125
+InpTr2_ATRPeriod=12
+InpTr2_ATRMult=2.75
+InpTr3_ATRPeriod=16
+InpTr3_ATRMult=2.0
+InpSwingLookback=20
+InpCandleBackShift=3
+InpTrailWidest=true
+InpLetWinnersRun=false
+
+; ---- CONFIDENCE (KRV เปิด — ⚠️ ดัน DD สูง ห้ามใช้ตอนสอบ!) ----
+InpEnableConfidence=true
+InpConfidenceTrades=10
+InpConfMinWinRate=0.45
+InpConfMinPF=1.2
+InpConfidenceMax=2.0
+InpConfidenceMin=0.5
+InpConfidenceSmooth=0.25
+
+; ---- DD GUARD หลวม (เพื่อดูกลยุทธ์ล้วนๆ — ไม่ใช่ค่าสอบ!) ----
+InpMaxDD_Percent=20.0
+InpMaxDD_ResumeBuffer=2.0
+InpDailyDD_Percent=1.5
+InpProfitTargetPercent=0.0
+InpMaxTotalLossPercent=0.0
+InpPeakDDStopPercent=0.0
+
+; ---- NEWS ปิด (แบ็คเทสสะอาด) ----
+InpEnableNewsFilter=false
+InpUseFFNews=false
