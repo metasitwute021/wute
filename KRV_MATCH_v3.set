@@ -1,0 +1,76 @@
+; ========================================================================
+;  KRV-MATCH v3 — Full Clone (รวมทุกอย่างที่แกะจาก Journal ได้)
+;  พิสูจน์แล้วจาก 3 ไม้:
+;    - SL = Donchian-based (1.04 / 1.90 / 2.15 ×ATR = แปรผัน) -> โหมด Donchian
+;    - Partial 40% @ 1.0R | MiniStrong ≥2.0×ATR16 | Trail ATR+MiniStrong+BE
+;    - Cooldown 0 | News 90 min
+;  ⭐ ปิด Confidence (พิสูจน์แล้วว่าทำ DD พุ่ง 20% บน EA เรา)
+;  ⚠️ ไฟล์เทสเท่านั้น — ตัวสอบใช้ EXAM_100K_1Step_10pct.set (แยกคนละส่วน)
+; ========================================================================
+
+; ---- ENTRY (เหมือน KRV เป๊ะ) ----
+InpDonchianPeriod=20
+InpMAPeriod=50
+InpADXPeriod=14
+InpADXMin=20.0
+InpUseMomentumFilter=true
+InpMomentumPct=30.0
+
+; ---- STOP LOSS (Donchian-based — ยืนยันจาก 3 ไม้) ⭐ ----
+InpSLMode=1
+InpSL_ATRPeriod=16
+InpSL_DonchBufferMult=0.5
+
+; ---- RISK ----
+InpRiskPercent=1.0
+InpMaxPositions=1
+InpReentryCooldownBars=0
+InpMaxRiskCapPercent=5.0
+
+; ---- BREAK-EVEN (KRV BreakEvenATRMultiplier=1.5) ----
+InpUseBE_ATR=true
+InpBE_TriggerATR=1.5
+InpBreakEvenR=0.25
+InpBE_BufferPts=200.0
+
+; ---- PARTIAL (40% @ 1.0R — ยืนยันจาก Journal "RR 1.00, 40%") ----
+InpPartialR=1.0
+InpPartialPercent=40.0
+InpLockTrailUntilPartial=true
+InpUseFixedTP=false
+
+; ---- STAGED CLOSES (MiniStrong ≥2.0×ATR16 — ยืนยันจาก Journal) ----
+InpUseStagedCloses=true
+InpStagedMinProfitR=0.5
+InpStrongMoveATRMult=2.75
+InpStrongMoveSLPercent=60.0
+InpMiniMoveATRMult=2.0
+InpMiniMoveClosePercent=80.0
+InpStagedMomentumPct=30.0
+
+; ---- TRAILING (KRV ATR 14/5.125 + StrongMove + MiniStrong) ----
+InpTr1_ATRPeriod=14
+InpTr1_ATRMult=5.125
+InpTr2_ATRPeriod=12
+InpTr2_ATRMult=2.75
+InpTr3_ATRPeriod=16
+InpTr3_ATRMult=2.0
+InpSwingLookback=20
+InpCandleBackShift=3
+InpTrailWidest=true
+InpLetWinnersRun=false
+
+; ---- CONFIDENCE ปิด ⭐ (พิสูจน์แล้วว่าทำ DD พุ่ง 20%) ----
+InpEnableConfidence=false
+
+; ---- DD GUARD หลวม (ดูกลยุทธ์ล้วนๆ — ไม่ใช่ค่าสอบ) ----
+InpMaxDD_Percent=20.0
+InpMaxDD_ResumeBuffer=2.0
+InpDailyDD_Percent=1.5
+InpProfitTargetPercent=0.0
+InpMaxTotalLossPercent=0.0
+InpPeakDDStopPercent=0.0
+
+; ---- NEWS ปิด (แบ็คเทสสะอาด) ----
+InpEnableNewsFilter=false
+InpUseFFNews=false
