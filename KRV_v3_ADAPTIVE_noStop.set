@@ -1,0 +1,83 @@
+; ========================================================================
+;  v3 + ADAPTIVE RISK (ลด DD โดยไม่หยุด EA)
+;  ใช้กับไฟล์: Metasit_XAUUSD_Donchian_EA_ADAPTIVE_RISK.mq5 (ตัวมี ladder!)
+;  - กลยุทธ์ = v3 (KRV clone)
+;  - Adaptive ladder เปิด: แพ้ -> ลด lot 1%->0.75%->0.5% (ลด DD แต่ไม่หยุด)
+;  - hard-stop ปิดหมด (brake/target/DD-lock = 0) -> EA รันเต็มช่วง ไม่ถูกหยุด
+;  ⚠️ ไฟล์เทสเท่านั้น — ตัวสอบใช้ EXAM_100K_1Step_10pct.set (แยกคนละส่วน)
+; ========================================================================
+
+; ---- ENTRY ----
+InpDonchianPeriod=20
+InpMAPeriod=50
+InpADXPeriod=14
+InpADXMin=20.0
+InpUseMomentumFilter=true
+InpMomentumPct=30.0
+
+; ---- STOP LOSS (Donchian แบบ v3) ----
+InpSLMode=1
+InpSL_ATRPeriod=16
+InpSL_DonchBufferMult=0.5
+
+; ---- RISK (adaptive คุมแทน — InpRiskPercent เป็น fallback) ----
+InpRiskPercent=1.0
+InpMaxPositions=1
+InpReentryCooldownBars=0
+InpMaxRiskCapPercent=5.0
+
+; ---- 🎚️ ADAPTIVE RISK LADDER (ลด DD โดยไม่หยุด EA) ⭐ ----
+InpAdaptiveRisk=true
+InpRiskRungHigh=1.0
+InpRiskRungMid=0.75
+InpRiskRungLow=0.5
+InpTrailDD_Percent=4.0
+InpRecoverBufferPct=2.5
+
+; ---- BREAK-EVEN ----
+InpUseBE_ATR=true
+InpBE_TriggerATR=1.5
+InpBreakEvenR=0.25
+InpBE_BufferPts=200.0
+
+; ---- PARTIAL ----
+InpPartialR=1.0
+InpPartialPercent=40.0
+InpLockTrailUntilPartial=true
+InpUseFixedTP=false
+
+; ---- STAGED CLOSES ----
+InpUseStagedCloses=true
+InpStagedMinProfitR=0.5
+InpStrongMoveATRMult=2.75
+InpStrongMoveSLPercent=60.0
+InpMiniMoveATRMult=2.0
+InpMiniMoveClosePercent=80.0
+InpStagedMomentumPct=30.0
+
+; ---- TRAILING ----
+InpTr1_ATRPeriod=14
+InpTr1_ATRMult=5.125
+InpTr2_ATRPeriod=12
+InpTr2_ATRMult=2.75
+InpTr3_ATRPeriod=16
+InpTr3_ATRMult=2.0
+InpSwingLookback=20
+InpCandleBackShift=3
+InpTrailWidest=true
+InpLetWinnersRun=false
+
+; ---- CONFIDENCE ปิด ----
+InpEnableConfidence=false
+
+; ---- HARD-STOP ปิดหมด (EA ไม่ถูกหยุดระหว่างทาง) ⭐ ----
+InpMaxDD_Percent=20.0
+InpMaxDD_ResumeBuffer=2.0
+InpDailyDD_Percent=5.0
+InpProfitTargetPercent=0.0
+InpMaxTotalLossPercent=0.0
+InpPeakDDStopPercent=0.0
+
+; ---- NEWS ปิด ----
+InpEnableNewsFilter=false
+InpUseFFNews=false
