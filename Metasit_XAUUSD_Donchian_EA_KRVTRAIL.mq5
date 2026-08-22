@@ -67,6 +67,7 @@
 //|  This is why KRV keeps DD low WITHOUT hard-stop brakes.           |
 //|    InpTrailFromEntry  = trail from entry (not only in profit)     |
 //|    InpLossCutTightest = when underwater, hug price (tightest)     |
+//|    InpLossCutATRMult  = keep X*ATR room while losing (KRV-smart)  |
 //|  InpTrailFromEntry=false -> behaves exactly like the base EA.     |
 //|  Base EA and exam build are untouched.                            |
 //+------------------------------------------------------------------+
@@ -178,6 +179,7 @@ input bool     InpTrailWidest        = true;       // true = WIDEST (let winners
 input group "🔬  KRV LOSS-CUT TRAIL (experiment)"
 input bool     InpTrailFromEntry     = true;       // 🧪 ON = trail from ENTRY (even when losing) — cut losses early like KRV
 input bool     InpLossCutTightest    = true;       // ↳ when underwater, hug price (tightest) to cut the loss hard
+input double   InpLossCutATRMult     = 0.0;        // ↳ 0=hug tightest (aggressive). >0 = keep this ×ATR room while losing (KRV-smart, fewer whipsaws)
 
 input group "🏃  LET WINNERS RUN (experiment)"
 input bool     InpLetWinnersRun      = false;      // 🧪 ON = skip partial + mini-bank, widen trail (KRV-style runners: lower win%, higher R:R)
@@ -1308,12 +1310,32 @@ void ManageOpenPositions()
          trailAllowed = (!InpLockTrailUntilPartial) || gPosPartialDone[i];
       if(trailAllowed)
       {
-         // Underwater (profitDist <= 0) -> hug price (tightest) to cut the loss early like KRV.
+         // Underwater (profitDist <= 0) -> cut the loss early like KRV.
          // In profit -> use the normal widest/tightest setting (let winners run).
          bool useWidest = InpTrailWidest;
          if(InpTrailFromEntry && InpLossCutTightest && profitDist <= 0.0)
             useWidest = false;
          double newSL = ComputeTrailingSL(isBuy, cur, useWidest);
+
+         // 🔬 KRV-smart loss-cut: instead of hugging price (whipsaw death), keep a
+         // fixed ATR "grace room" while underwater. Only cuts trades that move hard
+         // against us (real losers), lets normal pullbacks breathe -> higher win rate.
+         if(InpTrailFromEntry && profitDist <= 0.0 && InpLossCutATRMult > 0.0)
+         {
+            double atrLC;
+            if(BufVal(hATRslBuf, 0, 1, atrLC) && atrLC > 0.0)
+            {
+               double room   = atrLC * InpLossCutATRMult;
+               double floorSL = isBuy ? cur - room : cur + room;
+               // never let the loss-cut SL sit TIGHTER than the grace floor
+               if(newSL <= 0.0)
+                  newSL = floorSL;
+               else if(isBuy)
+                  newSL = MathMin(newSL, floorSL);   // farther from price = lower SL for a buy
+               else
+                  newSL = MathMax(newSL, floorSL);   // farther from price = higher SL for a sell
+            }
+         }
          if(newSL > 0.0 && ModifySL(ticket, isBuy, newSL, sl))
          {
             string arrow = isBuy ? "⬆️" : "⬇️";
