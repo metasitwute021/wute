@@ -1,0 +1,78 @@
+; ========================================================================
+;  KRVTRAIL test — "Trail from entry" คุม DD ได้ไหม โดย "ไม่มีเบรก"?
+;  ใช้กับไฟล์: Metasit_XAUUSD_Donchian_EA_KRVTRAIL.mq5
+;  ฐาน = กลยุทธ์ตัวสอบเรา (SL_ATR + partial 2R + confidence off)
+;  + เพิ่ม: Trail from entry (ตัดไม้แพ้เร็วแบบ KRV)
+;  + ปิด hard-stop ทั้งหมด (เพื่อดูว่า trail อย่างเดียวคุม DD ได้ไหม)
+;
+;  วิธีทดสอบ: รัน 2 รอบ (เปลี่ยนแค่ InpTrailFromEntry true↔false)
+;    - true  = มี loss-cut trail
+;    - false = เหมือน EA เดิม
+;  ผลต่างของ DD = ผลของฟีเจอร์นี้
+;  ⚠️ ไฟล์เทสเท่านั้น — ตัวสอบใช้ EXAM_100K_1Step_10pct.set (แยกคนละส่วน)
+; ========================================================================
+
+; ---- ENTRY (เหมือนตัวสอบ) ----
+InpUseMomentumFilter=true
+InpMomentumPct=30.0
+InpADXMin=20.0
+
+; ---- STOP LOSS (ATR แบบตัวสอบ) ----
+InpSLMode=0
+InpSL_ATRPeriod=16
+InpSL_ATRMult=1.5
+
+; ---- RISK ----
+InpRiskPercent=1.0
+InpMaxPositions=1
+InpReentryCooldownBars=1
+InpMaxRiskCapPercent=1.7
+
+; ---- BREAK-EVEN ----
+InpUseBE_ATR=true
+InpBE_TriggerATR=1.0
+InpBreakEvenR=0.25
+InpBE_BufferPts=200.0
+
+; ---- PARTIAL (แบบตัวสอบ 2R) ----
+InpPartialR=2.0
+InpPartialPercent=40.0
+InpLockTrailUntilPartial=true
+InpUseFixedTP=false
+
+; ---- STAGED CLOSES (แบบตัวสอบ) ----
+InpUseStagedCloses=true
+InpStrongMoveATRMult=1.6
+InpStrongMoveSLPercent=60.0
+InpMiniMoveATRMult=1.0
+InpMiniMoveClosePercent=80.0
+InpStagedMomentumPct=30.0
+
+; ---- TRAILING LAYERS (แบบตัวสอบ) ----
+InpTr1_ATRPeriod=18
+InpTr1_ATRMult=5.75
+InpTr2_ATRPeriod=12
+InpTr2_ATRMult=2.75
+InpTr3_ATRPeriod=16
+InpTr3_ATRMult=2.0
+InpSwingLookback=20
+InpCandleBackShift=3
+InpTrailWidest=true
+InpLetWinnersRun=false
+
+; ---- 🔬 KRV LOSS-CUT TRAIL (ฟีเจอร์ใหม่ที่ทดสอบ) ⭐ ----
+InpTrailFromEntry=true
+InpLossCutTightest=true
+
+; ---- HARD-STOP ปิดหมด (ทดสอบว่า trail อย่างเดียวคุม DD ได้ไหม) ⭐ ----
+InpMaxDD_Percent=20.0
+InpMaxDD_ResumeBuffer=2.0
+InpDailyDD_Percent=5.0
+InpProfitTargetPercent=0.0
+InpMaxTotalLossPercent=0.0
+InpPeakDDStopPercent=0.0
+
+; ---- Confidence + News ปิด ----
+InpEnableConfidence=false
+InpEnableNewsFilter=false
+InpUseFFNews=false
