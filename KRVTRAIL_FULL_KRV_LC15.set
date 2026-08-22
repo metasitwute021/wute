@@ -1,0 +1,88 @@
+; ========================================================================
+;  KRVTRAIL "FULL KRV" — สูตรเต็ม KRV: ตัดไม้แพ้เล็ก + เพิ่ม lot ตอนชนะ
+;  ใช้กับไฟล์: Metasit_XAUUSD_Donchian_EA_KRVTRAIL.mq5
+;  = KRVTRAIL_smart (loss-cut มีระยะหายใจ) + Confidence เปิด (เพิ่ม lot ตอนฟอร์มดี)
+;
+;  ⭐ หัวใจ KRV = ไม้แพ้เล็ก (loss-cut) จึง "กล้า" เร่ง lot ตอนชนะได้
+;     - loss-cut ทำให้ win rate/PF ผ่าน "ประตู" ของ confidence
+;       (InpConfMinWinRate=0.45, InpConfMinPF=1.2)
+;     - ผ่านแล้ว confidence ถึงจะเร่ง lot ขึ้น (0.5x..2.0x)
+;     - ถ้า loss-cut ไม่ดีพอ (WR<45% / PF<1.2) -> confidence จะ "ลด" lot ไม่ใช่เพิ่ม
+;  ⚠️ confidence = ตัวทำ DD พุ่งบน EA เรา (พิสูจน์แล้ว 20%)
+;     -> เทสนี้เพื่อดูว่า "loss-cut คุม DD ไว้ได้ไหม แม้เปิด confidence"
+;  ⚠️ ไฟล์เทสเท่านั้น — ตัวสอบใช้ EXAM_100K_1Step_10pct.set (แยกคนละส่วน)
+; ========================================================================
+
+; ---- ENTRY (เหมือนตัวสอบ) ----
+InpUseMomentumFilter=true
+InpMomentumPct=30.0
+InpADXMin=20.0
+
+; ---- STOP LOSS (ATR แบบตัวสอบ) ----
+InpSLMode=0
+InpSL_ATRPeriod=16
+InpSL_ATRMult=1.5
+
+; ---- RISK ----
+InpRiskPercent=1.0
+InpMaxPositions=1
+InpReentryCooldownBars=1
+InpMaxRiskCapPercent=2.0
+
+; ---- BREAK-EVEN ----
+InpUseBE_ATR=true
+InpBE_TriggerATR=1.0
+InpBreakEvenR=0.25
+InpBE_BufferPts=200.0
+
+; ---- PARTIAL (แบบตัวสอบ 2R) ----
+InpPartialR=2.0
+InpPartialPercent=40.0
+InpLockTrailUntilPartial=true
+InpUseFixedTP=false
+
+; ---- STAGED CLOSES (แบบตัวสอบ) ----
+InpUseStagedCloses=true
+InpStrongMoveATRMult=1.6
+InpStrongMoveSLPercent=60.0
+InpMiniMoveATRMult=1.0
+InpMiniMoveClosePercent=80.0
+InpStagedMomentumPct=30.0
+
+; ---- TRAILING LAYERS (แบบตัวสอบ) ----
+InpTr1_ATRPeriod=18
+InpTr1_ATRMult=5.75
+InpTr2_ATRPeriod=12
+InpTr2_ATRMult=2.75
+InpTr3_ATRPeriod=16
+InpTr3_ATRMult=2.0
+InpSwingLookback=20
+InpCandleBackShift=3
+InpTrailWidest=true
+InpLetWinnersRun=false
+
+; ---- 🔬 KRV LOSS-CUT TRAIL แบบ SMART ⭐ ----
+InpTrailFromEntry=true
+InpLossCutTightest=true
+InpLossCutATRMult=1.5
+
+; ---- 🎚️ CONFIDENCE เปิด — เพิ่ม lot ตอนชนะ (ตัวคืนกำไรของ KRV) ⭐ ----
+InpEnableConfidence=true
+InpConfidenceTrades=10
+InpConfidenceMin=0.5
+InpConfidenceMax=2.0
+InpConfidenceSmooth=0.25
+InpConfMinWinRate=0.45
+InpConfMinPF=1.2
+
+; ---- HARD-STOP ปิดหมด (ดูว่า loss-cut คุม DD ได้ไหม แม้เปิด confidence) ⭐ ----
+InpMaxDD_Percent=20.0
+InpMaxDD_ResumeBuffer=2.0
+InpDailyDD_Percent=5.0
+InpProfitTargetPercent=0.0
+InpMaxTotalLossPercent=0.0
+InpPeakDDStopPercent=0.0
+
+; ---- News ปิด ----
+InpEnableNewsFilter=false
+InpUseFFNews=false
