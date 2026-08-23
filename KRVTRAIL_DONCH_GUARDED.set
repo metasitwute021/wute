@@ -1,0 +1,91 @@
+; ========================================================================
+;  KRVTRAIL "DONCHIAN + เกราะ" — KRV engine + guard แบบตัวสอบ
+;  ใช้กับไฟล์: Metasit_XAUUSD_Donchian_EA_KRVTRAIL.mq5 (ต้องคอมไพล์ใหม่!)
+;
+;  ผล sweep เฉลย: loss-cut แบบระยะ ATR = ทางตัน (คงที่ ไม่ยืดหยุ่น)
+;  หลักฐาน Journal: KRV ใช้ SL แบบ Donchian (แปรผัน 1.04/1.90/2.15 ×ATR)
+;  -> เทสนี้: ทั้ง SL เริ่มต้น + loss-cut = Donchian (ตามโครงสร้างจริง)
+;     ตลาดนิ่ง = ตัดใกล้ (ไม้แพ้เล็ก) / ตลาดผันผวน = เว้นระยะ (ไม่โดน whipsaw)
+;  + confidence เปิด (เพิ่ม lot ตอนชนะ) — ดูว่า Donchian คุม DD ได้ดีกว่า ATR ไหม
+;  ⚠️ ไฟล์เทสเท่านั้น — ตัวสอบใช้ EXAM_100K_1Step_10pct.set (แยกคนละส่วน)
+; ========================================================================
+
+; ---- ENTRY (เหมือนตัวสอบ/KRV) ----
+InpDonchianPeriod=20
+InpMAPeriod=50
+InpADXPeriod=14
+InpADXMin=20.0
+InpUseMomentumFilter=true
+InpMomentumPct=30.0
+
+; ---- STOP LOSS = Donchian (แปรผัน แบบ KRV) ⭐ ----
+InpSLMode=1
+InpSL_ATRPeriod=16
+InpSL_DonchBufferMult=0.5
+
+; ---- RISK ----
+InpRiskPercent=1.0
+InpMaxPositions=1
+InpReentryCooldownBars=1
+InpMaxRiskCapPercent=2.0
+
+; ---- BREAK-EVEN ----
+InpUseBE_ATR=true
+InpBE_TriggerATR=1.0
+InpBreakEvenR=0.25
+InpBE_BufferPts=200.0
+
+; ---- PARTIAL (แบบตัวสอบ 2R) ----
+InpPartialR=2.0
+InpPartialPercent=40.0
+InpLockTrailUntilPartial=true
+InpUseFixedTP=false
+
+; ---- STAGED CLOSES (แบบตัวสอบ) ----
+InpUseStagedCloses=true
+InpStrongMoveATRMult=1.6
+InpStrongMoveSLPercent=60.0
+InpMiniMoveATRMult=1.0
+InpMiniMoveClosePercent=80.0
+InpStagedMomentumPct=30.0
+
+; ---- TRAILING LAYERS (แบบตัวสอบ) ----
+InpTr1_ATRPeriod=18
+InpTr1_ATRMult=5.75
+InpTr2_ATRPeriod=12
+InpTr2_ATRMult=2.75
+InpTr3_ATRPeriod=16
+InpTr3_ATRMult=2.0
+InpSwingLookback=20
+InpCandleBackShift=3
+InpTrailWidest=true
+InpLetWinnersRun=false
+
+; ---- 🔬 KRV LOSS-CUT = DONCHIAN (แปรผัน) ⭐⭐ ----
+InpTrailFromEntry=true
+InpLossCutTightest=true
+InpLossCutATRMult=0.0
+InpLossCutMode=1
+
+; ---- 🎚️ CONFIDENCE เปิด — เพิ่ม lot ตอนชนะ ----
+InpEnableConfidence=true
+InpConfidenceTrades=10
+InpConfidenceMin=0.5
+InpConfidenceMax=2.0
+InpConfidenceSmooth=0.25
+InpConfMinWinRate=0.45
+InpConfMinPF=1.2
+
+; ---- 🛡️ เกราะ (guard) แบบตัวสอบ — ProfitTarget=0 เพื่อดู DD เต็มช่วง ----
+InpMaxDD_Percent=3.5
+InpMaxDD_ResumeBuffer=2.0
+InpDailyDD_Percent=2.0
+InpProfitTargetPercent=0.0
+InpMaxTotalLossPercent=4.5
+InpPeakDDStopPercent=0.0
+InpNoWeekendHold=true
+InpWeekendCloseHour=20
+
+; ---- News ปิด ----
+InpEnableNewsFilter=false
+InpUseFFNews=false
