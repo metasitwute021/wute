@@ -68,6 +68,7 @@
 //|    InpTrailFromEntry  = trail from entry (not only in profit)     |
 //|    InpLossCutTightest = when underwater, hug price (tightest)     |
 //|    InpLossCutATRMult  = keep X*ATR room while losing (KRV-smart)  |
+//|    InpLossCutMode     = 0 ATR / 1 Donchian band (variable, KRV)   |
 //|  InpTrailFromEntry=false -> behaves exactly like the base EA.     |
 //|  Base EA and exam build are untouched.                            |
 //+------------------------------------------------------------------+
@@ -180,6 +181,7 @@ input group "🔬  KRV LOSS-CUT TRAIL (experiment)"
 input bool     InpTrailFromEntry     = true;       // 🧪 ON = trail from ENTRY (even when losing) — cut losses early like KRV
 input bool     InpLossCutTightest    = true;       // ↳ when underwater, hug price (tightest) to cut the loss hard
 input double   InpLossCutATRMult     = 0.0;        // ↳ 0=hug tightest (aggressive). >0 = keep this ×ATR room while losing (KRV-smart, fewer whipsaws)
+input int      InpLossCutMode        = 0;          // ↳ 0=ATR-based (tested, dead-end) · 1=Donchian band (variable, structure-based like KRV)
 
 input group "🏃  LET WINNERS RUN (experiment)"
 input bool     InpLetWinnersRun      = false;      // 🧪 ON = skip partial + mini-bank, widen trail (KRV-style runners: lower win%, higher R:R)
@@ -1317,23 +1319,41 @@ void ManageOpenPositions()
             useWidest = false;
          double newSL = ComputeTrailingSL(isBuy, cur, useWidest);
 
-         // 🔬 KRV-smart loss-cut: instead of hugging price (whipsaw death), keep a
-         // fixed ATR "grace room" while underwater. Only cuts trades that move hard
-         // against us (real losers), lets normal pullbacks breathe -> higher win rate.
-         if(InpTrailFromEntry && profitDist <= 0.0 && InpLossCutATRMult > 0.0)
+         // 🔬 KRV loss-cut while underwater.
+         if(InpTrailFromEntry && profitDist <= 0.0)
          {
-            double atrLC;
-            if(BufVal(hATRslBuf, 0, 1, atrLC) && atrLC > 0.0)
+            if(InpLossCutMode == 1)
             {
-               double room   = atrLC * InpLossCutATRMult;
-               double floorSL = isBuy ? cur - room : cur + room;
-               // never let the loss-cut SL sit TIGHTER than the grace floor
-               if(newSL <= 0.0)
-                  newSL = floorSL;
-               else if(isBuy)
-                  newSL = MathMin(newSL, floorSL);   // farther from price = lower SL for a buy
+               // Donchian loss-cut: cut to the recent N-bar band (variable, structure-based
+               // like KRV). Calm market -> band near price -> cuts close. Volatile -> band far
+               // -> gives room. Replaces the fixed-ATR distance that proved to be a dead end.
+               double atrLC; double buf = 0.0;
+               if(BufVal(hATRslBuf, 0, 1, atrLC) && atrLC > 0.0)
+                  buf = InpSL_DonchBufferMult * atrLC;
+               if(isBuy)
+               {
+                  int loIdx = iLowest(_Symbol, InpEntryTF, MODE_LOW, InpDonchianPeriod, 1);
+                  if(loIdx >= 0) { double dSL = iLow(_Symbol,InpEntryTF,loIdx) - buf; if(dSL > 0.0) newSL = dSL; }
+               }
                else
-                  newSL = MathMax(newSL, floorSL);   // farther from price = higher SL for a sell
+               {
+                  int hiIdx = iHighest(_Symbol, InpEntryTF, MODE_HIGH, InpDonchianPeriod, 1);
+                  if(hiIdx >= 0) newSL = iHigh(_Symbol,InpEntryTF,hiIdx) + buf;
+               }
+            }
+            else if(InpLossCutATRMult > 0.0)
+            {
+               // ATR "grace room": keep a fixed ATR distance while underwater instead of
+               // hugging price. (Sweep showed this is inert >=1.5xATR and harmful at 1.0.)
+               double atrLC;
+               if(BufVal(hATRslBuf, 0, 1, atrLC) && atrLC > 0.0)
+               {
+                  double room   = atrLC * InpLossCutATRMult;
+                  double floorSL = isBuy ? cur - room : cur + room;
+                  if(newSL <= 0.0)         newSL = floorSL;
+                  else if(isBuy)           newSL = MathMin(newSL, floorSL);
+                  else                     newSL = MathMax(newSL, floorSL);
+               }
             }
          }
          if(newSL > 0.0 && ModifySL(ticket, isBuy, newSL, sl))
