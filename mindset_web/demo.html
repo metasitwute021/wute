@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>เดโม: เว็บทดสอบ Mindset แบบแตกกิ่ง</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --ink:#1c2024; --muted:#616a75; --line:#e2e6eb;
+    --accent:#3f6fd8; --accent-soft:#e8eefb; --ok:#2e7d52; --warn:#b06a12; --danger:#b4392f;
+    --radius:14px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#14171b; --card:#1c2126; --ink:#e8eaed; --muted:#9aa4b0; --line:#2b323a;
+      --accent:#7aa2f7; --accent-soft:#232c3d; --ok:#68c48f; --warn:#e0a34a; --danger:#e8837a;
+    }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:"Noto Sans Thai","Sarabun","IBM Plex Sans Thai",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    line-height:1.7; -webkit-text-size-adjust:100%;
+  }
+  .wrap{max-width:680px; margin:0 auto; padding:20px 16px 64px}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:20px; margin-bottom:16px}
+  h1{font-size:1.45rem; line-height:1.45; margin:0 0 8px}
+  h2{font-size:1.1rem; margin:0 0 10px}
+  h3{font-size:.95rem; margin:18px 0 8px; color:var(--muted); font-weight:600; letter-spacing:.02em}
+  p{margin:0 0 12px}
+  .muted{color:var(--muted); font-size:.9rem}
+  .tiny{font-size:.8rem; color:var(--muted)}
+  button{font:inherit; cursor:pointer; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--ink); padding:12px 16px}
+  button:hover{border-color:var(--accent)}
+  .btn-primary{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600}
+  .btn-primary:hover{filter:brightness(1.08)}
+  .btn-row{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:16px}
+  .opt{display:block; width:100%; text-align:right; text-align:start; margin-bottom:10px; padding:14px 16px; transition:border-color .12s, background .12s}
+  .opt.sel{border-color:var(--accent); background:var(--accent-soft)}
+  .opt .k{display:inline-block; width:22px; color:var(--muted); font-size:.85rem}
+  .bar{height:6px; background:var(--line); border-radius:99px; overflow:hidden}
+  .bar > i{display:block; height:100%; background:var(--accent); border-radius:99px; transition:width .25s}
+  .topbar{display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:8px; font-size:.85rem; color:var(--muted)}
+  .pill{display:inline-block; font-size:.75rem; padding:2px 9px; border-radius:99px; border:1px solid var(--line); color:var(--muted); margin-inline-end:6px}
+  .pill.edge{border-color:var(--accent); color:var(--accent)}
+  .pill.skip{border-color:var(--warn); color:var(--warn)}
+  .stage{background:linear-gradient(160deg,#232c3d,#0f1620); color:#eef2f8; border-radius:12px; padding:28px 20px; min-height:190px; display:flex; align-items:center; justify-content:center; text-align:center; font-size:1.05rem}
+  .stage span{opacity:0; transition:opacity .45s}
+  .stage span.on{opacity:1}
+  .reader{max-height:200px; overflow-y:auto; border:1px solid var(--line); border-radius:10px; padding:14px; background:var(--bg)}
+  .axis{margin-bottom:16px}
+  .axis-head{display:flex; justify-content:space-between; font-size:.85rem; margin-bottom:4px}
+  .axis-ends{display:flex; justify-content:space-between; font-size:.75rem; color:var(--muted); margin-top:3px}
+  .track{position:relative; height:10px; background:var(--line); border-radius:99px}
+  .track > i{position:absolute; top:-3px; width:16px; height:16px; border-radius:99px; background:var(--accent); border:2px solid var(--card); transform:translateX(-50%)}
+  .obs{border-inline-start:3px solid var(--line); padding:2px 0 2px 12px; margin-bottom:14px}
+  .obs.high{border-color:var(--ok)} .obs.mid{border-color:var(--warn)} .obs.low{border-color:var(--danger)}
+  .obs b{font-weight:600}
+  .conf{font-size:.75rem; padding:1px 7px; border-radius:99px; border:1px solid var(--line); color:var(--muted); margin-inline-start:6px; white-space:nowrap}
+  pre{background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:12px; overflow:auto; max-height:300px; font-size:.72rem; line-height:1.5}
+  .map{display:flex; flex-wrap:wrap; gap:6px; align-items:center}
+  .node{font-size:.78rem; padding:4px 10px; border-radius:99px; border:1px solid var(--line); background:var(--bg)}
+  .node.e{border-color:var(--accent); color:var(--accent)}
+  .node.s{border-color:var(--warn); color:var(--warn); text-decoration:line-through}
+  .arrow{color:var(--muted); font-size:.75rem}
+  .note{background:var(--accent-soft); border:1px solid var(--line); border-radius:10px; padding:12px; font-size:.88rem}
+  .hide{display:none}
+  ul{margin:0 0 12px; padding-inline-start:20px}
+  li{margin-bottom:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- ============ หน้าต้อนรับ ============ -->
+<section id="welcome">
+  <div class="card">
+    <h1>🧠 แบบทดสอบ Mindset ที่ดูมากกว่าคำตอบของคุณ</h1>
+    <p class="muted">เดโม Phase 0 — พิสูจน์กลไก ไม่ใช่ผลจิตวิทยาจริง</p>
+    <p>แบบทดสอบนี้ไม่ได้มีชุดคำถามตายตัว <b>แต่ละคำตอบของคุณจะพาไปเจอคำถามคนละชุด</b> เหมือนแตกกิ่งบน mind-map — คนสองคนที่ทำเว็บนี้จะไม่ได้เจอคำถามเหมือนกัน</p>
+
+    <h3>สิ่งที่เราบันทึก (บอกก่อน ไม่ซ่อน)</h3>
+    <ul>
+      <li>คำตอบที่คุณเลือก</li>
+      <li>ข้อที่คุณ <b>กดข้าม</b></li>
+      <li>การ <b>ย้อนกลับไปแก้ข้อเดิม</b> และคุณเปลี่ยนคำตอบจริงหรือแค่กลับไปดู</li>
+      <li>คุณ <b>ดูคลิป/อ่านบทความจนจบ</b> หรือข้ามกลางคัน</li>
+      <li>เวลาที่ใช้ก่อนแตะตัวเลือกแรก และเวลารวมต่อข้อ</li>
+    </ul>
+
+    <div class="note">
+      🔒 <b>เดโมนี้ไม่ส่งข้อมูลออกจากเครื่องคุณเลย</b> — ทุกอย่างอยู่ในหน่วยความจำของเบราว์เซอร์ ปิดหน้าต่างแล้วหายหมด
+      และคุณจะได้เห็น <b>log ดิบทั้งหมด</b> ที่หน้าสรุปผล
+    </div>
+
+    <div class="btn-row">
+      <button class="btn-primary" id="btnStart">ยินยอมและเริ่มทำ →</button>
+      <span class="tiny">ประมาณ 9 ข้อ · 3–4 นาที</span>
+    </div>
+  </div>
+  <p class="tiny">⚕️ ไม่ใช่การวินิจฉัยหรือคำแนะนำทางจิตวิทยา/การแพทย์ · หากมีความทุกข์ทางใจ โทรสายด่วนสุขภาพจิต 1323</p>
+</section>
+
+<!-- ============ หน้าทำแบบทดสอบ ============ -->
+<section id="test" class="hide">
+  <div class="topbar">
+    <span id="progText">ข้อ 1</span>
+    <span id="branchTag"></span>
+  </div>
+  <div class="bar" style="margin-bottom:14px"><i id="progBar" style="width:0%"></i></div>
+  <div class="card" id="itemCard"></div>
+  <div class="btn-row" style="margin-top:0">
+    <button id="btnBack">← ย้อนกลับ</button>
+    <button id="btnSkip">ข้ามข้อนี้</button>
+    <button id="btnEnd" style="margin-inline-start:auto">พอแล้ว ดูผลเลย</button>
+  </div>
+</section>
+
+<!-- ============ หน้าผล ============ -->
+<section id="result" class="hide"></section>
+
+</div>
+
+<script>
+/* =====================================================================
+   เดโม: เว็บทดสอบ mindset แบบแตกกิ่ง (Phase 0)
+   โครงสร้างโค้ดตั้งใจแยกเป็น 3 ส่วนชัด ๆ ให้ยกไปทำเป็นระบบจริงได้ตรง ๆ:
+     1) POOL      — คลังข้อ (ตอนทำจริงย้ายไปอยู่ฝั่งเซิร์ฟเวอร์)
+     2) ENGINE    — logEvent / scoreState / pickNext   (หัวใจ)
+     3) UI        — render / handler                    (เปลี่ยนเป็น React ได้)
+   ===================================================================== */
+
+/* ---------- 1) คลังข้อ ----------
+   weights: O,C,E,A,N = Big Five / G = growth mindset (บวก = growth, ลบ = fixed)
+   edges  : เส้นบังคับ  { optionId: itemIdถัดไป }
+   ผู้ใช้เจอจริง 9 ข้อ จากคลัง 15 ข้อ                                   */
+const MAX_ITEMS = 9;
+
+const POOL = [
+  { id:"q_plan", type:"question", tags:["C"], start:true, skippable:true,
+    prompt:"ได้งานใหญ่ที่มีเวลา 2 สัปดาห์ สิ่งแรกที่คุณทำคือ...",
+    options:[
+      {id:"a", label:"แบ่งเป็นงานย่อย แล้วลงปฏิทินทันที", w:{C:2}},
+      {id:"b", label:"เริ่มจากส่วนที่สนุกที่สุดก่อน", w:{C:-1,O:1}},
+      {id:"c", label:"รอให้ใกล้เดดไลน์แล้วค่อยลุยรวดเดียว", w:{C:-2}}
+    ],
+    edges:{ a:"q_plan_break", c:"q_deadline" } },
+
+  { id:"q_plan_break", type:"question", tags:["C","N"], skippable:true,
+    prompt:"แล้วถ้าแผนที่วางไว้พังตั้งแต่วันที่ 3 คุณจะ...",
+    options:[
+      {id:"a", label:"วางแผนใหม่ทั้งหมดให้เรียบร้อยก่อนไปต่อ", w:{C:2,N:1}},
+      {id:"b", label:"ปรับหน้างานไปเรื่อย ๆ ไม่ต้องแผนใหม่", w:{C:-1,O:1}},
+      {id:"c", label:"หงุดหงิดจนทำอะไรไม่ถูกอยู่พักหนึ่ง", w:{N:2,C:-1}}
+    ] },
+
+  { id:"q_deadline", type:"question", tags:["C","N"], skippable:true,
+    prompt:"ตอนรอใกล้เดดไลน์ ความรู้สึกที่ใกล้เคียงที่สุดคือ...",
+    options:[
+      {id:"a", label:"สนุก ได้พลังจากความกดดัน", w:{N:-1,E:1}},
+      {id:"b", label:"กังวลตลอดเวลา แต่ก็ยังไม่เริ่มอยู่ดี", w:{N:2,C:-1}},
+      {id:"c", label:"เฉย ๆ รู้ว่าเดี๋ยวก็เสร็จ", w:{N:-2}}
+    ] },
+
+  { id:"v_fail", type:"video", tags:["G","C"], skippable:true,
+    prompt:"ดูคลิปสั้นนี้ให้จบ แล้วตอบว่าคุณคิดยังไง",
+    slides:[
+      "🎬 มีคนหนึ่ง ฝึกอย่างหนักมา 6 เดือน",
+      "🏁 วันแข่งจริง... เขาแพ้ ตั้งแต่รอบแรก",
+      "😶 เขานั่งอยู่ตรงนั้น เงียบ ๆ อยู่นาน",
+      "📓 คืนนั้น เขาเปิดสมุด เขียนว่า \"พลาดตรงไหน\"",
+      "🌅 เช้าวันรุ่งขึ้น เขากลับไปที่สนามซ้อม"
+    ],
+    slideMs:2600,
+    options:[
+      {id:"a", label:"เขาน่าจะยังไม่เก่งพอตั้งแต่แรก", w:{G:-2}},
+      {id:"b", label:"เขาซ้อมผิดวิธี ไม่ใช่ไม่เก่ง", w:{G:2,C:1}},
+      {id:"c", label:"แพ้ครั้งเดียวยังบอกอะไรไม่ได้", w:{G:1}}
+    ],
+    edges:{ a:"q_criticism", b:"q_effort" } },
+
+  { id:"q_criticism", type:"question", tags:["G","A"], skippable:true,
+    prompt:"หัวหน้าติงานคุณต่อหน้าคนอื่น ปฏิกิริยาแรกในใจคุณคือ...",
+    feedback:"💬 ข้อมูลเพิ่มเติม: จากการสำรวจ คนที่เลือกข้อแรกในคำถามลักษณะนี้ มักรายงานว่าตัวเองเครียดกับ feedback มากกว่าค่าเฉลี่ย — เมื่อเห็นข้อมูลนี้แล้ว คุณอยากเปลี่ยนคำตอบไหม?",
+    options:[
+      {id:"a", label:"อาย/โกรธ รู้สึกโดนลดค่าต่อหน้าคน", w:{G:-2,N:2}},
+      {id:"b", label:"อยากรู้ว่าเขาเห็นอะไรที่เราไม่เห็น", w:{G:2,O:1}},
+      {id:"c", label:"เฉย ๆ ค่อยไปคุยส่วนตัวทีหลัง", w:{G:1,N:-1,A:1}}
+    ],
+    edges:{ a:"q_compare", b:"q_effort" } },
+
+  { id:"q_effort", type:"question", tags:["G"], skippable:true,
+    prompt:"\"ถ้าต้องพยายามหนักมาก แปลว่าเราไม่ถนัดด้านนั้น\" คุณเห็นด้วยแค่ไหน",
+    options:[
+      {id:"a", label:"เห็นด้วยมาก", w:{G:-2}},
+      {id:"b", label:"เห็นด้วยบ้าง แล้วแต่เรื่อง", w:{G:0}},
+      {id:"c", label:"ไม่เห็นด้วยเลย ความพยายามคือทางเดียวที่มี", w:{G:2}}
+    ],
+    edges:{ a:"q_compare", c:"q_risk" } },
+
+  { id:"r_article", type:"reading", tags:["O","C"], skippable:true,
+    prompt:"อ่านข้อความสั้นนี้ แล้วตอบด้านล่าง",
+    body:[
+      "ปี 1975 วิศวกรของ Kodak คนหนึ่งประกอบกล้องดิจิทัลตัวแรกของโลกสำเร็จ มันหนัก 3.6 กิโลกรัม ใช้เวลา 23 วินาทีต่อการถ่ายหนึ่งภาพ และให้ภาพขาวดำความละเอียด 0.01 ล้านพิกเซล",
+      "เขาเอาไปเสนอผู้บริหาร คำตอบที่ได้กลับมาคือ \"น่าสนใจนะ แต่อย่าไปบอกใคร\"",
+      "เหตุผลไม่ได้โง่เลย ตอนนั้น Kodak ทำกำไรมหาศาลจากการขายฟิล์ม กล้องที่ไม่ต้องใช้ฟิล์มจึงไม่ใช่โอกาส แต่คือภัยคุกคามต่อสิ่งที่ทำเงินอยู่",
+      "อีก 37 ปีต่อมา Kodak ยื่นล้มละลาย",
+      "สิ่งที่น่าสนใจไม่ใช่ว่าพวกเขา \"มองไม่เห็น\" อนาคต — พวกเขาเห็น และถือมันไว้ในมือก่อนใครในโลกด้วยซ้ำ สิ่งที่พวกเขาทำไม่ได้คือ ยอมทิ้งคำตอบที่เคยถูก",
+      "— จบข้อความ —"
+    ],
+    options:[
+      {id:"a", label:"เป็นเรื่องของการตัดสินใจทางธุรกิจที่ผิดพลาด", w:{O:0,C:1}},
+      {id:"b", label:"เป็นเรื่องของการยึดติดกับสิ่งที่เคยได้ผล", w:{O:2,G:1}},
+      {id:"c", label:"ไม่แน่ใจ ต้องรู้บริบทมากกว่านี้", w:{C:1,O:1}}
+    ],
+    edges:{ a:"q_routine", b:"q_new" } },
+
+  { id:"q_social", type:"question", tags:["E"], skippable:true,
+    prompt:"หลังวันทำงานที่เหนื่อยมาก สิ่งที่ทำให้คุณฟื้นพลังคือ...",
+    options:[
+      {id:"a", label:"ออกไปเจอเพื่อน คุยกันยาว ๆ", w:{E:2}},
+      {id:"b", label:"อยู่บ้านคนเดียว เงียบ ๆ", w:{E:-2}},
+      {id:"c", label:"อยู่กับคนสนิท 1-2 คนพอ", w:{E:0,A:1}}
+    ],
+    edges:{ a:"q_conflict", b:"q_stress" } },
+
+  { id:"q_conflict", type:"question", tags:["A"], skippable:true,
+    prompt:"ในทีม มีคนเสนอไอเดียที่คุณคิดว่าผิดชัด ๆ คุณจะ...",
+    options:[
+      {id:"a", label:"บอกตรง ๆ ในที่ประชุมเลย", w:{A:-2,E:1}},
+      {id:"b", label:"ถามคำถามให้เขาเห็นเอง", w:{A:1,O:1}},
+      {id:"c", label:"เก็บไว้ ไม่อยากให้บรรยากาศเสีย", w:{A:2,E:-1,N:1}}
+    ],
+    edges:{ c:"q_stress" } },
+
+  { id:"q_stress", type:"question", tags:["N"], skippable:true,
+    prompt:"คืนก่อนวันสำคัญ คุณมักจะ...",
+    options:[
+      {id:"a", label:"นอนหลับปกติ", w:{N:-2}},
+      {id:"b", label:"คิดวนไปวนมาจนหลับยาก", w:{N:2}},
+      {id:"c", label:"ตื่นเต้นจนนอนไม่หลับ แต่รู้สึกดี", w:{N:0,E:1,O:1}}
+    ],
+    edges:{ b:"q_compare" } },
+
+  { id:"q_new", type:"question", tags:["O"], skippable:true,
+    prompt:"ร้านอาหารที่คุณชอบมาก มีเมนูใหม่ที่ไม่เคยเห็น คุณจะ...",
+    options:[
+      {id:"a", label:"สั่งเมนูใหม่ทันที", w:{O:2}},
+      {id:"b", label:"สั่งของเดิมที่รู้ว่าอร่อยแน่", w:{O:-2,N:1}},
+      {id:"c", label:"ถามพนักงานก่อนค่อยตัดสินใจ", w:{O:0,C:1}}
+    ],
+    edges:{ a:"q_risk", b:"q_routine" } },
+
+  { id:"q_routine", type:"question", tags:["O","C"], skippable:true,
+    prompt:"ตารางชีวิตที่คุณอยู่แล้วสบายใจที่สุดคือ...",
+    options:[
+      {id:"a", label:"เดาได้ทุกวัน รู้ว่าจะเกิดอะไรขึ้น", w:{O:-2,C:1}},
+      {id:"b", label:"มีโครงคร่าว ๆ แต่เหลือที่ให้เปลี่ยน", w:{C:1,O:1}},
+      {id:"c", label:"ไม่ต้องมีตาราง ตื่นมาค่อยว่ากัน", w:{O:2,C:-2}}
+    ] },
+
+  { id:"q_help", type:"question", tags:["A","E"], skippable:true,
+    prompt:"เพื่อนขอให้ช่วยงาน ในวันที่คุณเองก็งานล้นมือ",
+    options:[
+      {id:"a", label:"รับไว้ก่อน เดี๋ยวหาทางเอา", w:{A:2,C:-1}},
+      {id:"b", label:"บอกตรง ๆ ว่าช่วยไม่ได้", w:{A:-1,C:1}},
+      {id:"c", label:"ช่วยเท่าที่ทำได้ และบอกขอบเขตชัดเจน", w:{A:1,C:2}}
+    ],
+    edges:{ a:"q_conflict", b:"q_risk" } },
+
+  { id:"q_risk", type:"question", tags:["O","N"], skippable:true,
+    prompt:"มีโอกาสงานใหม่ที่น่าตื่นเต้นกว่า แต่ไม่มั่นคงเท่าเดิม",
+    options:[
+      {id:"a", label:"ไปเลย ชีวิตมีครั้งเดียว", w:{O:2,N:-1}},
+      {id:"b", label:"อยู่ที่เดิม ความมั่นคงสำคัญกว่า", w:{O:-2,N:1}},
+      {id:"c", label:"ขอเวลาคำนวณความเสี่ยงให้ครบก่อน", w:{C:2,O:0}}
+    ] },
+
+  { id:"q_compare", type:"question", tags:["G","N"], skippable:true,
+    prompt:"เห็นคนรุ่นเดียวกันไปได้ไกลกว่าคุณมาก คุณรู้สึก...",
+    options:[
+      {id:"a", label:"ท้อ รู้สึกว่าตัวเองไม่มีทางตามทัน", w:{G:-2,N:2}},
+      {id:"b", label:"อยากรู้ว่าเขาทำยังไง", w:{G:2,O:1}},
+      {id:"c", label:"เส้นทางแต่ละคนไม่เหมือนกัน ไม่เทียบ", w:{N:-1,G:1}}
+    ] }
+];
+
+const BY_ID = Object.fromEntries(POOL.map(i => [i.id, i]));
+const AXES = ["O","C","E","A","N"];
+const AXIS_INFO = {
+  O:{name:"Openness — เปิดรับสิ่งใหม่", hi:"ชอบของใหม่ ความคิดนามธรรม", lo:"ชอบของคุ้นเคย รูปธรรม"},
+  C:{name:"Conscientiousness — ความมีระเบียบ", hi:"วางแผน มีวินัย", lo:"ยืดหยุ่น ไปตามน้ำ"},
+  E:{name:"Extraversion — การได้พลังจากภายนอก", hi:"ได้พลังจากผู้คน", lo:"ได้พลังจากการอยู่คนเดียว"},
+  A:{name:"Agreeableness — ความประนีประนอม", hi:"เห็นใจ ยอมกัน", lo:"ตรงไปตรงมา แข่งขัน"},
+  N:{name:"Neuroticism — ความอ่อนไหวต่อความเครียด", hi:"อ่อนไหว คิดมาก", lo:"นิ่ง ไม่หวั่นไหว"}
+};
+
+/* ---------- 2) ENGINE ---------- */
+let S = null;
+
+function newSession(){
+  S = {
+    id: "s_" + Math.random().toString(36).slice(2,10),
+    t0: Date.now(),
+    path: [],            // ลำดับ item id ที่เดินจริง
+    idx: -1,             // ตำแหน่งปัจจุบันใน path
+    answers: {},         // itemId -> optionId
+    skipped: {},         // itemId -> true
+    visits: {},          // itemId -> จำนวนครั้งที่เข้าดู
+    changes: {},         // itemId -> จำนวนครั้งที่เปลี่ยนคำตอบ
+    branch: {},          // itemId -> 'start' | 'edge' | 'adaptive'
+    firstInput: {},      // itemId -> ms จนแตะครั้งแรก
+    dwell: {},           // itemId -> ms รวมที่อยู่บนข้อนั้น
+    media: {},           // itemId -> {pct, completed, replays}
+    scroll: {},          // itemId -> % ที่ scroll ถึง
+    feedback: {},        // itemId -> 'kept' | 'changed'
+    ev: [],              // ⭐ event log ดิบ
+    _enter: 0,           // เวลาที่เข้าข้อปัจจุบัน
+    _touched: false      // แตะข้อปัจจุบันแล้วหรือยัง
+  };
+  logEvent("session_start", null, {});
+}
+
+function logEvent(kind, itemId, payload){
+  S.ev.push({ seq:S.ev.length+1, tMs:Date.now()-S.t0, itemId:itemId||null, kind, payload:payload||{} });
+}
+
+/** คำนวณคะแนนสะสม + ความมั่นใจของแต่ละแกน จาก "คำตอบ" เท่านั้น */
+function scoreState(){
+  const axes = {}; [...AXES,"G"].forEach(a => axes[a] = {raw:0, evidence:0});
+  S.path.forEach(id => {
+    const opt = pickedOption(id); if(!opt) return;
+    Object.entries(opt.w||{}).forEach(([a,v]) => {
+      if(!axes[a]) return;
+      axes[a].raw += v; axes[a].evidence += 1;
+    });
+    (BY_ID[id].tags||[]).forEach(a => { if(axes[a] && !(opt.w||{})[a]) axes[a].evidence += 0.5; });
+  });
+  Object.values(axes).forEach(x => x.confidence = Math.min(1, x.evidence/3));
+  return axes;
+}
+
+function pickedOption(itemId){
+  const a = S.answers[itemId]; if(!a) return null;
+  return (BY_ID[itemId].options||[]).find(o => o.id === a) || null;
+}
+
+const seen = id => S.path.includes(id);
+
+/** ⭐ เลือกข้อถัดไป: ชั้นที่ 1 เส้นบังคับ → ชั้นที่ 2 adaptive ตามแกนที่มั่นใจน้อยสุด */
+function pickNext(){
+  const cur = BY_ID[S.path[S.idx]];
+  const ans = S.answers[cur.id];
+
+  // ชั้นที่ 1 — เส้นบังคับ (hard edge)
+  if(cur.edges && ans && cur.edges[ans] && !seen(cur.edges[ans])){
+    return { id: cur.edges[ans], via: "edge" };
+  }
+
+  // ชั้นที่ 2 — adaptive: หาแกนที่หลักฐานน้อยที่สุด (เสมอกันดูที่คะแนนก้ำกึ่งสุด)
+  const st = scoreState();
+  const order = [...AXES,"G"].sort((a,b) =>
+    (st[a].evidence - st[b].evidence) || (Math.abs(st[a].raw) - Math.abs(st[b].raw))
+  );
+  for(const axis of order){
+    const cand = POOL.find(i => !seen(i.id) && (i.tags||[]).includes(axis));
+    if(cand) return { id: cand.id, via: "adaptive" };
+  }
+
+  // fallback — กันกิ่งตัน
+  const any = POOL.find(i => !seen(i.id));
+  return any ? { id: any.id, via: "adaptive" } : null;
+}
+
+/* ---------- 3) UI ---------- */
+const $ = s => document.querySelector(s);
+const show = id => ["welcome","test","result"].forEach(x => $("#"+x).classList.toggle("hide", x !== id));
+
+$("#btnStart").onclick = () => {
+  newSession();
+  const first = POOL.find(i => i.start) || POOL[0];
+  S.path.push(first.id); S.idx = 0; S.branch[first.id] = "start";
+  show("test"); render();
+};
+
+function leaveItem(){
+  const id = S.path[S.idx]; if(!id) return;
+  const d = Date.now() - S._enter;
+  S.dwell[id] = (S.dwell[id]||0) + d;
+  logEvent("item_leave", id, {dwellMs:d});
+}
+
+function markTouched(){
+  const id = S.path[S.idx];
+  if(S._touched) return;
+  S._touched = true;
+  const ms = Date.now() - S._enter;
+  if(S.firstInput[id] === undefined){
+    S.firstInput[id] = ms;
+    logEvent("first_input", id, {msSinceView:ms});
+  }
+}
+
+function render(){
+  const id = S.path[S.idx], item = BY_ID[id];
+  S._enter = Date.now(); S._touched = false;
+
+  S.visits[id] = (S.visits[id]||0) + 1;
+  logEvent(S.visits[id] === 1 ? "item_view" : "revisit", id,
+           {visit:S.visits[id], type:item.type, tags:item.tags, via:S.branch[id]||"start"});
+
+  $("#progText").textContent = "ข้อ " + (S.idx+1) + " / ~" + MAX_ITEMS + "  ·  " + item.id;
+  $("#progBar").style.width = Math.round((S.idx+1)/MAX_ITEMS*100) + "%";
+  const via = S.branch[id];
+  $("#branchTag").innerHTML =
+    via === "edge"     ? '<span class="pill edge">มาจากเส้นบังคับ</span>' :
+    via === "adaptive" ? '<span class="pill">เลือกให้อัตโนมัติ</span>' :
+    '<span class="pill">ข้อเริ่มต้น</span>';
+  $("#btnBack").disabled = S.idx === 0;
+  $("#btnSkip").classList.toggle("hide", !item.skippable);
+
+  const c = $("#itemCard"); c.innerHTML = "";
+  const h = document.createElement("h2"); h.textContent = item.prompt; c.appendChild(h);
+
+  if(item.type === "video")   renderVideo(c, item);
+  if(item.type === "reading") renderReading(c, item);
+  renderOptions(c, item);
+
+  if(S.visits[id] > 1){
+    const n = document.createElement("p"); n.className = "tiny";
+    n.style.marginTop = "10px";
+    n.textContent = "↩︎ คุณกลับมาดูข้อนี้เป็นครั้งที่ " + S.visits[id] + " — เราบันทึกไว้แล้ว (และจะแยกด้วยว่าคุณเปลี่ยนคำตอบจริงหรือแค่กลับมาดู)";
+    c.appendChild(n);
+  }
+}
+
+/* --- ข้อแบบ "คลิป": สไลด์ตั้งเวลา วัดว่าดูจนจบไหม --- */
+function renderVideo(c, item){
+  const id = item.id;
+  const st = S.media[id] || (S.media[id] = {pct:0, completed:false, replays:0});
+  const stage = document.createElement("div"); stage.className = "stage";
+  const span = document.createElement("span"); stage.appendChild(span);
+  const bar = document.createElement("div"); bar.className = "bar"; bar.style.margin = "10px 0";
+  const fill = document.createElement("i"); fill.style.width = "0%"; bar.appendChild(fill);
+  const row = document.createElement("div"); row.className = "btn-row"; row.style.marginTop = "0";
+  const bSkip = document.createElement("button"); bSkip.textContent = "ข้ามคลิป ↦";
+  const bAgain = document.createElement("button"); bAgain.textContent = "↺ ดูอีกครั้ง"; bAgain.classList.add("hide");
+  row.appendChild(bSkip); row.appendChild(bAgain);
+  c.appendChild(stage); c.appendChild(bar); c.appendChild(row);
+
+  let i = 0, timer = null, t0 = Date.now();
+  const total = item.slides.length * item.slideMs;
+
+  function stop(){ clearInterval(timer); timer = null; }
+  function pct(){ return Math.min(100, Math.round((Date.now()-t0)/total*100)); }
+
+  function play(){
+    i = 0; t0 = Date.now(); st.completed = false;
+    bAgain.classList.add("hide"); bSkip.classList.remove("hide");
+    logEvent("media_start", id, {replay: st.replays});
+    step();
+    timer = setInterval(step, item.slideMs);
+  }
+  function step(){
+    if(i >= item.slides.length){
+      stop(); st.pct = 100; st.completed = true;
+      fill.style.width = "100%";
+      span.classList.remove("on");
+      setTimeout(() => { span.textContent = "— จบคลิป —"; span.classList.add("on"); }, 200);
+      bSkip.classList.add("hide"); bAgain.classList.remove("hide");
+      logEvent("media_complete", id, {pct:100});
+      return;
+    }
+    span.classList.remove("on");
+    const text = item.slides[i++];
+    setTimeout(() => { span.textContent = text; span.classList.add("on"); }, 180);
+    fill.style.width = pct() + "%";
+  }
+  bSkip.onclick = () => {
+    markTouched(); stop();
+    st.pct = pct();
+    logEvent("media_skip", id, {pct:st.pct, atSlide:i});
+    span.textContent = "(ข้ามคลิปที่ " + st.pct + "%)"; span.classList.add("on");
+    fill.style.width = st.pct + "%";
+    bSkip.classList.add("hide"); bAgain.classList.remove("hide");
+  };
+  bAgain.onclick = () => { markTouched(); st.replays++; logEvent("replay", id, {times:st.replays}); play(); };
+
+  play();
+}
+
+/* --- ข้อแบบ "อ่าน": วัด scroll depth --- */
+function renderReading(c, item){
+  const id = item.id;
+  const box = document.createElement("div"); box.className = "reader";
+  item.body.forEach(t => { const p = document.createElement("p"); p.textContent = t; box.appendChild(p); });
+  c.appendChild(box);
+  const hint = document.createElement("p"); hint.className = "tiny"; hint.textContent = "เลื่อนอ่านในกรอบด้านบน — เราบันทึกว่าคุณอ่านถึงกี่ %";
+  c.appendChild(hint);
+  let maxPct = S.scroll[id] || 0;
+  box.addEventListener("scroll", () => {
+    markTouched();
+    const p = Math.min(100, Math.round((box.scrollTop + box.clientHeight) / box.scrollHeight * 100));
+    if(p > maxPct + 4){
+      maxPct = p; S.scroll[id] = p;
+      hint.textContent = "อ่านถึง " + p + "%";
+      logEvent("scroll_depth", id, {pct:p});
+    }
+  }, {passive:true});
+  if(!S.scroll[id]) S.scroll[id] = Math.min(100, Math.round(box.clientHeight/box.scrollHeight*100));
+}
+
+/* --- ตัวเลือก + กลไก feedback (วัด growth mindset จากการยอมเปลี่ยนคำตอบ) --- */
+function renderOptions(c, item){
+  const id = item.id;
+  const box = document.createElement("div"); box.style.marginTop = "14px";
+  item.options.forEach((o,i) => {
+    const b = document.createElement("button");
+    b.className = "opt" + (S.answers[id] === o.id ? " sel" : "");
+    b.innerHTML = '<span class="k">' + "ABC".charAt(i) + '.</span>' + o.label;
+    b.onclick = () => choose(item, o.id, box);
+    box.appendChild(b);
+  });
+  c.appendChild(box);
+}
+
+function choose(item, optId, box){
+  markTouched();
+  const id = item.id, prev = S.answers[id];
+  S.answers[id] = optId;
+  delete S.skipped[id];
+
+  if(prev && prev !== optId){
+    S.changes[id] = (S.changes[id]||0) + 1;
+    logEvent("answer_change", id, {from:prev, to:optId, visit:S.visits[id], timesChanged:S.changes[id]});
+  } else if(!prev){
+    logEvent("answer", id, {option:optId, msSinceView:Date.now()-S._enter});
+  } else {
+    logEvent("answer_reaffirm", id, {option:optId, visit:S.visits[id]});
+  }
+
+  [...box.children].forEach((el,i) => el.classList.toggle("sel", item.options[i].id === optId));
+
+  // ข้อที่มี feedback: ยิงข้อมูลสวนกลับ แล้วดูว่าเขายอมทบทวนไหม
+  if(item.feedback && !S.feedback[id]){
+    logEvent("feedback_shown", id, {afterOption:optId});
+    showFeedback(item, box);
+    return;
+  }
+  advance();
+}
+
+function showFeedback(item, box){
+  const id = item.id;
+  const p = document.createElement("div"); p.className = "note"; p.style.marginTop = "14px";
+  p.textContent = item.feedback;
+  const row = document.createElement("div"); row.className = "btn-row";
+  const keep = document.createElement("button"); keep.textContent = "เก็บคำตอบเดิม";
+  const chg  = document.createElement("button"); chg.textContent  = "ขอทบทวนใหม่";
+  row.appendChild(keep); row.appendChild(chg);
+  p.appendChild(row);
+  box.parentNode.appendChild(p);
+
+  keep.onclick = () => { S.feedback[id] = "kept";    logEvent("feedback_response", id, {choice:"kept"});    p.remove(); advance(); };
+  chg.onclick  = () => { S.feedback[id] = "changed"; logEvent("feedback_response", id, {choice:"changed"}); p.remove(); };
+}
+
+function advance(){
+  leaveItem();
+  // ถ้าอยู่กลาง path (ย้อนกลับมาแก้) → เดินหน้าไปข้อที่มีอยู่แล้ว ไม่แตกกิ่งใหม่
+  if(S.idx < S.path.length - 1){ S.idx++; render(); return; }
+  if(S.path.length >= MAX_ITEMS){ finish("reached_max"); return; }
+  const nxt = pickNext();
+  if(!nxt){ finish("pool_exhausted"); return; }
+  S.path.push(nxt.id); S.branch[nxt.id] = nxt.via; S.idx++;
+  logEvent("branch", nxt.id, {from:S.path[S.idx-1], via:nxt.via});
+  render();
+}
+
+$("#btnBack").onclick = () => {
+  if(S.idx === 0) return;
+  leaveItem();
+  logEvent("back", S.path[S.idx], {to:S.path[S.idx-1]});
+  S.idx--; render();
+};
+
+$("#btnSkip").onclick = () => {
+  const id = S.path[S.idx];
+  markTouched();
+  S.skipped[id] = true; delete S.answers[id];
+  logEvent("skip", id, {tags:BY_ID[id].tags, msSinceView:Date.now()-S._enter});
+  advance();
+};
+
+$("#btnEnd").onclick = () => { leaveItem(); finish("user_ended"); };
+
+/* ---------- หน้าสรุปผล ---------- */
+function finish(reason){
+  logEvent("session_end", null, {reason, itemsSeen:S.path.length});
+  show("result");
+  $("#result").innerHTML = buildReport(reason);
+  $("#btnRestart").onclick = () => { show("welcome"); window.scrollTo(0,0); };
+  $("#btnLog").onclick = () => $("#logBox").classList.toggle("hide");
+  window.scrollTo(0,0);
+}
+
+function buildReport(reason){
+  const st = scoreState();
+  const answered = S.path.filter(id => S.answers[id]).length;
+  const skips = Object.keys(S.skipped).length;
+  const backs = S.ev.filter(e => e.kind === "back").length;
+  const changes = Object.values(S.changes).reduce((a,b) => a+b, 0);
+  const revisits = S.ev.filter(e => e.kind === "revisit").length;
+
+  /* --- สาย A: คะแนนจากคำตอบ --- */
+  let bars = "";
+  AXES.forEach(a => {
+    const pct = Math.max(6, Math.min(94, 50 + st[a].raw * 8));
+    const conf = st[a].confidence;
+    const confTxt = conf >= 0.66 ? "ข้อมูลพอสมควร" : conf >= 0.33 ? "ข้อมูลน้อย" : "ข้อมูลไม่พอ";
+    bars +=
+      '<div class="axis"><div class="axis-head"><b>' + AXIS_INFO[a].name + '</b>' +
+      '<span class="conf">' + confTxt + '</span></div>' +
+      '<div class="track"><i style="left:' + pct + '%"></i></div>' +
+      '<div class="axis-ends"><span>' + AXIS_INFO[a].lo + '</span><span>' + AXIS_INFO[a].hi + '</span></div></div>';
+  });
+  const gpct = Math.max(6, Math.min(94, 50 + st.G.raw * 9));
+
+  /* --- สาย B: ข้อสังเกตจากพฤติกรรม (ข้อเท็จจริง + สมมติฐาน แยกกันชัด) --- */
+  const obs = [];
+  const O = (level, fact, guess) => obs.push({level, fact, guess});
+
+  if(skips > 0){
+    const tags = Object.keys(S.skipped).flatMap(id => BY_ID[id].tags || []);
+    O("mid", "คุณข้ามไป " + skips + " ข้อ" + (tags.length ? " (แตะแกน: " + [...new Set(tags)].join(", ") + ")" : ""),
+      "การข้ามอาจแปลว่าหลีกเลี่ยงหัวข้อนั้น หรือแค่ไม่มีตัวเลือกที่ตรงใจ — ระบบจริงต้องดูว่าข้ามข้อ tag ไหนซ้ำ ๆ ถึงจะตีความได้");
+  } else {
+    O("high", "คุณตอบทุกข้อโดยไม่ข้ามเลย", "ในกลุ่มตัวอย่างเล็ก ๆ พฤติกรรมนี้มักไปด้วยกันกับความรู้สึกผูกพันกับงานที่ทำอยู่ แต่ยังไม่พอจะสรุปเป็นบุคลิกภาพ");
+  }
+
+  if(backs > 0){
+    O("mid", "คุณกดย้อนกลับ " + backs + " ครั้ง และกลับเข้าไปดูข้อเดิมซ้ำ " + revisits + " ครั้ง" +
+      (changes > 0 ? " โดยเปลี่ยนคำตอบจริง " + changes + " ครั้ง" : " แต่ไม่ได้เปลี่ยนคำตอบเลย"),
+      changes > 0
+        ? "การกลับไปแก้จริงมักตีความได้ 2 ทาง: รอบคอบ (C สูง) หรือลังเล/ไม่มั่นใจ (N สูง) — แยกไม่ได้จากข้อมูลชุดเดียว"
+        : "การกลับไปดูแล้วไม่เปลี่ยนอะไร ใกล้เคียงกับพฤติกรรม 'ตรวจงานตัวเอง' มากกว่าความลังเล");
+  }
+
+  const fis = S.path.map(id => S.firstInput[id]).filter(v => typeof v === "number");
+  if(fis.length >= 3){
+    const avg = Math.round(fis.reduce((a,b)=>a+b,0)/fis.length/100)/10;
+    const fast = Math.round(Math.min(...fis)/100)/10;
+    O("low", "เวลาเฉลี่ยก่อนแตะตัวเลือกแรกของคุณคือ " + avg + " วินาที (เร็วสุด " + fast + " วินาที)",
+      "ความเร็วในการตัดสินใจแปลตรง ๆ ไม่ได้ ต้องเทียบกับค่าเฉลี่ยของตัวคุณเอง ไม่ใช่ของคนอื่น — และคนอ่านช้าก็ช้าโดยไม่เกี่ยวกับบุคลิกภาพ");
+  }
+
+  Object.entries(S.media).forEach(([id, m]) => {
+    if(m.completed) O("mid", "คุณดูคลิปจนจบ" + (m.replays ? " และกดดูซ้ำ " + m.replays + " ครั้ง" : ""),
+      m.replays ? "การกดดูซ้ำอาจสะท้อนความอยากเข้าใจให้ครบ (O/C สูง)" : "การดูจนจบเป็นสัญญาณความอดทนที่วัดได้ตรงที่สุดในแบบทดสอบนี้");
+    else O("mid", "คุณข้ามคลิปที่ " + m.pct + "%", "อาจเป็นความไม่อดทน หรือแค่จับใจความได้แล้วตั้งแต่ต้น — สองอย่างนี้แยกกันไม่ได้ด้วยข้อมูลเท่านี้");
+  });
+
+  Object.entries(S.scroll).forEach(([id, p]) => {
+    O(p >= 90 ? "high" : "mid", "บทความ: คุณเลื่อนอ่านถึง " + p + "%",
+      p >= 90 ? "อ่านจนจบ — เป็นข้อเท็จจริงที่วัดได้ตรง ไม่ต้องตีความ" : "อ่านไม่จบก่อนตอบ — คำตอบของข้อนี้จึงควรถ่วงน้ำหนักน้อยลง");
+  });
+
+  Object.entries(S.feedback).forEach(([id, r]) => {
+    O("mid", r === "changed" ? "เมื่อเราให้ข้อมูลที่สวนกับคำตอบของคุณ คุณเลือกทบทวนใหม่" : "เมื่อเราให้ข้อมูลที่สวนกับคำตอบของคุณ คุณยืนยันคำตอบเดิม",
+      r === "changed" ? "การปรับตัวจากข้อมูลใหม่ตรงกับนิยาม growth mindset — แต่ก็อาจเป็นแค่การคล้อยตามผู้มีอำนาจ (เราตั้งใจไม่แยกในเดโมนี้)"
+                      : "การยืนยันคำตอบเดิมอาจเป็นความมั่นใจในตัวเอง หรือการไม่รับข้อมูลใหม่ — ต้องดูหลายข้อประกอบ");
+  });
+
+  const answers = S.path.map(id => S.answers[id]).filter(Boolean);
+  if(answers.length >= 5 && new Set(answers).size === 1){
+    O("high", "คุณเลือกตัวเลือกตำแหน่งเดียวกันทุกข้อ (straight-lining)",
+      "ในระบบจริง ข้อมูลชุดนี้จะถูกตัดทิ้ง ไม่นำมาคิดคะแนน");
+  }
+
+  const obsHtml = obs.map(o =>
+    '<div class="obs ' + o.level + '"><b>' + o.fact + '</b><br><span class="muted">' + o.guess + '</span>' +
+    '<span class="conf">' + (o.level === "high" ? "🟢 วัดได้ตรง" : o.level === "mid" ? "🟡 ตีความได้หลายทาง" : "🔴 ยังเป็นการเดา") + '</span></div>'
+  ).join("");
+
+  /* --- แผนที่เส้นทางที่เดินจริง --- */
+  const mapHtml = S.path.map((id,i) => {
+    const cls = S.skipped[id] ? "node s" : (S.branch[id] === "edge" ? "node e" : "node");
+    return (i ? '<span class="arrow">→</span>' : "") + '<span class="' + cls + '">' + id + '</span>';
+  }).join("");
+  const unseen = POOL.filter(i => !seen(i.id)).map(i => i.id);
+
+  const reasonTxt = {reached_max:"ครบจำนวนข้อ", user_ended:"คุณกดจบเอง", pool_exhausted:"คลังข้อหมด"}[reason] || reason;
+
+  return `
+  <div class="card">
+    <h1>📄 ผลของคุณ</h1>
+    <p class="muted">เจอ ${S.path.length} ข้อ · ตอบ ${answered} · ข้าม ${skips} · จบเพราะ: ${reasonTxt}</p>
+    <div class="note">เดโมนี้ให้ผลจากคำถามไม่กี่ข้อ <b>จึงยังไม่ใช่ผลทางจิตวิทยาที่เชื่อถือได้</b> — จุดประสงค์คือแสดงว่ากลไกทำงานยังไง</div>
+  </div>
+
+  <div class="card">
+    <h2>สาย A · คะแนนจากคำตอบของคุณ</h2>
+    <p class="tiny">อิงกรอบ Big Five — ไม่มีปลายไหน "ดีกว่า" อีกปลาย</p>
+    ${bars}
+    <h3>Growth ↔ Fixed Mindset</h3>
+    <div class="track"><i style="left:${gpct}%"></i></div>
+    <div class="axis-ends"><span>Fixed — ความสามารถเป็นของตายตัว</span><span>Growth — พัฒนาได้</span></div>
+  </div>
+
+  <div class="card">
+    <h2>สาย B · สิ่งที่เราสังเกตจาก<u>พฤติกรรม</u>ของคุณ</h2>
+    <p class="tiny">ตัวหนา = สิ่งที่เกิดขึ้นจริง (ข้อเท็จจริง) · ข้อความจาง = สมมติฐานที่ยังพิสูจน์ไม่ได้</p>
+    ${obsHtml || '<p class="muted">ไม่มีพฤติกรรมพิเศษให้สังเกต</p>'}
+    <p class="tiny">⚠️ สัญญาณพฤติกรรมทั้งหมดนี้เป็นสมมติฐานของเราเอง ยังไม่ผ่านการ validate กับแบบวัดมาตรฐาน จึงแสดงเป็น "ข้อสังเกต" ไม่ใช่ "ผลการวัด"</p>
+  </div>
+
+  <div class="card">
+    <h2>🗺️ เส้นทางที่คุณเดิน</h2>
+    <div class="map">${mapHtml}</div>
+    <p class="tiny" style="margin-top:10px">
+      <span class="pill edge">น้ำเงิน</span> = ข้อที่คำตอบของคุณ "บังคับ" ให้ไปเจอ ·
+      <span class="pill skip">ขีดฆ่า</span> = ข้อที่ข้าม
+    </p>
+    <p class="tiny">อีก ${unseen.length} ข้อในคลังที่คุณ<b>ไม่ได้เจอ</b> เพราะเดินคนละกิ่ง: ${unseen.join(", ") || "—"}</p>
+    <p class="tiny">ลองทำใหม่แล้วตอบต่างออกไป จะได้เจอคำถามคนละชุด</p>
+  </div>
+
+  <div class="card">
+    <h2>📜 ความโปร่งใส: log ดิบทั้งหมดของคุณ</h2>
+    <p class="tiny">${S.ev.length} events — นี่คือทุกอย่างที่เว็บนี้บันทึก ไม่มีมากกว่านี้ และไม่ได้ส่งออกไปไหน</p>
+    <div class="btn-row" style="margin-top:8px"><button id="btnLog">แสดง / ซ่อน log</button></div>
+    <div id="logBox" class="hide" style="margin-top:12px"><pre>${JSON.stringify(S.ev, null, 1).replace(/</g,"&lt;")}</pre></div>
+  </div>
+
+  <div class="card">
+    <h2>🙏 ถ้าสิ่งนี้มีค่ากับคุณ</h2>
+    <p>เว็บจริงจะขอรับบริจาคตรงนี้ — <b>จ่ายเท่าที่คุณคิดว่ามันมีค่า</b> ไม่มีขั้นบันได ไม่มีการเบลอผลเพื่อบังคับให้จ่าย</p>
+    <div class="btn-row">
+      <button>20 ฿</button><button>60 ฿</button><button>ระบุเอง</button>
+    </div>
+    <p class="tiny" style="margin-top:10px">(ปุ่มพวกนี้ยังไม่ทำงาน — เดโมไม่มีระบบจ่ายเงินจริง)</p>
+    <div class="btn-row"><button class="btn-primary" id="btnRestart">↺ ทำใหม่ ลองเดินกิ่งอื่น</button></div>
+  </div>
+
+  <p class="tiny">⚕️ ไม่ใช่การวินิจฉัยหรือคำแนะนำทางจิตวิทยา/การแพทย์ · สายด่วนสุขภาพจิต 1323</p>
+  `;
+}
+</script>
+</body>
+</html>
