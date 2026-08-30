@@ -1375,20 +1375,29 @@ function buildReport(reason){
 
   /* ── Dark Triad ── */
   const ds = darkScores();
-  const dtHtml = ["mach","narc","psyc"].map(f => {
-    const info = DARK[f], sc = ds[f], band = darkBand(sc.pct);
+  // แสดง "ด้านเดียว" — ด้านที่ใกล้เคียงกับคุณที่สุด (คะแนนสูงสุดในสามด้าน)
+  // เหมือนที่ทำกับสัตว์: โชว์สามด้านพร้อมกันแล้วผู้อ่านสรุปไม่ได้ว่าตกลงตัวเองเป็นแบบไหน
+  const dtRank = ["mach","narc","psyc"]
+    .filter(f => ds[f].pct != null)
+    .sort((a,b) => ds[b].pct - ds[a].pct);
+  const dtTop  = dtRank[0];
+  const dtHtml = (() => {
+    if(!dtTop) return "";
+    const info = DARK[dtTop], sc = ds[dtTop], band = darkBand(sc.pct);
+    const flat = band.lv <= 2;   // ไม่ได้โดดจริง แค่โดดกว่าอีกสองด้าน
     return '<div class="dt">' +
       '<div class="dt-head"><div><div class="dt-name">' + info.th + '</div>' +
         '<div class="dt-en">' + info.en + '</div></div>' +
         '<span class="dt-band lv' + band.lv + '">' + band.t + '</span></div>' +
-      (sc.pct == null
-        ? '<p class="dt-desc" style="margin-top:11px">รอบนี้ยังไม่ได้ถามด้านนี้เลย ทำใหม่อาจได้เจอ</p>'
-        : '<div class="dt-track"><i style="left:' + sc.pct + '%"></i></div>') +
+      '<div class="dt-track"><i style="left:' + sc.pct + '%"></i></div>' +
       '<p class="dt-desc">' + info.desc + '</p>' +
       '<p class="dt-side"><b>ข้อดี</b><span>' + info.up + '</span></p>' +
       '<p class="dt-side"><b>ข้อเสี่ยง</b><span>' + info.down + '</span></p>' +
-      '<p class="tiny" style="margin:8px 0 0">ตอบไปแล้ว ' + sc.n + ' ข้อในด้านนี้</p></div>';
-  }).join("");
+      '<p class="tiny" style="margin:10px 0 0">' +
+        'จาก 3 ด้าน นี่คือด้านที่คะแนนสูงสุดของคุณ · ประเมินจาก ' + sc.n + ' ข้อ' +
+        (flat ? ' · แต่ยังอยู่ในช่วงกลาง แปลว่าโดดกว่าอีกสองด้านเพียงเล็กน้อยเท่านั้น' : '') +
+      '</p></div>';
+  })();
 
   const REASON = {
     reached_max:"ครบจำนวนข้อ", user_ended:"คุณกดจบเอง",
@@ -1450,13 +1459,13 @@ function buildReport(reason){
   <hr class="rule">
 
   <section class="sec sec-d">
-    <div class="sec-head"><span class="sec-tag">Dark Triad</span><h2>ด้านที่คนมักไม่พูดถึง</h2></div>
+    <div class="sec-head"><span class="sec-tag">Dark Triad</span><h2>ด้านที่ใกล้เคียงคุณที่สุด</h2></div>
     <div class="dark-lead">
       <b>Dark Triad</b> คือกลุ่มบุคลิกภาพ 3 ด้านที่นักจิตวิทยาศึกษามาตั้งแต่ปี 2002 (Paulhus &amp; Williams) —
       การวางกลยุทธ์กับคน การเห็นตัวเองสำคัญ และความเย็นชา/หุนหัน<br><br>
-      สิ่งสำคัญที่สุดที่ต้องเข้าใจ: นี่คือระดับที่พบใน<b>คนทั่วไป</b> ทุกคนมีทั้งสามด้านในระดับหนึ่ง
-      มันคนละเรื่องกับการวินิจฉัยทางจิตเวช และ <b>คะแนนสูงไม่ได้แปลว่าเป็นคนไม่ดี</b> —
-      แต่ละด้านมีทั้งข้อดีและข้อเสี่ยงตามสถานการณ์
+      ทุกคนมีทั้งสามด้านในระดับหนึ่ง เราจึงบอกคุณแค่ <b>ด้านที่ใกล้เคียงกับคุณที่สุดด้านเดียว</b><br><br>
+      สิ่งสำคัญที่สุดที่ต้องเข้าใจ: นี่คือระดับที่พบใน<b>คนทั่วไป</b> คนละเรื่องกับการวินิจฉัยทางจิตเวช
+      และ <b>คะแนนสูงไม่ได้แปลว่าเป็นคนไม่ดี</b> — แต่ละด้านมีทั้งข้อดีและข้อเสี่ยงตามสถานการณ์
     </div>
     ${ds.total >= 3 ? dtHtml : '<p class="muted small">รอบนี้ตอบข้อกลุ่มนี้ไปแค่ ' + ds.total + ' ข้อ ยังน้อยเกินกว่าจะสรุปอะไรได้ — ทำใหม่แล้วตอบให้ครบขึ้นจะได้ผลที่มีความหมายกว่านี้</p>'}
     <div class="dt-guard">
@@ -1464,6 +1473,8 @@ function buildReport(reason){
       • เป็น<b>แนวโน้ม</b> ไม่ใช่การวินิจฉัย ไม่มีใครถูกตัดสินว่าเป็นอะไรจากแบบทดสอบออนไลน์<br>
       • คะแนนขยับได้ตามช่วงชีวิตและสถานการณ์ ไม่ใช่ตราประทับถาวร<br>
       • <b>ห้ามใช้ตัดสินคนอื่น หรือใช้คัดคนเข้าทำงาน</b> — ทั้งไม่แม่นพอและไม่เป็นธรรม<br>
+      • <b>“ค่ากลาง” คือกลางของสเกล ไม่ใช่ค่าเฉลี่ยของคนจริง ๆ</b> — เรายังไม่มีข้อมูลเทียบกับใคร
+      “สูงกว่าค่ากลาง” จึงแปลว่าคุณตอบไปทางฝั่งนั้นของสเกล ไม่ใช่ว่าคุณสูงกว่าคนอื่น<br>
       • ถ้าผลนี้ทำให้กังวลเรื่องตัวเองหรือความสัมพันธ์ คุยกับนักจิตวิทยาได้ · สายด่วนสุขภาพจิต 1323
     </div>
   </section>
