@@ -337,6 +337,19 @@ details.fold .fold-body{padding-bottom:22px}
 .dt-desc{font-size:.92rem; line-height:1.66; margin:0 0 10px; color:var(--ink-2)}
 .dt-side{display:flex; gap:9px; font-size:.86rem; line-height:1.58; margin:0 0 5px}
 .dt-side b{flex:none; width:52px; color:var(--muted); font-weight:500; font-size:.8rem; padding-top:1px}
+.dt-sub{margin-top:22px; padding-top:18px; border-top:1px solid var(--line)}
+.dt-sub-title{
+  font-family:"IBM Plex Mono",monospace; font-size:.72rem; letter-spacing:.03em;
+  color:var(--muted); margin:0 0 14px;
+}
+.dt-mini{padding:14px 0; border-top:1px solid var(--line-2)}
+.dt-mini:first-of-type{border-top:0; padding-top:0}
+.dt-mini-head{display:flex; align-items:baseline; justify-content:space-between; gap:10px}
+.dt-mini-name{font-size:.99rem; font-weight:600}
+.dt-mini .dt-track{margin:9px 0 8px; height:4px}
+.dt-mini .dt-track i{width:13px; height:13px; top:-5px; border-width:3px}
+.dt-mini-desc{font-size:.86rem; line-height:1.62; color:var(--muted); margin:0}
+
 .dt-guard{
   margin-top:20px; padding:16px 17px; border-radius:12px;
   background:var(--clay-soft); font-size:.88rem; line-height:1.68;
@@ -1484,6 +1497,20 @@ function buildReport(reason){
       '</p></div>';
   })();
 
+  // อีกสองด้านแสดงแบบย่อ — ไม่ซ่อน แต่ก็ไม่ให้แย่งความสนใจจากด้านหลัก
+  const dtRest = dtRank.slice(1).map(f => {
+    const info = DARK[f], sc = ds[f], band = darkBand(sc.pct);
+    return '<div class="dt-mini">' +
+      '<div class="dt-mini-head"><span class="dt-mini-name">' + info.th + '</span>' +
+        '<span class="dt-band lv' + band.lv + '" style="font-size:.8rem">' + band.t + '</span></div>' +
+      '<div class="dt-track"><i style="left:' + sc.pct + '%"></i></div>' +
+      '<p class="dt-mini-desc">' + info.desc + '</p></div>';
+  }).join("");
+  const dtRestHtml = dtRest
+    ? '<div class="dt-sub"><p class="dt-sub-title">อีก ' + dtRank.slice(1).length +
+      ' ด้านที่เหลือของคุณ</p>' + dtRest + '</div>'
+    : "";
+
   const REASON = {
     reached_max:"ครบจำนวนข้อ", user_ended:"คุณกดจบเอง",
     pool_exhausted:"คลังข้อหมด", confident:"ข้อมูลครบทุกแกนแล้ว"
@@ -1544,15 +1571,15 @@ function buildReport(reason){
   <hr class="rule">
 
   <section class="sec sec-d">
-    <div class="sec-head"><span class="sec-tag">Dark Triad</span><h2>ด้านที่ใกล้เคียงคุณที่สุด</h2></div>
+    <div class="sec-head"><span class="sec-tag">Dark Triad</span><h2>สามด้านของคุณ</h2></div>
     <div class="dark-lead">
       <b>Dark Triad</b> คือกลุ่มบุคลิกภาพ 3 ด้านที่นักจิตวิทยาศึกษามาตั้งแต่ปี 2002 (Paulhus &amp; Williams) —
       การวางกลยุทธ์กับคน การเห็นตัวเองสำคัญ และความเย็นชา/หุนหัน<br><br>
-      ทุกคนมีทั้งสามด้านในระดับหนึ่ง เราจึงบอกคุณแค่ <b>ด้านที่ใกล้เคียงกับคุณที่สุดด้านเดียว</b><br><br>
+      ทุกคนมีทั้งสามด้านในระดับหนึ่ง เราจึงขึ้น<b>ด้านที่ใกล้เคียงกับคุณที่สุดก่อน</b> แล้วตามด้วยอีกสองด้านแบบย่อ<br><br>
       สิ่งสำคัญที่สุดที่ต้องเข้าใจ: นี่คือระดับที่พบใน<b>คนทั่วไป</b> คนละเรื่องกับการวินิจฉัยทางจิตเวช
       และ <b>คะแนนสูงไม่ได้แปลว่าเป็นคนไม่ดี</b> — แต่ละด้านมีทั้งข้อดีและข้อเสี่ยงตามสถานการณ์
     </div>
-    ${ds.total >= 3 ? dtHtml : '<p class="muted small">รอบนี้ตอบข้อกลุ่มนี้ไปแค่ ' + ds.total + ' ข้อ ยังน้อยเกินกว่าจะสรุปอะไรได้ — ทำใหม่แล้วตอบให้ครบขึ้นจะได้ผลที่มีความหมายกว่านี้</p>'}
+    ${ds.total >= 3 ? dtHtml + dtRestHtml : '<p class="muted small">รอบนี้ตอบข้อกลุ่มนี้ไปแค่ ' + ds.total + ' ข้อ ยังน้อยเกินกว่าจะสรุปอะไรได้ — ทำใหม่แล้วตอบให้ครบขึ้นจะได้ผลที่มีความหมายกว่านี้</p>'}
     <div class="dt-guard">
       <b>อ่านผลนี้ยังไงให้ถูก</b><br>
       • เป็น<b>แนวโน้ม</b> ไม่ใช่การวินิจฉัย ไม่มีใครถูกตัดสินว่าเป็นอะไรจากแบบทดสอบออนไลน์<br>
