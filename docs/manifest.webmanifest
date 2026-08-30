@@ -1,0 +1,20 @@
+{
+  "name": "สังเกตการณ์ — แบบทดสอบ mindset",
+  "short_name": "สังเกตการณ์",
+  "description": "แบบทดสอบ mindset ที่ดูมากกว่าคำตอบของคุณ",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "lang": "th",
+  "background_color": "#F2F4F0",
+  "theme_color": "#1C5E4E",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

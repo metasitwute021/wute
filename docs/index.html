@@ -2,147 +2,376 @@
 <html lang="th">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>เดโม: เว็บทดสอบ Mindset แบบแตกกิ่ง</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>สังเกตการณ์</title>
+<meta name="description" content="แบบทดสอบ mindset ที่ดูมากกว่าคำตอบของคุณ — คำถามแตกกิ่งตามที่คุณตอบ และบันทึกว่าคุณลังเลตรงไหน">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#F2F4F0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0D1211" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="สังเกตการณ์">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231C5E4E'/%3E%3Ccircle cx='16' cy='16' r='6.5' fill='none' stroke='%23F2F4F0' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='2.2' fill='%23F2F4F0'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=Noto+Serif+Thai:wght@500;600;700&display=swap">
 <style>
-  :root{
-    --bg:#f6f7f9; --card:#ffffff; --ink:#1c2024; --muted:#616a75; --line:#e2e6eb;
-    --accent:#3f6fd8; --accent-soft:#e8eefb; --ok:#2e7d52; --warn:#b06a12; --danger:#b4392f;
-    --radius:14px;
+/* ─────────────────────────────────────────────────────────────
+   โทเคน — สองเสียงของเว็บนี้:
+     seal (เขียวเข้ม) = สิ่งที่คุณ "ตอบ"
+     clay (ดินเผา)    = สิ่งที่คุณ "ทำ"  (พฤติกรรมที่เราสังเกตได้)
+   ───────────────────────────────────────────────────────────── */
+:root{
+  --paper:#F2F4F0; --card:#FBFCFA; --card-2:#F6F8F4;
+  --ink:#141C19;   --ink-2:#3A4844; --muted:#5C6B65;
+  --line:#DCE1DA;  --line-2:#E9EDE6;
+  --seal:#1C5E4E;  --seal-soft:#E1EDE7; --seal-ink:#134438;
+  --clay:#A85A32;  --clay-soft:#F5E7DE;
+  --sure:#2E6E4E;  --maybe:#A2701C;    --guess:#9B4A3E;
+  --shadow:0 1px 2px rgba(20,28,25,.05), 0 8px 24px -16px rgba(20,28,25,.30);
+  --r:14px; --r-sm:10px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0D1211; --card:#151C1A; --card-2:#1A2320;
+    --ink:#E4EAE6;   --ink-2:#C2CDC8; --muted:#8B9A94;
+    --line:#232E2A;  --line-2:#1D2724;
+    --seal:#6DC7A7;  --seal-soft:#15302A; --seal-ink:#9FDCC6;
+    --clay:#DE9163;  --clay-soft:#2E211A;
+    --sure:#6FC08D;  --maybe:#D6A24A;    --guess:#DE8A7E;
+    --shadow:0 1px 2px rgba(0,0,0,.30), 0 8px 24px -16px rgba(0,0,0,.70);
+    color-scheme:dark;
   }
-  @media (prefers-color-scheme: dark){
-    :root{
-      --bg:#14171b; --card:#1c2126; --ink:#e8eaed; --muted:#9aa4b0; --line:#2b323a;
-      --accent:#7aa2f7; --accent-soft:#232c3d; --ok:#68c48f; --warn:#e0a34a; --danger:#e8837a;
-    }
-  }
-  *{box-sizing:border-box}
-  body{
-    margin:0; background:var(--bg); color:var(--ink);
-    font-family:"Noto Sans Thai","Sarabun","IBM Plex Sans Thai",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-    line-height:1.7; -webkit-text-size-adjust:100%;
-  }
-  .wrap{max-width:680px; margin:0 auto; padding:20px 16px 64px}
-  .card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:20px; margin-bottom:16px}
-  h1{font-size:1.45rem; line-height:1.45; margin:0 0 8px}
-  h2{font-size:1.1rem; margin:0 0 10px}
-  h3{font-size:.95rem; margin:18px 0 8px; color:var(--muted); font-weight:600; letter-spacing:.02em}
-  p{margin:0 0 12px}
-  .muted{color:var(--muted); font-size:.9rem}
-  .tiny{font-size:.8rem; color:var(--muted)}
-  button{font:inherit; cursor:pointer; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--ink); padding:12px 16px}
-  button:hover{border-color:var(--accent)}
-  .btn-primary{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600}
-  .btn-primary:hover{filter:brightness(1.08)}
-  .btn-row{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:16px}
-  .opt{display:block; width:100%; text-align:right; text-align:start; margin-bottom:10px; padding:14px 16px; transition:border-color .12s, background .12s}
-  .opt.sel{border-color:var(--accent); background:var(--accent-soft)}
-  .opt .k{display:inline-block; width:22px; color:var(--muted); font-size:.85rem}
-  .bar{height:6px; background:var(--line); border-radius:99px; overflow:hidden}
-  .bar > i{display:block; height:100%; background:var(--accent); border-radius:99px; transition:width .25s}
-  .topbar{display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:8px; font-size:.85rem; color:var(--muted)}
-  .pill{display:inline-block; font-size:.75rem; padding:2px 9px; border-radius:99px; border:1px solid var(--line); color:var(--muted); margin-inline-end:6px}
-  .pill.edge{border-color:var(--accent); color:var(--accent)}
-  .pill.skip{border-color:var(--warn); color:var(--warn)}
-  .stage{background:linear-gradient(160deg,#232c3d,#0f1620); color:#eef2f8; border-radius:12px; padding:28px 20px; min-height:190px; display:flex; align-items:center; justify-content:center; text-align:center; font-size:1.05rem}
-  .stage span{opacity:0; transition:opacity .45s}
-  .stage span.on{opacity:1}
-  .reader{max-height:200px; overflow-y:auto; border:1px solid var(--line); border-radius:10px; padding:14px; background:var(--bg)}
-  .axis{margin-bottom:16px}
-  .axis-head{display:flex; justify-content:space-between; font-size:.85rem; margin-bottom:4px}
-  .axis-ends{display:flex; justify-content:space-between; font-size:.75rem; color:var(--muted); margin-top:3px}
-  .track{position:relative; height:10px; background:var(--line); border-radius:99px}
-  .track > i{position:absolute; top:-3px; width:16px; height:16px; border-radius:99px; background:var(--accent); border:2px solid var(--card); transform:translateX(-50%)}
-  .obs{border-inline-start:3px solid var(--line); padding:2px 0 2px 12px; margin-bottom:14px}
-  .obs.high{border-color:var(--ok)} .obs.mid{border-color:var(--warn)} .obs.low{border-color:var(--danger)}
-  .obs b{font-weight:600}
-  .conf{font-size:.75rem; padding:1px 7px; border-radius:99px; border:1px solid var(--line); color:var(--muted); margin-inline-start:6px; white-space:nowrap}
-  pre{background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:12px; overflow:auto; max-height:300px; font-size:.72rem; line-height:1.5}
-  .map{display:flex; flex-wrap:wrap; gap:6px; align-items:center}
-  .node{font-size:.78rem; padding:4px 10px; border-radius:99px; border:1px solid var(--line); background:var(--bg)}
-  .node.e{border-color:var(--accent); color:var(--accent)}
-  .node.s{border-color:var(--warn); color:var(--warn); text-decoration:line-through}
-  .arrow{color:var(--muted); font-size:.75rem}
-  .note{background:var(--accent-soft); border:1px solid var(--line); border-radius:10px; padding:12px; font-size:.88rem}
-  .hide{display:none}
-  ul{margin:0 0 12px; padding-inline-start:20px}
-  li{margin-bottom:6px}
+}
+:root[data-theme="dark"]{
+  --paper:#0D1211; --card:#151C1A; --card-2:#1A2320;
+  --ink:#E4EAE6;   --ink-2:#C2CDC8; --muted:#8B9A94;
+  --line:#232E2A;  --line-2:#1D2724;
+  --seal:#6DC7A7;  --seal-soft:#15302A; --seal-ink:#9FDCC6;
+  --clay:#DE9163;  --clay-soft:#2E211A;
+  --sure:#6FC08D;  --maybe:#D6A24A;    --guess:#DE8A7E;
+  --shadow:0 1px 2px rgba(0,0,0,.30), 0 8px 24px -16px rgba(0,0,0,.70);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"IBM Plex Sans Thai",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:16px; line-height:1.72;
+  -webkit-font-smoothing:antialiased;
+  overflow-wrap:break-word;
+}
+.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace; font-variant-numeric:tabular-nums}
+.serif{font-family:"Noto Serif Thai",Georgia,serif}
+
+.shell{max-width:34rem; margin:0 auto; padding:0 18px}
+main{padding-bottom:calc(28px + env(safe-area-inset-bottom))}
+
+/* ── หัวเรื่อง / ตัวอักษร ─────────────────────────────── */
+h1,h2,h3{font-family:"Noto Serif Thai",Georgia,serif; text-wrap:balance; margin:0; letter-spacing:-.005em}
+h1{font-size:clamp(1.72rem,6.2vw,2.3rem); line-height:1.38; font-weight:700}
+h2{font-size:1.16rem; line-height:1.5; font-weight:600}
+h3{font-size:1rem; font-weight:600}
+p{margin:0 0 .9em}
+.eyebrow{
+  font-family:"IBM Plex Mono",monospace; font-size:.7rem; font-weight:500;
+  letter-spacing:.05em; text-transform:uppercase; color:var(--seal); margin:0 0 14px;
+}
+.lede{font-size:1.02rem; color:var(--ink-2)}
+.muted{color:var(--muted)}
+.small{font-size:.855rem; line-height:1.62}
+.tiny{font-size:.775rem; line-height:1.6; color:var(--muted)}
+a{color:var(--seal)}
+
+/* ── การ์ด / บล็อก ──────────────────────────────────── */
+.card{background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:20px 18px}
+.stack{display:flex; flex-direction:column; gap:14px}
+.stack-lg{display:flex; flex-direction:column; gap:26px}
+hr.rule{border:0; border-top:1px solid var(--line); margin:26px 0}
+
+/* ── ปุ่ม ────────────────────────────────────────────── */
+button{
+  font:inherit; color:inherit; cursor:pointer; -webkit-tap-highlight-color:transparent;
+  background:var(--card); border:1px solid var(--line); border-radius:var(--r-sm);
+  padding:12px 16px; min-height:46px; transition:border-color .14s, background .14s, transform .1s;
+}
+button:active{transform:scale(.985)}
+button:focus-visible{outline:2px solid var(--seal); outline-offset:2px}
+.btn-primary{
+  background:var(--seal); border-color:var(--seal); color:var(--paper);
+  font-weight:600; padding:15px 22px; min-height:52px; border-radius:12px;
+}
+:root[data-theme="dark"] .btn-primary, :root:not([data-theme="light"]) .btn-primary{color:#0D1211}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]) .btn-primary{color:#FBFCFA}}
+.btn-ghost{background:transparent; border-color:var(--line)}
+.btn-row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+
+/* ── หัวแบบทดสอบ + รางแตกกิ่ง ───────────────────────── */
+.head{
+  position:sticky; top:0; z-index:20; background:var(--paper);
+  border-bottom:1px solid var(--line); padding-top:env(safe-area-inset-top);
+}
+.head-in{max-width:34rem; margin:0 auto; padding:11px 18px 10px}
+.head-row{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:9px}
+.step{font-family:"IBM Plex Mono",monospace; font-size:.72rem; color:var(--muted); letter-spacing:.02em; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.step b{color:var(--ink); font-weight:500}
+.head-tools{display:flex; gap:2px; flex:none}
+.icon-btn{
+  min-height:32px; padding:4px 8px; font-size:.74rem; border-radius:8px; white-space:nowrap;
+  background:transparent; border-color:transparent; color:var(--muted);
+}
+.icon-btn:hover{border-color:var(--line); color:var(--ink)}
+.icon-btn.icon-only{min-width:38px; display:grid; place-items:center; padding:4px}
+.icon-btn svg{display:block}
+.icon-btn[aria-pressed="true"]{background:var(--seal-soft); color:var(--seal); border-color:transparent}
+
+.rail{display:flex; gap:3px; align-items:flex-end; height:12px}
+.rail i{
+  flex:1; height:3px; border-radius:2px; background:var(--line);
+  transition:height .2s ease, background .2s ease;
+}
+.rail i.done{background:var(--seal); opacity:.5}
+.rail i.edge{background:var(--clay); opacity:.75}
+.rail i.now{height:11px; background:var(--seal); opacity:1}
+
+.why{
+  margin:11px 0 0; padding:10px 12px; border-radius:var(--r-sm);
+  background:var(--seal-soft); color:var(--seal-ink); font-size:.78rem; line-height:1.55;
+}
+
+/* ── คำถาม ──────────────────────────────────────────── */
+.q{padding:30px 0 12px}
+.q-kind{
+  display:inline-block; font-family:"IBM Plex Mono",monospace; font-size:.66rem;
+  letter-spacing:.03em; text-transform:uppercase; color:var(--muted);
+  border:1px solid var(--line); border-radius:99px; padding:3px 11px; margin-bottom:16px;
+}
+.q-prompt{
+  font-family:"Noto Serif Thai",Georgia,serif; font-weight:600;
+  font-size:clamp(1.28rem,4.9vw,1.56rem); line-height:1.55; letter-spacing:-.004em;
+  text-wrap:pretty; margin:0 0 22px;
+}
+.opts{display:flex; flex-direction:column; gap:9px}
+.opt{
+  display:flex; gap:12px; align-items:flex-start; text-align:start; width:100%;
+  padding:14px 15px; border-radius:12px; background:var(--card);
+  border:1px solid var(--line); line-height:1.55; box-shadow:var(--shadow);
+}
+.opt:hover{border-color:var(--seal)}
+.opt[aria-pressed="true"]{border-color:var(--seal); background:var(--seal-soft); color:var(--seal-ink)}
+.opt .key{
+  flex:none; font-family:"IBM Plex Mono",monospace; font-size:.72rem; font-weight:500;
+  color:var(--muted); border:1px solid var(--line); border-radius:6px;
+  width:22px; height:22px; display:grid; place-items:center; margin-top:2px;
+}
+.opt[aria-pressed="true"] .key{border-color:var(--seal); color:var(--seal)}
+
+/* ── ข้อบทความ ──────────────────────────────────────── */
+.reader{
+  max-height:min(46vh,340px); overflow-y:auto; overscroll-behavior:contain;
+  border:1px solid var(--line); border-radius:12px; padding:16px 16px 4px;
+  background:var(--card-2); margin-bottom:8px; -webkit-overflow-scrolling:touch;
+}
+.reader p{font-size:.95rem; line-height:1.78; color:var(--ink-2)}
+.reader p:last-child{color:var(--muted); font-size:.85rem}
+.read-meter{display:flex; align-items:center; gap:9px; margin-bottom:20px}
+.read-meter .bar{flex:1; height:2px; background:var(--line); border-radius:2px}
+.read-meter .bar i{display:block; height:100%; background:var(--clay); border-radius:2px; transition:width .2s}
+.read-meter span{font-family:"IBM Plex Mono",monospace; font-size:.7rem; color:var(--muted)}
+
+/* ── กล่อง feedback ระหว่างทำ ───────────────────────── */
+.fb{
+  margin-top:14px; padding:15px 16px; border-radius:12px;
+  background:var(--clay-soft); border:1px solid transparent; font-size:.9rem; line-height:1.62;
+}
+.fb .btn-row{margin-top:12px}
+
+/* ── แถบปุ่มล่าง ────────────────────────────────────── */
+.dock{
+  position:sticky; bottom:0; z-index:20; background:var(--paper);
+  border-top:1px solid var(--line);
+  padding:10px 0 calc(10px + env(safe-area-inset-bottom));
+}
+.dock-in{max-width:34rem; margin:0 auto; padding:0 18px; display:flex; gap:9px}
+.dock button{flex:1; font-size:.9rem; padding:11px 10px}
+.dock .end{flex:0 0 auto; color:var(--muted)}
+
+/* ── รายงานผล ───────────────────────────────────────── */
+.report-head{padding:32px 0 4px}
+.chips{display:flex; flex-wrap:wrap; gap:6px; margin-top:14px}
+.chip{
+  font-family:"IBM Plex Mono",monospace; font-size:.72rem; color:var(--muted);
+  border:1px solid var(--line); border-radius:99px; padding:3px 11px;
+}
+.sec{padding-top:6px}
+.sec-head{display:flex; align-items:baseline; gap:10px; margin-bottom:6px}
+.sec-tag{
+  font-family:"IBM Plex Mono",monospace; font-size:.68rem; letter-spacing:.05em;
+  text-transform:uppercase; padding:3px 10px; border-radius:99px; flex:none;
+}
+.sec-a .sec-tag{background:var(--seal-soft); color:var(--seal-ink)}
+.sec-b .sec-tag{background:var(--clay-soft); color:var(--clay)}
+.sec-note{font-size:.82rem; color:var(--muted); margin:0 0 20px}
+
+.axis{margin-bottom:19px}
+.axis-top{display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:7px}
+.axis-name{font-size:.92rem; font-weight:600}
+.axis-conf{font-family:"IBM Plex Mono",monospace; font-size:.68rem; color:var(--muted); white-space:nowrap}
+.track{position:relative; height:4px; background:var(--line); border-radius:99px}
+.track::after{content:""; position:absolute; left:50%; top:-3px; width:1px; height:10px; background:var(--line-2)}
+.track i{
+  position:absolute; top:-5px; width:14px; height:14px; border-radius:99px;
+  background:var(--seal); border:3px solid var(--card); transform:translateX(-50%);
+  box-shadow:0 0 0 1px var(--line);
+}
+.axis-ends{display:flex; justify-content:space-between; gap:12px; margin-top:8px; font-size:.755rem; color:var(--muted)}
+.axis-ends span:last-child{text-align:end}
+
+.gauge{margin-top:4px; padding:18px; border-radius:12px; background:var(--card-2); border:1px solid var(--line)}
+
+.obs{display:flex; flex-direction:column; gap:12px}
+.ob{padding:15px 16px; border-radius:12px; background:var(--card); border:1px solid var(--line)}
+.ob-fact{font-weight:600; font-size:.95rem; line-height:1.6; margin:0 0 6px}
+.ob-guess{font-size:.85rem; line-height:1.62; color:var(--muted); margin:0}
+.ob-conf{
+  display:inline-flex; align-items:center; gap:6px; margin-top:10px;
+  font-family:"IBM Plex Mono",monospace; font-size:.68rem; color:var(--muted);
+}
+.dot{width:7px; height:7px; border-radius:99px; flex:none}
+.dot.high{background:var(--sure)} .dot.mid{background:var(--maybe)} .dot.low{background:var(--guess)}
+
+.path{display:flex; flex-wrap:wrap; gap:5px; align-items:center}
+.node{
+  font-family:"IBM Plex Mono",monospace; font-size:.71rem; padding:3px 9px;
+  border-radius:7px; border:1px solid var(--line); background:var(--card); color:var(--muted);
+}
+.node.edge{border-color:var(--clay); color:var(--clay)}
+.node.skip{border-style:dashed; text-decoration:line-through}
+
+pre{
+  background:var(--card-2); border:1px solid var(--line); border-radius:12px;
+  padding:13px; overflow:auto; max-height:300px;
+  font-family:"IBM Plex Mono",monospace; font-size:.7rem; line-height:1.55; color:var(--ink-2);
+}
+.give{padding:22px 20px; border-radius:var(--r); background:var(--seal-soft); border:1px solid transparent}
+.give h2{color:var(--seal-ink)}
+.amounts{display:flex; gap:8px; margin-top:14px}
+.amounts button{flex:1; background:var(--card); font-family:"IBM Plex Mono",monospace; font-size:.9rem}
+
+.dl{display:flex; flex-direction:column; gap:11px; margin:0}
+.dl>div{display:flex; gap:12px; align-items:baseline}
+.dl dt{
+  flex:none; width:70px; font-family:"IBM Plex Mono",monospace; font-size:.72rem;
+  letter-spacing:.01em; color:var(--seal); padding-top:2px;
+}
+.dl dd{margin:0; font-size:.88rem; line-height:1.6; color:var(--ink-2)}
+
+#test{display:flex; flex-direction:column; min-height:100dvh}
+#test > main{flex:1 0 auto}
+.hide{display:none !important}
+.fade{animation:fade .28s ease}
+@keyframes fade{from{opacity:0; transform:translateY(7px)} to{opacity:1; transform:none}}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms !important; transition-duration:.01ms !important}
+}
+footer{padding:34px 0 40px; font-size:.75rem; line-height:1.65; color:var(--muted)}
 </style>
 </head>
 <body>
-<div class="wrap">
 
-<!-- ============ หน้าต้อนรับ ============ -->
-<section id="welcome">
-  <div class="card">
-    <h1>🧠 แบบทดสอบ Mindset ที่ดูมากกว่าคำตอบของคุณ</h1>
-    <p class="muted">เดโม Phase 0 — พิสูจน์กลไก ไม่ใช่ผลจิตวิทยาจริง</p>
-    <p>แบบทดสอบนี้ไม่ได้มีชุดคำถามตายตัว <b>แต่ละคำตอบของคุณจะพาไปเจอคำถามคนละชุด</b> เหมือนแตกกิ่งบน mind-map — คนสองคนที่ทำเว็บนี้จะไม่ได้เจอคำถามเหมือนกัน</p>
+<!-- ══════════════ หน้าเปิด ══════════════ -->
+<main id="intro" class="shell">
+  <section style="padding:44px 0 8px">
+    <p class="eyebrow">แบบทดสอบเชิงพฤติกรรม</p>
+    <h1>เราไม่ได้ดูแค่คำตอบของคุณ<br>เราดูว่าคุณลังเลตรงไหน</h1>
+    <p class="lede" style="margin-top:18px">
+      แบบทดสอบนี้ไม่มีชุดคำถามตายตัว คำตอบแต่ละข้อจะพาคุณไปเจอคำถามคนละชุด
+      แตกกิ่งจากคลัง <b>120 ข้อ</b> — คนสองคนที่ทำเว็บนี้แทบไม่มีทางเจอคำถามเหมือนกัน
+    </p>
+  </section>
 
-    <h3>สิ่งที่เราบันทึก (บอกก่อน ไม่ซ่อน)</h3>
-    <ul>
-      <li>คำตอบที่คุณเลือก</li>
-      <li>ข้อที่คุณ <b>กดข้าม</b></li>
-      <li>การ <b>ย้อนกลับไปแก้ข้อเดิม</b> และคุณเปลี่ยนคำตอบจริงหรือแค่กลับไปดู</li>
-      <li>คุณ <b>ดูคลิป/อ่านบทความจนจบ</b> หรือข้ามกลางคัน</li>
-      <li>เวลาที่ใช้ก่อนแตะตัวเลือกแรก และเวลารวมต่อข้อ</li>
-    </ul>
+  <hr class="rule">
 
-    <div class="note">
-      🔒 <b>เดโมนี้ไม่ส่งข้อมูลออกจากเครื่องคุณเลย</b> — ทุกอย่างอยู่ในหน่วยความจำของเบราว์เซอร์ ปิดหน้าต่างแล้วหายหมด
-      และคุณจะได้เห็น <b>log ดิบทั้งหมด</b> ที่หน้าสรุปผล
+  <section>
+    <h2 style="margin-bottom:16px">สิ่งที่เราบันทึก</h2>
+    <dl class="dl">
+      <div><dt>ตอบ</dt><dd>ตัวเลือกที่คุณกด และเวลาที่ใช้ก่อนแตะตัวเลือกแรก</dd></div>
+      <div><dt>ข้าม</dt><dd>ข้อที่คุณเลือกจะไม่ตอบ และข้อนั้นแตะแกนไหน</dd></div>
+      <div><dt>ย้อน</dt><dd>การกลับไปดูข้อเดิม และคุณเปลี่ยนคำตอบจริงหรือแค่กลับไปดู</dd></div>
+      <div><dt>อ่าน</dt><dd>บทความในแบบทดสอบ คุณเลื่อนอ่านถึงกี่เปอร์เซ็นต์ก่อนตอบ</dd></div>
+      <div><dt>ทบทวน</dt><dd>เมื่อเราให้ข้อมูลที่สวนกับคำตอบคุณ คุณยืนยันเดิมหรือทบทวนใหม่</dd></div>
+    </dl>
+  </section>
+
+  <hr class="rule">
+
+  <section class="card" style="background:var(--seal-soft); border-color:transparent">
+    <p class="small" style="margin:0; color:var(--seal-ink)">
+      <b>ข้อมูลไม่ออกจากเครื่องคุณ</b> — เว็บนี้ไม่มีเซิร์ฟเวอร์เก็บคำตอบ ทุกอย่างอยู่ในหน่วยความจำเบราว์เซอร์
+      ปิดหน้าต่างแล้วหายหมด และคุณจะได้เห็น log ดิบทั้งหมดที่หน้าสรุปผล
+    </p>
+  </section>
+
+  <div class="btn-row" style="margin-top:24px">
+    <button class="btn-primary" id="btnStart" style="flex:1">เริ่มทำ</button>
+  </div>
+  <p class="tiny" style="margin-top:12px">ประมาณ 12–20 ข้อ · 4–6 นาที · การกดเริ่มถือว่าคุณยินยอมให้บันทึกตามรายการด้านบน</p>
+
+  <footer>
+    ไม่ใช่การวินิจฉัยหรือคำแนะนำทางจิตวิทยาหรือการแพทย์ · หากมีความทุกข์ทางใจ สายด่วนสุขภาพจิต 1323<br>
+    ข้อคำถามส่วนบุคลิกภาพดัดแปลงจาก International Personality Item Pool (IPIP) ซึ่งเป็นสาธารณสมบัติ
+  </footer>
+</main>
+
+<!-- ══════════════ หน้าทำแบบทดสอบ ══════════════ -->
+<div id="test" class="hide">
+  <header class="head">
+    <div class="head-in">
+      <div class="head-row">
+        <span class="step" id="step"></span>
+        <span class="head-tools">
+          <button class="icon-btn" id="btnWhy" aria-pressed="false" title="ทำไม engine เลือกข้อนี้">ทำไมข้อนี้</button>
+          <button class="icon-btn icon-only" id="btnTheme" title="สลับโหมดสว่าง/มืด" aria-label="สลับโหมดสว่างและมืด">
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+              <circle cx="8" cy="8" r="6.3" fill="none" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M8 1.7a6.3 6.3 0 0 0 0 12.6z" fill="currentColor"/>
+            </svg>
+          </button>
+        </span>
+      </div>
+      <div class="rail" id="rail"></div>
+      <div class="why hide" id="why"></div>
     </div>
+  </header>
 
-    <div class="btn-row">
-      <button class="btn-primary" id="btnStart">ยินยอมและเริ่มทำ →</button>
-      <span class="tiny">ประมาณ 9 ข้อ · 3–4 นาที</span>
+  <main class="shell">
+    <div class="q" id="q"></div>
+  </main>
+
+  <div class="dock">
+    <div class="dock-in">
+      <button id="btnBack" class="btn-ghost">← ย้อนกลับ</button>
+      <button id="btnSkip" class="btn-ghost">ข้ามข้อนี้</button>
+      <button id="btnEnd" class="btn-ghost end" title="จบแล้วดูผลทันที">จบ</button>
     </div>
   </div>
-  <p class="tiny">⚕️ ไม่ใช่การวินิจฉัยหรือคำแนะนำทางจิตวิทยา/การแพทย์ · หากมีความทุกข์ทางใจ โทรสายด่วนสุขภาพจิต 1323</p>
-</section>
-
-<!-- ============ หน้าทำแบบทดสอบ ============ -->
-<section id="test" class="hide">
-  <div class="topbar">
-    <span id="progText">ข้อ 1</span>
-    <span id="branchTag"></span>
-  </div>
-  <div class="bar" style="margin-bottom:10px"><i id="progBar" style="width:0%"></i></div>
-  <div id="whyBox" class="note tiny hide" style="margin-bottom:12px"></div>
-  <div class="card" id="itemCard"></div>
-  <div class="btn-row" style="margin-top:0">
-    <button id="btnBack">← ย้อนกลับ</button>
-    <button id="btnSkip">ข้ามข้อนี้</button>
-    <button id="btnWhy" title="โหมด debug: ดูว่า engine เลือกข้อนี้มาให้เพราะอะไร">🛈 ทำไมได้ข้อนี้</button>
-    <button id="btnEnd" style="margin-inline-start:auto">พอแล้ว ดูผลเลย</button>
-  </div>
-</section>
-
-<!-- ============ หน้าผล ============ -->
-<section id="result" class="hide"></section>
-
 </div>
 
-<script>
-/* =====================================================================
-   เดโม: เว็บทดสอบ mindset แบบแตกกิ่ง (Phase 0)
-   โครงสร้างโค้ดตั้งใจแยกเป็น 3 ส่วนชัด ๆ ให้ยกไปทำเป็นระบบจริงได้ตรง ๆ:
-     1) POOL      — คลังข้อ (ตอนทำจริงย้ายไปอยู่ฝั่งเซิร์ฟเวอร์)
-     2) ENGINE    — logEvent / scoreState / pickNext   (หัวใจ)
-     3) UI        — render / handler                    (เปลี่ยนเป็น React ได้)
-   ===================================================================== */
+<!-- ══════════════ หน้าผล ══════════════ -->
+<main id="result" class="shell hide"></main>
 
-/* ---------- 1) คลังข้อ ----------
-   weights: O,C,E,A,N = Big Five / G = growth mindset (บวก = growth, ลบ = fixed)
-   edges  : เส้นบังคับ  { optionId: itemIdถัดไป }
-   ผู้ใช้เจอจริง 9 ข้อ จากคลัง 15 ข้อ                                   */
-/* ---------- 1) คลังข้อ ----------
-   ต้นฉบับอยู่ที่ items.json — บล็อกด้านล่างถูกฉีดเข้ามาโดย build.py ห้ามแก้ตรงนี้ด้วยมือ
-   (ที่ต้องฉีดเพราะเปิดไฟล์ผ่าน file:// แล้ว fetch('items.json') จะโดน CORS บล็อก
-    ตอนทำระบบจริง คลังข้อต้องอยู่ฝั่งเซิร์ฟเวอร์และส่งมาทีละข้อเท่านั้น)          */
-const MAX_ITEMS      = 20;   // จำนวนข้อสูงสุดต่อ session
-const MIN_ITEMS      = 12;   // ต่ำสุดก่อนจะยอมจบเพราะ "ข้อมูลพอแล้ว"
-const MIN_PER_AXIS   = 2;    // ทุกแกนต้องได้อย่างน้อยกี่ข้อ
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   1) คลังข้อ — ต้นฉบับอยู่ที่ items.json, ฉีดเข้ามาโดย build.py
+      (ฉีดเพราะเปิดผ่าน file:// แล้ว fetch() จะโดน CORS บล็อก
+       ตอนทำระบบจริงคลังข้อต้องอยู่ฝั่งเซิร์ฟเวอร์และส่งมาทีละข้อ)
+   ═══════════════════════════════════════════════════════════════ */
+const MAX_ITEMS       = 20;  // ข้อสูงสุดต่อ session
+const MIN_ITEMS       = 12;  // ต่ำสุดก่อนยอมจบเพราะ "ข้อมูลพอแล้ว"
+const MIN_PER_AXIS    = 2;   // ทุกแกนต้องถูกถามอย่างน้อยกี่ข้อ
 const TARGET_EVIDENCE = 4;   // หลักฐานกี่ชิ้นต่อแกนถึงเรียกว่ามั่นใจเต็ม
 
 /* === ITEMS:BEGIN === */
@@ -3640,7 +3869,8 @@ const POOL = [
   "edges": {
    "a": "s_c_02",
    "c": "s_n_01"
-  }
+  },
+  "opener": true
  },
  {
   "id": "s_c_02",
@@ -3823,7 +4053,8 @@ const POOL = [
      "E": 1
     }
    }
-  ]
+  ],
+  "opener": true
  },
  {
   "id": "s_o_01",
@@ -3863,7 +4094,8 @@ const POOL = [
   "edges": {
    "a": "s_o_03",
    "b": "s_o_02"
-  }
+  },
+  "opener": true
  },
  {
   "id": "s_o_02",
@@ -3942,7 +4174,8 @@ const POOL = [
   "edges": {
    "a": "s_o_06",
    "b": "s_n_04"
-  }
+  },
+  "opener": true
  },
  {
   "id": "s_o_04",
@@ -4085,7 +4318,8 @@ const POOL = [
   "edges": {
    "a": "s_e_03",
    "b": "s_n_05"
-  }
+  },
+  "opener": true
  },
  {
   "id": "s_e_02",
@@ -4158,7 +4392,8 @@ const POOL = [
      "N": 1
     }
    }
-  ]
+  ],
+  "opener": true
  },
  {
   "id": "s_e_04",
@@ -4298,7 +4533,8 @@ const POOL = [
   "edges": {
    "a": "s_a_04",
    "c": "s_n_06"
-  }
+  },
+  "opener": true
  },
  {
   "id": "s_a_02",
@@ -4339,7 +4575,8 @@ const POOL = [
   ],
   "edges": {
    "a": "s_a_05"
-  }
+  },
+  "opener": true
  },
  {
   "id": "s_a_03",
@@ -4413,7 +4650,8 @@ const POOL = [
      "N": -1
     }
    }
-  ]
+  ],
+  "opener": true
  },
  {
   "id": "s_a_05",
@@ -4605,7 +4843,8 @@ const POOL = [
      "O": 1
     }
    }
-  ]
+  ],
+  "opener": true
  },
  {
   "id": "s_n_03",
@@ -4640,7 +4879,8 @@ const POOL = [
      "E": 1
     }
    }
-  ]
+  ],
+  "opener": true
  },
  {
   "id": "s_n_04",
@@ -5126,8 +5366,8 @@ const POOL = [
   "forced": true
  },
  {
-  "id": "v_fail",
-  "type": "video",
+  "id": "r_fail",
+  "type": "reading",
   "source": "original",
   "tags": [
    "G",
@@ -5160,22 +5400,23 @@ const POOL = [
     }
    }
   ],
-  "slides": [
-   "🎬 มีคนหนึ่ง ฝึกอย่างหนักมา 6 เดือน",
-   "🏁 วันแข่งจริง... เขาแพ้ ตั้งแต่รอบแรก",
-   "😶 เขานั่งอยู่ตรงนั้น เงียบ ๆ อยู่นาน",
-   "📓 คืนนั้น เขาเปิดสมุด เขียนว่า \"พลาดตรงไหน\"",
-   "🌅 เช้าวันรุ่งขึ้น เขากลับไปที่สนามซ้อม"
-  ],
-  "slideMs": 2600,
   "edges": {
    "a": "s_g_01",
    "b": "s_g_02"
-  }
+  },
+  "body": [
+   "เขาเริ่มซ้อมตั้งแต่เดือนมกราคม ตื่นตีห้าทุกวัน ไม่ขาดสักวันเดียวตลอดหกเดือน คนรอบตัวเริ่มเรียกเขาว่าคนบ้า และเขาก็ค่อนข้างชอบคำนั้น",
+   "วันแข่งจริง เขาตกรอบแรก ไม่ใช่แพ้แบบสูสี แต่แพ้แบบที่ทุกคนดูออกตั้งแต่ห้านาทีแรกว่าจะจบยังไง",
+   "เขานั่งอยู่ข้างสนามนานมาก นานจนคนดูกลับไปเกือบหมดแล้ว",
+   "คืนนั้นเขาเปิดสมุดที่ใช้จดตารางซ้อมมาทั้งปี แล้วเขียนบรรทัดใหม่ไว้ข้างบนสุดว่า \"หกเดือนที่ผ่านมา ซ้อมอะไรที่ไม่ได้ใช้เลยในวันนี้บ้าง\"",
+   "เขาใช้เวลาสองชั่วโมงกับคำถามนั้น และได้คำตอบมาเจ็ดข้อ",
+   "เช้าวันรุ่งขึ้นเขากลับไปที่สนามซ้อม แต่ตารางที่ติดไว้บนผนังไม่เหมือนเดิมแล้ว",
+   "— จบข้อความ —"
+  ]
  },
  {
-  "id": "v_wait",
-  "type": "video",
+  "id": "r_wait",
+  "type": "reading",
   "source": "original",
   "tags": [
    "C",
@@ -5187,43 +5428,43 @@ const POOL = [
   "options": [
    {
     "id": "a",
-    "label": "รอจนครบ ของที่สัญญาไว้ก็คือสัญญา",
+    "label": "การอ่านเรื่องนี้ทำให้ฉันมองการรอคอยเปลี่ยนไป",
     "w": {
-     "C": 2,
-     "N": -1
+     "O": 2,
+     "G": 2
     }
    },
    {
     "id": "b",
-    "label": "กินไปเลย ของตรงหน้าแน่นอนกว่า",
+    "label": "ฉันเป็นคนที่รอได้อยู่แล้ว ไม่ว่าเพราะอะไรก็ตาม",
     "w": {
-     "C": -2
+     "C": 2
     }
    },
    {
     "id": "c",
-    "label": "รอ แต่จะคอยลุกไปดูว่าเขายังอยู่ไหม",
+    "label": "ของตรงหน้าแน่นอนกว่าเสมอ ฉันจะเลือกกินก่อน",
     "w": {
-     "N": 2,
-     "C": 1
+     "C": -2
     }
    }
   ],
-  "slides": [
-   "🍰 มีคนวางขนมไว้ตรงหน้าคุณ 1 ชิ้น",
-   "⏳ แล้วบอกว่า \"ถ้ารอ 20 นาที จะได้ 2 ชิ้น\"",
-   "🚪 จากนั้นเขาก็เดินออกจากห้องไป",
-   "🕐 นาทีที่ 5 ... ห้องเงียบมาก",
-   "🤔 นาทีที่ 12 ... คุณเริ่มคิดว่าเขาจะกลับมาจริงไหม"
-  ],
-  "slideMs": 2600,
   "edges": {
    "b": "s_c_01"
-  }
+  },
+  "body": [
+   "ปลายทศวรรษ 1960 มีการทดลองที่โด่งดังมาก นักวิจัยวางขนมไว้ตรงหน้าเด็กหนึ่งชิ้น แล้วบอกว่า ถ้ารอจนกว่าเขาจะกลับเข้ามา จะได้เพิ่มเป็นสองชิ้น จากนั้นก็เดินออกจากห้องไป",
+   "เด็กบางคนกินทันทีที่ประตูปิด บางคนหันหลังให้ขนม บางคนร้องเพลงกับตัวเอง และมีคนหนึ่งเลียขนมรอบ ๆ โดยไม่กัด",
+   "ผลที่ทำให้การทดลองนี้ดังไปทั้งโลกคือ เด็กที่รอได้นานกว่า มีผลการเรียนและตัวชี้วัดอื่น ๆ ในอีกสิบกว่าปีต่อมาดีกว่าโดยเฉลี่ย",
+   "แต่สิ่งที่คนเล่าต่อกันมักไม่ได้เล่าคือ เมื่อมีคนทำการทดลองซ้ำในกลุ่มตัวอย่างที่ใหญ่กว่าและหลากหลายกว่ามากในปี 2018 ความสัมพันธ์นั้นอ่อนลงอย่างมาก และส่วนใหญ่อธิบายได้ด้วยฐานะทางบ้านของเด็ก",
+   "คำอธิบายที่ฟังขึ้นที่สุดตอนนี้จึงไม่ใช่ \"เด็กที่อดทนกว่าจะไปได้ไกลกว่า\" แต่เป็น \"เด็กที่โตมาในบ้านที่คำสัญญาของผู้ใหญ่เชื่อถือได้ จะรอเป็น\"",
+   "การรอ อาจไม่ใช่นิสัย แต่เป็นการคำนวณว่าอีกฝ่ายจะกลับมาจริงไหม",
+   "— จบข้อความ —"
+  ]
  },
  {
-  "id": "v_stranger",
-  "type": "video",
+  "id": "r_stranger",
+  "type": "reading",
   "source": "original",
   "tags": [
    "A",
@@ -5235,7 +5476,7 @@ const POOL = [
   "options": [
    {
     "id": "a",
-    "label": "เข้าไปถามเขาทันทีว่าโอเคไหม",
+    "label": "ฉันน่าจะเป็นคนที่ลุกไปแจ้ง แม้คนอื่นจะนั่งเฉย",
     "w": {
      "A": 2,
      "E": 2
@@ -5243,7 +5484,7 @@ const POOL = [
    },
    {
     "id": "b",
-    "label": "มองหาคนอื่นที่ดูจะเข้าไปช่วยก่อน",
+    "label": "ฉันคงมองหาปฏิกิริยาของคนอื่นก่อนเหมือนกัน",
     "w": {
      "A": 0,
      "E": -1,
@@ -5252,24 +5493,25 @@ const POOL = [
    },
    {
     "id": "c",
-    "label": "ไม่ทำอะไร เดี๋ยวจะเป็นเรื่องเกินตัว",
+    "label": "ฉันไม่แน่ใจ และนั่นคือสิ่งที่น่ากลัวของเรื่องนี้",
     "w": {
-     "A": -2,
-     "E": -1
+     "O": 2,
+     "G": 1
     }
    }
   ],
-  "slides": [
-   "🚇 บนรถไฟฟ้าที่คนแน่นมาก",
-   "😰 มีคนหนึ่งหน้าซีด ยืนพิงเสาไว้",
-   "👀 คนรอบข้างเห็น แต่ทุกคนก้มมองโทรศัพท์",
-   "🤐 ไม่มีใครพูดอะไรเลยสักคน",
-   "⏱️ อีก 2 สถานีจะถึงปลายทางแล้ว"
-  ],
-  "slideMs": 2600,
   "edges": {
    "a": "s_a_02"
-  }
+  },
+  "body": [
+   "ปี 1968 มีนักจิตวิทยาสองคนออกแบบการทดลองง่าย ๆ ให้คนนั่งอยู่ในห้องแล้วปล่อยควันเข้ามาทางช่องลม",
+   "เมื่อคนนั้นนั่งอยู่คนเดียว เกือบทุกคนลุกไปแจ้งภายในเวลาไม่ถึงสองนาที",
+   "แต่เมื่อในห้องมีคนอื่นนั่งอยู่ด้วยอีกสองคน ซึ่งเป็นหน้าม้าที่ได้รับคำสั่งให้นั่งเฉย ๆ มีเพียงหนึ่งในสิบคนเท่านั้นที่ลุกไปแจ้ง",
+   "ที่เหลือนั่งอยู่ในห้องที่ควันหนาขึ้นเรื่อย ๆ จนหมดเวลาการทดลอง หลายคนไอ หลายคนขยี้ตา แต่ไม่มีใครลุก",
+   "ตอนสัมภาษณ์ทีหลัง แทบไม่มีใครบอกว่า \"ผมคิดว่าคนอื่นคงจัดการแล้ว\" ส่วนใหญ่บอกว่าพวกเขาคิดว่ามันคงไม่ใช่เรื่องอันตราย",
+   "สิ่งที่การทดลองนี้ชี้ให้เห็นไม่ใช่ว่าคนเราใจร้าย แต่คือเราใช้ปฏิกิริยาของคนรอบตัวเป็นเครื่องวัดว่าสถานการณ์ตรงหน้าร้ายแรงแค่ไหน และเมื่อทุกคนกำลังทำแบบเดียวกัน ทุกคนก็ได้ข้อมูลผิดพร้อมกันหมด",
+   "— จบข้อความ —"
+  ]
  },
  {
   "id": "r_kodak",
@@ -5415,118 +5657,103 @@ const POOL = [
 ];
 /* === ITEMS:END === */
 
-const BY_ID = Object.fromEntries(POOL.map(i => [i.id, i]));
-const AXES = ["O","C","E","A","N"];
+const BY_ID    = Object.fromEntries(POOL.map(i => [i.id, i]));
+const AXES     = ["O","C","E","A","N"];
 const AXES_ALL = [...AXES, "G"];
-const shuffle = a => a.map(v=>[Math.random(),v]).sort((x,y)=>x[0]-y[0]).map(x=>x[1]);
-const AXIS_INFO = {
-  O:{name:"Openness — เปิดรับสิ่งใหม่", hi:"ชอบของใหม่ ความคิดนามธรรม", lo:"ชอบของคุ้นเคย รูปธรรม"},
-  C:{name:"Conscientiousness — ความมีระเบียบ", hi:"วางแผน มีวินัย", lo:"ยืดหยุ่น ไปตามน้ำ"},
-  E:{name:"Extraversion — การได้พลังจากภายนอก", hi:"ได้พลังจากผู้คน", lo:"ได้พลังจากการอยู่คนเดียว"},
-  A:{name:"Agreeableness — ความประนีประนอม", hi:"เห็นใจ ยอมกัน", lo:"ตรงไปตรงมา แข่งขัน"},
-  N:{name:"Neuroticism — ความอ่อนไหวต่อความเครียด", hi:"อ่อนไหว คิดมาก", lo:"นิ่ง ไม่หวั่นไหว"}
-};
+const shuffle  = a => a.map(v => [Math.random(), v]).sort((x,y) => x[0]-y[0]).map(x => x[1]);
 
-/* ---------- 2) ENGINE ---------- */
+const AXIS_INFO = {
+  O:{name:"Openness · เปิดรับสิ่งใหม่",       lo:"ชอบของคุ้นเคย รูปธรรม",   hi:"ชอบของใหม่ ความคิดนามธรรม"},
+  C:{name:"Conscientiousness · ความมีระเบียบ", lo:"ยืดหยุ่น ไปตามน้ำ",       hi:"วางแผน มีวินัย"},
+  E:{name:"Extraversion · ที่มาของพลัง",       lo:"ได้พลังจากการอยู่คนเดียว", hi:"ได้พลังจากผู้คน"},
+  A:{name:"Agreeableness · ความประนีประนอม",   lo:"ตรงไปตรงมา แข่งขัน",      hi:"เห็นใจ ยอมกัน"},
+  N:{name:"Neuroticism · ความอ่อนไหว",         lo:"นิ่ง ไม่หวั่นไหว",        hi:"อ่อนไหว คิดมาก"}
+};
+const KIND = {trait:"ข้อความ · ตรงกับคุณแค่ไหน", scenario:"สถานการณ์", reading:"บทความสั้น", video:"คลิป"};
+
+/* ═══════════════════════════════════════════════════════════════
+   2) ENGINE — logEvent / scoreState / pickNext
+   ═══════════════════════════════════════════════════════════════ */
 let S = null;
 
 function newSession(){
   S = {
-    id: "s_" + Math.random().toString(36).slice(2,10),
-    t0: Date.now(),
-    path: [],            // ลำดับ item id ที่เดินจริง
-    idx: -1,             // ตำแหน่งปัจจุบันใน path
-    answers: {},         // itemId -> optionId
-    skipped: {},         // itemId -> true
-    visits: {},          // itemId -> จำนวนครั้งที่เข้าดู
-    changes: {},         // itemId -> จำนวนครั้งที่เปลี่ยนคำตอบ
-    branch: {},          // itemId -> 'start' | 'edge' | 'adaptive'
-    firstInput: {},      // itemId -> ms จนแตะครั้งแรก
-    dwell: {},           // itemId -> ms รวมที่อยู่บนข้อนั้น
-    media: {},           // itemId -> {pct, completed, replays}
-    scroll: {},          // itemId -> % ที่ scroll ถึง
-    feedback: {},        // itemId -> 'kept' | 'changed'
-    why: {},             // itemId -> เหตุผลที่ engine เลือกข้อนี้ (สำหรับ debug)
-    ev: [],              // ⭐ event log ดิบ
-    _enter: 0,           // เวลาที่เข้าข้อปัจจุบัน
-    _touched: false      // แตะข้อปัจจุบันแล้วหรือยัง
+    id:"s_" + Math.random().toString(36).slice(2,10), t0:Date.now(),
+    path:[], idx:-1,
+    answers:{}, skipped:{}, visits:{}, changes:{},
+    branch:{}, why:{}, firstInput:{}, dwell:{},
+    scroll:{}, feedback:{}, ev:[],
+    _enter:0, _touched:false
   };
-  logEvent("session_start", null, {});
+  logEvent("session_start", null, {pool:POOL.length});
 }
 
 function logEvent(kind, itemId, payload){
-  S.ev.push({ seq:S.ev.length+1, tMs:Date.now()-S.t0, itemId:itemId||null, kind, payload:payload||{} });
+  S.ev.push({seq:S.ev.length+1, tMs:Date.now()-S.t0, itemId:itemId||null, kind, payload:payload||{}});
 }
 
-/** คำนวณคะแนนสะสม + ความมั่นใจของแต่ละแกน จาก "คำตอบ" เท่านั้น */
+function pickedOption(itemId){
+  const a = S.answers[itemId];
+  return a ? (BY_ID[itemId].options||[]).find(o => o.id === a) || null : null;
+}
+
+/** คะแนนสะสม + ความมั่นใจของแต่ละแกน — คิดจาก "คำตอบ" เท่านั้น ไม่เอาพฤติกรรมมาปน */
 function scoreState(){
-  const axes = {}; [...AXES,"G"].forEach(a => axes[a] = {raw:0, evidence:0});
+  const axes = {};
+  AXES_ALL.forEach(a => axes[a] = {raw:0, evidence:0});
   S.path.forEach(id => {
     const opt = pickedOption(id); if(!opt) return;
     Object.entries(opt.w||{}).forEach(([a,v]) => {
       if(!axes[a]) return;
       axes[a].raw += v; axes[a].evidence += 1;
     });
-    (BY_ID[id].tags||[]).forEach(a => { if(axes[a] && !(opt.w||{})[a]) axes[a].evidence += 0.5; });
+    (BY_ID[id].tags||[]).forEach(a => {
+      if(axes[a] && !(opt.w||{})[a]) axes[a].evidence += 0.5;
+    });
   });
   Object.values(axes).forEach(x => x.confidence = Math.min(1, x.evidence/TARGET_EVIDENCE));
   return axes;
 }
 
-function pickedOption(itemId){
-  const a = S.answers[itemId]; if(!a) return null;
-  return (BY_ID[itemId].options||[]).find(o => o.id === a) || null;
-}
-
-const seen = id => S.path.includes(id);
-
-/** ⭐ เลือกข้อถัดไป: ชั้นที่ 1 เส้นบังคับ → ชั้นที่ 2 adaptive ตามแกนที่มั่นใจน้อยสุด */
-/** นับว่าแกนนี้ถูกถามไปแล้วกี่ข้อใน session นี้ */
+const seen      = id => S.path.includes(id);
 const axisCount = ax => S.path.filter(id => (BY_ID[id].tags||[]).includes(ax)).length;
+const isMedia   = i  => i.type === "reading" || i.type === "video";
 
-/** ทุกแกนมีหลักฐานถึงเกณฑ์แล้วหรือยัง (ใช้เป็นเงื่อนไขจบก่อนครบ 20 ข้อ)
-    ต้องผ่าน 2 อย่าง: หลักฐานพอ *และ* ถูกถามตรง ๆ ถึงโควตาขั้นต่ำ
-    (ไม่งั้นแกนหนึ่งอาจได้หลักฐานทางอ้อมจากน้ำหนักข้ามแกนจนครบ
-     ทั้งที่ไม่เคยถูกถามเลยสักข้อ แล้วรายงานจะมีแกนที่ว่างเปล่า) */
+/** ทุกแกนพร้อมจบหรือยัง — ต้องทั้งหลักฐานพอ *และ* ถูกถามตรง ๆ ถึงโควตา
+    (ไม่งั้นแกนหนึ่งอาจได้หลักฐานทางอ้อมจากน้ำหนักข้ามแกนจนครบ ทั้งที่ไม่เคยถูกถามเลย) */
 function allAxesConfident(){
   const st = scoreState();
   return AXES_ALL.every(a => st[a].evidence >= TARGET_EVIDENCE && axisCount(a) >= MIN_PER_AXIS);
 }
 
-/** ⭐ เลือกข้อถัดไป
-    ชั้น 1 เส้นบังคับ → ชั้น 2 โควตาข้อสื่อ → ชั้น 3 โควตาขั้นต่ำต่อแกน → ชั้น 4 แกนที่หลักฐานน้อยสุด
-    ทุกชั้นจบด้วยการ "สุ่มในกลุ่มที่ดีเท่ากัน" เพื่อไม่ให้คลัง 120 ข้อถูกใช้จริงแค่ 20 ข้อเดิมตลอด */
+/** ⭐ เลือกข้อถัดไป 4 ชั้น แล้วสุ่มในกลุ่มที่ดีเท่ากัน
+    (ถ้าไม่สุ่ม คลัง 120 ข้อจะถูกใช้จริงแค่ 20 ข้อเดิมตลอดกาล) */
 function pickNext(){
-  const cur = BY_ID[S.path[S.idx]];
-  const ans = S.answers[cur.id];
+  const cur = BY_ID[S.path[S.idx]], ans = S.answers[cur.id];
 
-  // ชั้นที่ 1 — เส้นบังคับ (hard edge)
-  if(cur.edges && ans && cur.edges[ans] && !seen(cur.edges[ans])){
-    return { id: cur.edges[ans], via: "edge", why: "คำตอบที่คุณเลือกในข้อก่อนหน้ากำหนดข้อนี้ไว้ล่วงหน้า" };
-  }
+  // ชั้น 1 — เส้นบังคับที่ผูกกับคำตอบ
+  if(cur.edges && ans && cur.edges[ans] && !seen(cur.edges[ans]))
+    return {id:cur.edges[ans], via:"edge", why:"คำตอบที่คุณเลือกในข้อก่อนหน้ากำหนดข้อนี้ไว้ล่วงหน้า"};
 
-  const st    = scoreState();
-  const shown = S.path.length;
-  const left  = MAX_ITEMS - shown;
-  const isMedia = i => i.type === "video" || i.type === "reading";
+  const st = scoreState(), shown = S.path.length, left = MAX_ITEMS - shown;
 
-  // ชั้นที่ 2 — รับประกันว่ามีข้อสื่ออย่างน้อย 1 ข้อต่อ session (ไม่งั้นจะไม่มีข้อมูลพฤติกรรมเลย)
+  // ชั้น 2 — รับประกันว่ามีข้อบทความอย่างน้อย 1 ข้อ (ไม่งั้นจะไม่มีข้อมูลพฤติกรรมเลย)
   if(shown >= 4 && !S.path.some(id => isMedia(BY_ID[id]))){
     const m = shuffle(POOL.filter(i => !seen(i.id) && isMedia(i)))[0];
-    if(m) return { id: m.id, via: "adaptive", why: "รอบนี้ยังไม่มีข้อคลิป/บทความเลย — ต้องมีอย่างน้อย 1 ข้อเพื่อวัดพฤติกรรม" };
+    if(m) return {id:m.id, via:"adaptive", why:"รอบนี้ยังไม่มีข้อบทความเลย — ต้องมีอย่างน้อย 1 ข้อเพื่อวัดพฤติกรรม"};
   }
 
-  // ชั้นที่ 3 — แกนที่ยังไม่ถึงโควตาขั้นต่ำ และเหลือข้ออีกไม่มากแล้ว
+  // ชั้น 3 — แกนที่ยังไม่ถึงโควตาขั้นต่ำ และเหลือข้ออีกไม่มาก
   const short = AXES_ALL.filter(a => axisCount(a) < MIN_PER_AXIS);
   let order, why;
   if(short.length && left <= short.length + 1){
     order = short;
-    why   = "โควตาขั้นต่ำ — แกนนี้ยังไม่ถึง " + MIN_PER_AXIS + " ข้อ และเหลือข้ออีกแค่ " + left;
+    why = "โควตาขั้นต่ำ — แกนนี้ยังไม่ถึง " + MIN_PER_AXIS + " ข้อ และเหลืออีกแค่ " + left + " ข้อ";
   } else {
-    // ชั้นที่ 4 — แกนที่หลักฐานน้อยที่สุด (เสมอกันดูที่คะแนนก้ำกึ่งสุด)
+    // ชั้น 4 — แกนที่หลักฐานน้อยที่สุด (เสมอกันดูที่คะแนนก้ำกึ่งสุด)
     order = [...AXES_ALL].sort((a,b) =>
       (st[a].evidence - st[b].evidence) || (Math.abs(st[a].raw) - Math.abs(st[b].raw)));
-    why   = "แกนที่ยังมีหลักฐานน้อยที่สุดตอนนี้";
+    why = "แกนที่ยังมีหลักฐานน้อยที่สุดตอนนี้";
   }
 
   for(const axis of order){
@@ -5545,22 +5772,38 @@ function pickNext(){
       if(f.length){ cand = f; extra = " + คราวนี้ต้องเป็นข้อปกติ เพื่อถ่วงดุล"; }
     }
     const pick = shuffle(cand)[0];
-    return { id: pick.id, via: "adaptive",
-             why: "แกน " + axis + " (หลักฐาน " + st[axis].evidence + "/" + TARGET_EVIDENCE + ") — " + why + extra };
+    return {id:pick.id, via:"adaptive",
+            why:"แกน " + axis + " (หลักฐาน " + st[axis].evidence + "/" + TARGET_EVIDENCE + ") — " + why + extra};
   }
 
-  // fallback — กันกิ่งตัน
   const any = shuffle(POOL.filter(i => !seen(i.id)))[0];
-  return any ? { id: any.id, via: "adaptive", why: "สุ่มจากข้อที่เหลือ (ไม่มีแกนไหนขาดแล้ว)" } : null;
+  return any ? {id:any.id, via:"adaptive", why:"สุ่มจากข้อที่เหลือ (ไม่มีแกนไหนขาดแล้ว)"} : null;
 }
 
-/* ---------- 3) UI ---------- */
+/* ═══════════════════════════════════════════════════════════════
+   3) UI
+   ═══════════════════════════════════════════════════════════════ */
 const $ = s => document.querySelector(s);
-const show = id => ["welcome","test","result"].forEach(x => $("#"+x).classList.toggle("hide", x !== id));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const show = id => ["intro","test","result"].forEach(x => $("#"+x).classList.toggle("hide", x !== id));
+
+/* โหมดสว่าง/มืด — จำไว้ในเครื่องผู้ใช้ */
+try{
+  const saved = localStorage.getItem("theme");
+  if(saved) document.documentElement.dataset.theme = saved;
+}catch(e){}
+$("#btnTheme").onclick = () => {
+  const el = document.documentElement;
+  const dark = el.dataset.theme
+    ? el.dataset.theme === "dark"
+    : matchMedia("(prefers-color-scheme: dark)").matches;
+  el.dataset.theme = dark ? "light" : "dark";
+  try{ localStorage.setItem("theme", el.dataset.theme); }catch(e){}
+};
 
 $("#btnStart").onclick = () => {
   newSession();
-  const openers = POOL.filter(i => i.type === "scenario" && i.edges);
+  const openers = POOL.filter(i => i.opener);
   const first = shuffle(openers)[0] || POOL[0];
   S.path.push(first.id); S.idx = 0; S.branch[first.id] = "start";
   S.why[first.id] = "ข้อเปิด — สุ่มจากข้อสถานการณ์ที่แตกกิ่งได้ " + openers.length + " ข้อ";
@@ -5575,138 +5818,123 @@ function leaveItem(){
 }
 
 function markTouched(){
-  const id = S.path[S.idx];
   if(S._touched) return;
   S._touched = true;
-  const ms = Date.now() - S._enter;
+  const id = S.path[S.idx], ms = Date.now() - S._enter;
   if(S.firstInput[id] === undefined){
     S.firstInput[id] = ms;
     logEvent("first_input", id, {msSinceView:ms});
   }
 }
 
+/** รางด้านบน = แผนที่กิ่งย่อ ๆ ขีดสีดินเผาคือข้อที่คำตอบคุณบังคับให้มาเจอ */
+function renderRail(){
+  const rail = $("#rail"); rail.innerHTML = "";
+  for(let i = 0; i < MAX_ITEMS; i++){
+    const t = document.createElement("i");
+    const id = S.path[i];
+    if(id){
+      t.className = i === S.idx ? "now" : (S.branch[id] === "edge" ? "done edge" : "done");
+    }
+    rail.appendChild(t);
+  }
+}
+
 function render(){
   const id = S.path[S.idx], item = BY_ID[id];
   S._enter = Date.now(); S._touched = false;
-
   S.visits[id] = (S.visits[id]||0) + 1;
   logEvent(S.visits[id] === 1 ? "item_view" : "revisit", id,
-           {visit:S.visits[id], type:item.type, tags:item.tags, via:S.branch[id]||"start"});
+           {visit:S.visits[id], type:item.type, tags:item.tags, via:S.branch[id] || "start"});
 
-  $("#progText").textContent = "ข้อ " + (S.idx+1) + " / ~" + MAX_ITEMS + "  ·  " + item.id;
-  $("#progBar").style.width = Math.round((S.idx+1)/MAX_ITEMS*100) + "%";
-  const via = S.branch[id];
-  $("#branchTag").innerHTML =
-    via === "edge"     ? '<span class="pill edge">มาจากเส้นบังคับ</span>' :
-    via === "adaptive" ? '<span class="pill">เลือกให้อัตโนมัติ</span>' :
-    '<span class="pill">ข้อเริ่มต้น</span>';
-  $("#whyBox").textContent = S.why[id] || "—";
+  $("#step").innerHTML = "ข้อ <b>" + (S.idx+1) + "</b> / " + MAX_ITEMS + " &nbsp;·&nbsp; " + esc(id);
+  $("#why").textContent = S.why[id] || "—";
   $("#btnBack").disabled = S.idx === 0;
+  $("#btnBack").style.opacity = S.idx === 0 ? .45 : 1;
   $("#btnSkip").classList.toggle("hide", !item.skippable);
+  renderRail();
 
-  const c = $("#itemCard"); c.innerHTML = "";
-  const h = document.createElement("h2"); h.textContent = item.prompt; c.appendChild(h);
+  const q = $("#q");
+  q.innerHTML = "";
+  q.className = "q fade";
+  void q.offsetWidth;
 
-  if(item.type === "video")   renderVideo(c, item);
-  if(item.type === "reading") renderReading(c, item);
-  renderOptions(c, item);
+  const kind = document.createElement("span");
+  kind.className = "q-kind";
+  kind.textContent = KIND[item.type] || item.type;
+  q.appendChild(kind);
+
+  const h = document.createElement("h2");
+  h.className = "q-prompt";
+  h.textContent = item.prompt;
+  q.appendChild(h);
+
+  if(item.type === "reading") renderReading(q, item);
+  renderOptions(q, item);
 
   if(S.visits[id] > 1){
-    const n = document.createElement("p"); n.className = "tiny";
-    n.style.marginTop = "10px";
-    n.textContent = "↩︎ คุณกลับมาดูข้อนี้เป็นครั้งที่ " + S.visits[id] + " — เราบันทึกไว้แล้ว (และจะแยกด้วยว่าคุณเปลี่ยนคำตอบจริงหรือแค่กลับมาดู)";
-    c.appendChild(n);
+    const n = document.createElement("p");
+    n.className = "tiny";
+    n.style.marginTop = "14px";
+    n.textContent = "↩︎ คุณกลับมาดูข้อนี้เป็นครั้งที่ " + S.visits[id] +
+                    " — เราแยกไว้ว่าคุณเปลี่ยนคำตอบจริง หรือแค่กลับมาดู";
+    q.appendChild(n);
   }
+  window.scrollTo(0, 0);
 }
 
-/* --- ข้อแบบ "คลิป": สไลด์ตั้งเวลา วัดว่าดูจนจบไหม --- */
-function renderVideo(c, item){
+/** ข้อบทความ — วัดว่าเลื่อนอ่านถึงกี่ % ก่อนตอบ */
+function renderReading(q, item){
   const id = item.id;
-  const st = S.media[id] || (S.media[id] = {pct:0, completed:false, replays:0});
-  const stage = document.createElement("div"); stage.className = "stage";
-  const span = document.createElement("span"); stage.appendChild(span);
-  const bar = document.createElement("div"); bar.className = "bar"; bar.style.margin = "10px 0";
-  const fill = document.createElement("i"); fill.style.width = "0%"; bar.appendChild(fill);
-  const row = document.createElement("div"); row.className = "btn-row"; row.style.marginTop = "0";
-  const bSkip = document.createElement("button"); bSkip.textContent = "ข้ามคลิป ↦";
-  const bAgain = document.createElement("button"); bAgain.textContent = "↺ ดูอีกครั้ง"; bAgain.classList.add("hide");
-  row.appendChild(bSkip); row.appendChild(bAgain);
-  c.appendChild(stage); c.appendChild(bar); c.appendChild(row);
+  const box = document.createElement("div");
+  box.className = "reader";
+  item.body.forEach(t => {
+    const p = document.createElement("p");
+    p.textContent = t;
+    box.appendChild(p);
+  });
 
-  let i = 0, timer = null, t0 = Date.now();
-  const total = item.slides.length * item.slideMs;
+  const meter = document.createElement("div");
+  meter.className = "read-meter";
+  meter.innerHTML = '<div class="bar"><i style="width:0%"></i></div><span>อ่านแล้ว 0%</span>';
+  q.appendChild(box); q.appendChild(meter);
 
-  function stop(){ clearInterval(timer); timer = null; }
-  function pct(){ return Math.min(100, Math.round((Date.now()-t0)/total*100)); }
+  const fill = meter.querySelector("i"), label = meter.querySelector("span");
+  const measure = () => Math.min(100, Math.round((box.scrollTop + box.clientHeight) / box.scrollHeight * 100));
+  let max = S.scroll[id] || 0;
 
-  function play(){
-    i = 0; t0 = Date.now(); st.completed = false;
-    bAgain.classList.add("hide"); bSkip.classList.remove("hide");
-    logEvent("media_start", id, {replay: st.replays});
-    step();
-    timer = setInterval(step, item.slideMs);
-  }
-  function step(){
-    if(i >= item.slides.length){
-      stop(); st.pct = 100; st.completed = true;
-      fill.style.width = "100%";
-      span.classList.remove("on");
-      setTimeout(() => { span.textContent = "— จบคลิป —"; span.classList.add("on"); }, 200);
-      bSkip.classList.add("hide"); bAgain.classList.remove("hide");
-      logEvent("media_complete", id, {pct:100});
-      return;
-    }
-    span.classList.remove("on");
-    const text = item.slides[i++];
-    setTimeout(() => { span.textContent = text; span.classList.add("on"); }, 180);
-    fill.style.width = pct() + "%";
-  }
-  bSkip.onclick = () => {
-    markTouched(); stop();
-    st.pct = pct();
-    logEvent("media_skip", id, {pct:st.pct, atSlide:i});
-    span.textContent = "(ข้ามคลิปที่ " + st.pct + "%)"; span.classList.add("on");
-    fill.style.width = st.pct + "%";
-    bSkip.classList.add("hide"); bAgain.classList.remove("hide");
-  };
-  bAgain.onclick = () => { markTouched(); st.replays++; logEvent("replay", id, {times:st.replays}); play(); };
+  const paint = p => { fill.style.width = p + "%"; label.textContent = "อ่านแล้ว " + p + "%"; };
 
-  play();
-}
-
-/* --- ข้อแบบ "อ่าน": วัด scroll depth --- */
-function renderReading(c, item){
-  const id = item.id;
-  const box = document.createElement("div"); box.className = "reader";
-  item.body.forEach(t => { const p = document.createElement("p"); p.textContent = t; box.appendChild(p); });
-  c.appendChild(box);
-  const hint = document.createElement("p"); hint.className = "tiny"; hint.textContent = "เลื่อนอ่านในกรอบด้านบน — เราบันทึกว่าคุณอ่านถึงกี่ %";
-  c.appendChild(hint);
-  let maxPct = S.scroll[id] || 0;
   box.addEventListener("scroll", () => {
     markTouched();
-    const p = Math.min(100, Math.round((box.scrollTop + box.clientHeight) / box.scrollHeight * 100));
-    if(p > maxPct + 4){
-      maxPct = p; S.scroll[id] = p;
-      hint.textContent = "อ่านถึง " + p + "%";
-      logEvent("scroll_depth", id, {pct:p});
+    const p = measure();
+    if(p > max){
+      max = p; S.scroll[id] = p; paint(p);
+      if(p >= 99) logEvent("read_complete", id, {pct:p});
+      else if(p % 10 < 5) logEvent("scroll_depth", id, {pct:p});
     }
   }, {passive:true});
-  if(!S.scroll[id]) S.scroll[id] = Math.min(100, Math.round(box.clientHeight/box.scrollHeight*100));
+
+  requestAnimationFrame(() => {
+    const p0 = Math.max(max, measure());
+    S.scroll[id] = p0; max = p0; paint(p0);
+  });
 }
 
-/* --- ตัวเลือก + กลไก feedback (วัด growth mindset จากการยอมเปลี่ยนคำตอบ) --- */
-function renderOptions(c, item){
+function renderOptions(q, item){
   const id = item.id;
-  const box = document.createElement("div"); box.style.marginTop = "14px";
+  const box = document.createElement("div");
+  box.className = "opts";
   item.options.forEach((o,i) => {
     const b = document.createElement("button");
-    b.className = "opt" + (S.answers[id] === o.id ? " sel" : "");
-    b.innerHTML = '<span class="k">' + ["A","B","C","D","E"][i] + '.</span>' + o.label;
+    b.className = "opt";
+    b.type = "button";
+    b.setAttribute("aria-pressed", S.answers[id] === o.id ? "true" : "false");
+    b.innerHTML = '<span class="key">' + ["A","B","C","D","E"][i] + '</span><span>' + esc(o.label) + '</span>';
     b.onclick = () => choose(item, o.id, box);
     box.appendChild(b);
   });
-  c.appendChild(box);
+  q.appendChild(box);
 }
 
 function choose(item, optId, box){
@@ -5724,7 +5952,8 @@ function choose(item, optId, box){
     logEvent("answer_reaffirm", id, {option:optId, visit:S.visits[id]});
   }
 
-  [...box.children].forEach((el,i) => el.classList.toggle("sel", item.options[i].id === optId));
+  [...box.children].forEach((el,i) =>
+    el.setAttribute("aria-pressed", item.options[i].id === optId ? "true" : "false"));
 
   // ข้อที่มี feedback: ยิงข้อมูลสวนกลับ แล้วดูว่าเขายอมทบทวนไหม
   if(item.feedback && !S.feedback[id]){
@@ -5737,13 +5966,14 @@ function choose(item, optId, box){
 
 function showFeedback(item, box){
   const id = item.id;
-  const p = document.createElement("div"); p.className = "note"; p.style.marginTop = "14px";
+  const p = document.createElement("div");
+  p.className = "fb fade";
   p.textContent = item.feedback;
-  const row = document.createElement("div"); row.className = "btn-row";
-  const keep = document.createElement("button"); keep.textContent = "เก็บคำตอบเดิม";
+  const row = document.createElement("div");
+  row.className = "btn-row";
+  const keep = document.createElement("button"); keep.textContent = "ยืนยันคำตอบเดิม";
   const chg  = document.createElement("button"); chg.textContent  = "ขอทบทวนใหม่";
-  row.appendChild(keep); row.appendChild(chg);
-  p.appendChild(row);
+  row.append(keep, chg); p.appendChild(row);
   box.parentNode.appendChild(p);
 
   keep.onclick = () => { S.feedback[id] = "kept";    logEvent("feedback_response", id, {choice:"kept"});    p.remove(); advance(); };
@@ -5752,10 +5982,11 @@ function showFeedback(item, box){
 
 function advance(){
   leaveItem();
-  // ถ้าอยู่กลาง path (ย้อนกลับมาแก้) → เดินหน้าไปข้อที่มีอยู่แล้ว ไม่แตกกิ่งใหม่
+  // อยู่กลาง path (ย้อนกลับมาแก้) → เดินหน้าไปข้อที่มีอยู่แล้ว ไม่แตกกิ่งใหม่
   if(S.idx < S.path.length - 1){ S.idx++; render(); return; }
   if(S.path.length >= MIN_ITEMS && allAxesConfident()){ finish("confident"); return; }
   if(S.path.length >= MAX_ITEMS){ finish("reached_max"); return; }
+
   const nxt = pickNext();
   if(!nxt){ finish("pool_exhausted"); return; }
   S.path.push(nxt.id); S.branch[nxt.id] = nxt.via; S.why[nxt.id] = nxt.why; S.idx++;
@@ -5778,91 +6009,93 @@ $("#btnSkip").onclick = () => {
   advance();
 };
 
-$("#btnWhy").onclick = () => $("#whyBox").classList.toggle("hide");
-
 $("#btnEnd").onclick = () => { leaveItem(); finish("user_ended"); };
 
-/* ---------- หน้าสรุปผล ---------- */
+$("#btnWhy").onclick = () => {
+  const box = $("#why"), open = box.classList.toggle("hide");
+  $("#btnWhy").setAttribute("aria-pressed", open ? "false" : "true");
+};
+
+/* ── รายงานผล ───────────────────────────────────────── */
+function axisPct(x){
+  const max = Math.max(1, x.evidence * 2);
+  return Math.max(7, Math.min(93, 50 + (x.raw / max) * 45));
+}
+
 function finish(reason){
   logEvent("session_end", null, {reason, itemsSeen:S.path.length});
   show("result");
   $("#result").innerHTML = buildReport(reason);
-  $("#btnRestart").onclick = () => { show("welcome"); window.scrollTo(0,0); };
-  $("#btnLog").onclick = () => $("#logBox").classList.toggle("hide");
+  $("#btnRestart").onclick = () => { show("intro"); window.scrollTo(0,0); };
+  $("#btnLog").onclick = () => {
+    const box = $("#logBox");
+    box.classList.toggle("hide");
+    $("#btnLog").textContent = box.classList.contains("hide") ? "ดู log ดิบทั้งหมด" : "ซ่อน log";
+  };
   window.scrollTo(0,0);
 }
 
-/** แปลงคะแนนดิบเป็นตำแหน่งบนแถบ 0-100 โดยหารด้วยคะแนนเต็มที่เป็นไปได้ (หลักฐาน x 2) */
-function axisPct(x){
-  const max = Math.max(1, x.evidence * 2);
-  return Math.max(6, Math.min(94, 50 + (x.raw / max) * 45));
-}
-
 function buildReport(reason){
-  const st = scoreState();
+  const st       = scoreState();
   const answered = S.path.filter(id => S.answers[id]).length;
-  const skips = Object.keys(S.skipped).length;
-  const backs = S.ev.filter(e => e.kind === "back").length;
-  const changes = Object.values(S.changes).reduce((a,b) => a+b, 0);
+  const skips    = Object.keys(S.skipped).length;
+  const backs    = S.ev.filter(e => e.kind === "back").length;
   const revisits = S.ev.filter(e => e.kind === "revisit").length;
+  const changes  = Object.values(S.changes).reduce((a,b) => a+b, 0);
 
-  /* --- สาย A: คะแนนจากคำตอบ --- */
-  let bars = "";
-  AXES.forEach(a => {
-    const pct = axisPct(st[a]);
-    const conf = st[a].confidence;
-    const confTxt = conf >= 0.66 ? "ข้อมูลพอสมควร" : conf >= 0.33 ? "ข้อมูลน้อย" : "ข้อมูลไม่พอ";
-    bars +=
-      '<div class="axis"><div class="axis-head"><b>' + AXIS_INFO[a].name + '</b>' +
-      '<span class="conf">' + confTxt + '</span></div>' +
-      '<div class="track"><i style="left:' + pct + '%"></i></div>' +
-      '<div class="axis-ends"><span>' + AXIS_INFO[a].lo + '</span><span>' + AXIS_INFO[a].hi + '</span></div></div>';
-  });
-  const gpct = axisPct(st.G);
+  /* ── สาย A — คะแนนจากคำตอบ ── */
+  const bars = AXES.map(a => {
+    const c = st[a].confidence;
+    const conf = c >= .75 ? "ข้อมูลพอสมควร" : c >= .4 ? "ข้อมูลน้อย" : "ข้อมูลไม่พอ";
+    return '<div class="axis">' +
+      '<div class="axis-top"><span class="axis-name">' + AXIS_INFO[a].name + '</span>' +
+      '<span class="axis-conf">' + conf + '</span></div>' +
+      '<div class="track"><i style="left:' + axisPct(st[a]) + '%"></i></div>' +
+      '<div class="axis-ends"><span>' + AXIS_INFO[a].lo + '</span><span>' + AXIS_INFO[a].hi + '</span></div>' +
+      '</div>';
+  }).join("");
 
-  /* --- สาย B: ข้อสังเกตจากพฤติกรรม (ข้อเท็จจริง + สมมติฐาน แยกกันชัด) --- */
+  /* ── สาย B — ข้อสังเกตจากพฤติกรรม ── */
   const obs = [];
   const O = (level, fact, guess) => obs.push({level, fact, guess});
 
   if(skips > 0){
-    const tags = Object.keys(S.skipped).flatMap(id => BY_ID[id].tags || []);
-    O("mid", "คุณข้ามไป " + skips + " ข้อ" + (tags.length ? " (แตะแกน: " + [...new Set(tags)].join(", ") + ")" : ""),
-      "การข้ามอาจแปลว่าหลีกเลี่ยงหัวข้อนั้น หรือแค่ไม่มีตัวเลือกที่ตรงใจ — ระบบจริงต้องดูว่าข้ามข้อ tag ไหนซ้ำ ๆ ถึงจะตีความได้");
+    const tags = [...new Set(Object.keys(S.skipped).flatMap(id => BY_ID[id].tags || []))];
+    O("mid", "คุณข้ามไป " + skips + " ข้อ" + (tags.length ? " (แตะแกน " + tags.join(", ") + ")" : ""),
+      "การข้ามอาจแปลว่าหลีกเลี่ยงหัวข้อนั้น หรือแค่ไม่มีตัวเลือกที่ตรงใจ — ระบบจริงต้องเห็นว่าคุณข้ามข้อแกนไหนซ้ำ ๆ ถึงจะตีความได้");
   } else {
-    O("high", "คุณตอบทุกข้อโดยไม่ข้ามเลย", "ในกลุ่มตัวอย่างเล็ก ๆ พฤติกรรมนี้มักไปด้วยกันกับความรู้สึกผูกพันกับงานที่ทำอยู่ แต่ยังไม่พอจะสรุปเป็นบุคลิกภาพ");
+    O("high", "คุณตอบทุกข้อโดยไม่ข้ามเลย",
+      "เป็นข้อเท็จจริงที่วัดได้ตรง แต่ยังไม่พอจะสรุปเป็นบุคลิกภาพ");
   }
 
   if(backs > 0){
-    O("mid", "คุณกดย้อนกลับ " + backs + " ครั้ง และกลับเข้าไปดูข้อเดิมซ้ำ " + revisits + " ครั้ง" +
-      (changes > 0 ? " โดยเปลี่ยนคำตอบจริง " + changes + " ครั้ง" : " แต่ไม่ได้เปลี่ยนคำตอบเลย"),
+    O("mid", "คุณกดย้อนกลับ " + backs + " ครั้ง กลับเข้าไปดูข้อเดิมซ้ำ " + revisits + " ครั้ง" +
+      (changes > 0 ? " และเปลี่ยนคำตอบจริง " + changes + " ครั้ง" : " แต่ไม่ได้เปลี่ยนคำตอบเลย"),
       changes > 0
-        ? "การกลับไปแก้จริงมักตีความได้ 2 ทาง: รอบคอบ (C สูง) หรือลังเล/ไม่มั่นใจ (N สูง) — แยกไม่ได้จากข้อมูลชุดเดียว"
-        : "การกลับไปดูแล้วไม่เปลี่ยนอะไร ใกล้เคียงกับพฤติกรรม 'ตรวจงานตัวเอง' มากกว่าความลังเล");
+        ? "การกลับไปแก้จริงตีความได้สองทาง: รอบคอบ (C สูง) หรือลังเล ไม่มั่นใจ (N สูง) — ข้อมูลชุดเดียวแยกไม่ออก"
+        : "กลับไปดูแล้วไม่เปลี่ยนอะไร ใกล้เคียงกับพฤติกรรม “ตรวจงานตัวเอง” มากกว่าความลังเล");
   }
 
   const fis = S.path.map(id => S.firstInput[id]).filter(v => typeof v === "number");
   if(fis.length >= 3){
-    const avg = Math.round(fis.reduce((a,b)=>a+b,0)/fis.length/100)/10;
-    const fast = Math.round(Math.min(...fis)/100)/10;
-    O("low", "เวลาเฉลี่ยก่อนแตะตัวเลือกแรกของคุณคือ " + avg + " วินาที (เร็วสุด " + fast + " วินาที)",
-      "ความเร็วในการตัดสินใจแปลตรง ๆ ไม่ได้ ต้องเทียบกับค่าเฉลี่ยของตัวคุณเอง ไม่ใช่ของคนอื่น — และคนอ่านช้าก็ช้าโดยไม่เกี่ยวกับบุคลิกภาพ");
+    const avg  = Math.round(fis.reduce((a,b) => a+b, 0) / fis.length / 100) / 10;
+    const fast = Math.round(Math.min(...fis) / 100) / 10;
+    O("low", "เวลาเฉลี่ยก่อนแตะตัวเลือกแรกคือ " + avg + " วินาที (เร็วสุด " + fast + " วินาที)",
+      "ความเร็วในการตัดสินใจแปลตรง ๆ ไม่ได้ ต้องเทียบกับค่าเฉลี่ยของตัวคุณเอง และคนอ่านช้าก็ช้าโดยไม่เกี่ยวกับบุคลิกภาพ");
   }
 
-  Object.entries(S.media).forEach(([id, m]) => {
-    if(m.completed) O("mid", "คุณดูคลิปจนจบ" + (m.replays ? " และกดดูซ้ำ " + m.replays + " ครั้ง" : ""),
-      m.replays ? "การกดดูซ้ำอาจสะท้อนความอยากเข้าใจให้ครบ (O/C สูง)" : "การดูจนจบเป็นสัญญาณความอดทนที่วัดได้ตรงที่สุดในแบบทดสอบนี้");
-    else O("mid", "คุณข้ามคลิปที่ " + m.pct + "%", "อาจเป็นความไม่อดทน หรือแค่จับใจความได้แล้วตั้งแต่ต้น — สองอย่างนี้แยกกันไม่ได้ด้วยข้อมูลเท่านี้");
-  });
-
   Object.entries(S.scroll).forEach(([id, p]) => {
-    O(p >= 90 ? "high" : "mid", "บทความ: คุณเลื่อนอ่านถึง " + p + "%",
-      p >= 90 ? "อ่านจนจบ — เป็นข้อเท็จจริงที่วัดได้ตรง ไม่ต้องตีความ" : "อ่านไม่จบก่อนตอบ — คำตอบของข้อนี้จึงควรถ่วงน้ำหนักน้อยลง");
+    O(p >= 90 ? "high" : "mid", "บทความ " + id + ": คุณเลื่อนอ่านถึง " + p + "%",
+      p >= 90 ? "อ่านจนจบ — วัดได้ตรง ไม่ต้องตีความ"
+              : "อ่านไม่จบก่อนตอบ — คำตอบข้อนั้นจึงควรถ่วงน้ำหนักน้อยลง");
   });
 
   Object.entries(S.feedback).forEach(([id, r]) => {
-    O("mid", r === "changed" ? "เมื่อเราให้ข้อมูลที่สวนกับคำตอบของคุณ คุณเลือกทบทวนใหม่" : "เมื่อเราให้ข้อมูลที่สวนกับคำตอบของคุณ คุณยืนยันคำตอบเดิม",
-      r === "changed" ? "การปรับตัวจากข้อมูลใหม่ตรงกับนิยาม growth mindset — แต่ก็อาจเป็นแค่การคล้อยตามผู้มีอำนาจ (เราตั้งใจไม่แยกในเดโมนี้)"
-                      : "การยืนยันคำตอบเดิมอาจเป็นความมั่นใจในตัวเอง หรือการไม่รับข้อมูลใหม่ — ต้องดูหลายข้อประกอบ");
+    O("mid",
+      r === "changed" ? "เมื่อเราให้ข้อมูลที่สวนกับคำตอบของคุณ คุณเลือกทบทวนใหม่"
+                      : "เมื่อเราให้ข้อมูลที่สวนกับคำตอบของคุณ คุณยืนยันคำตอบเดิม",
+      r === "changed" ? "การปรับตัวจากข้อมูลใหม่ตรงกับนิยาม growth mindset — แต่ก็อาจเป็นแค่การคล้อยตามผู้มีอำนาจ เดโมนี้ตั้งใจไม่แยก"
+                      : "อาจเป็นความมั่นใจในตัวเอง หรือการไม่รับข้อมูลใหม่ — ต้องดูหลายข้อประกอบ");
   });
 
   const answers = S.path.map(id => S.answers[id]).filter(Boolean);
@@ -5871,73 +6104,100 @@ function buildReport(reason){
       "ในระบบจริง ข้อมูลชุดนี้จะถูกตัดทิ้ง ไม่นำมาคิดคะแนน");
   }
 
+  const CONF = {high:["high","วัดได้ตรง"], mid:["mid","ตีความได้หลายทาง"], low:["low","ยังเป็นการเดา"]};
   const obsHtml = obs.map(o =>
-    '<div class="obs ' + o.level + '"><b>' + o.fact + '</b><br><span class="muted">' + o.guess + '</span>' +
-    '<span class="conf">' + (o.level === "high" ? "🟢 วัดได้ตรง" : o.level === "mid" ? "🟡 ตีความได้หลายทาง" : "🔴 ยังเป็นการเดา") + '</span></div>'
+    '<div class="ob"><p class="ob-fact">' + o.fact + '</p><p class="ob-guess">' + o.guess + '</p>' +
+    '<span class="ob-conf"><i class="dot ' + CONF[o.level][0] + '"></i>' + CONF[o.level][1] + '</span></div>'
   ).join("");
 
-  /* --- แผนที่เส้นทางที่เดินจริง --- */
-  const mapHtml = S.path.map((id,i) => {
-    const cls = S.skipped[id] ? "node s" : (S.branch[id] === "edge" ? "node e" : "node");
-    return (i ? '<span class="arrow">→</span>' : "") + '<span class="' + cls + '">' + id + '</span>';
+  /* ── เส้นทาง ── */
+  const pathHtml = S.path.map(id => {
+    const cls = S.skipped[id] ? "node skip" : (S.branch[id] === "edge" ? "node edge" : "node");
+    return '<span class="' + cls + '">' + esc(id) + '</span>';
   }).join("");
-  const unseen = POOL.filter(i => !seen(i.id)).map(i => i.id);
+  const unseen = POOL.length - S.path.length;
 
-  const reasonTxt = {reached_max:"ครบจำนวนข้อ", user_ended:"คุณกดจบเอง", pool_exhausted:"คลังข้อหมด", confident:"ข้อมูลครบทุกแกนก่อนครบ 20 ข้อ"}[reason] || reason;
+  const REASON = {
+    reached_max:"ครบจำนวนข้อ", user_ended:"คุณกดจบเอง",
+    pool_exhausted:"คลังข้อหมด", confident:"ข้อมูลครบทุกแกนแล้ว"
+  };
 
   return `
-  <div class="card">
-    <h1>📄 ผลของคุณ</h1>
-    <p class="muted">เจอ ${S.path.length} ข้อ · ตอบ ${answered} · ข้าม ${skips} · จบเพราะ: ${reasonTxt}</p>
-    <div class="note">เดโมนี้ให้ผลจากคำถามไม่กี่ข้อ <b>จึงยังไม่ใช่ผลทางจิตวิทยาที่เชื่อถือได้</b> — จุดประสงค์คือแสดงว่ากลไกทำงานยังไง</div>
-  </div>
-
-  <div class="card">
-    <h2>สาย A · คะแนนจากคำตอบของคุณ</h2>
-    <p class="tiny">อิงกรอบ Big Five — ไม่มีปลายไหน "ดีกว่า" อีกปลาย</p>
-    ${bars}
-    <h3>Growth ↔ Fixed Mindset</h3>
-    <div class="track"><i style="left:${gpct}%"></i></div>
-    <div class="axis-ends"><span>Fixed — ความสามารถเป็นของตายตัว</span><span>Growth — พัฒนาได้</span></div>
-  </div>
-
-  <div class="card">
-    <h2>สาย B · สิ่งที่เราสังเกตจาก<u>พฤติกรรม</u>ของคุณ</h2>
-    <p class="tiny">ตัวหนา = สิ่งที่เกิดขึ้นจริง (ข้อเท็จจริง) · ข้อความจาง = สมมติฐานที่ยังพิสูจน์ไม่ได้</p>
-    ${obsHtml || '<p class="muted">ไม่มีพฤติกรรมพิเศษให้สังเกต</p>'}
-    <p class="tiny">⚠️ สัญญาณพฤติกรรมทั้งหมดนี้เป็นสมมติฐานของเราเอง ยังไม่ผ่านการ validate กับแบบวัดมาตรฐาน จึงแสดงเป็น "ข้อสังเกต" ไม่ใช่ "ผลการวัด"</p>
-  </div>
-
-  <div class="card">
-    <h2>🗺️ เส้นทางที่คุณเดิน</h2>
-    <div class="map">${mapHtml}</div>
-    <p class="tiny" style="margin-top:10px">
-      <span class="pill edge">น้ำเงิน</span> = ข้อที่คำตอบของคุณ "บังคับ" ให้ไปเจอ ·
-      <span class="pill skip">ขีดฆ่า</span> = ข้อที่ข้าม
-    </p>
-    <p class="tiny">อีก ${unseen.length} ข้อในคลังที่คุณ<b>ไม่ได้เจอ</b> เพราะเดินคนละกิ่ง: ${unseen.join(", ") || "—"}</p>
-    <p class="tiny">ลองทำใหม่แล้วตอบต่างออกไป จะได้เจอคำถามคนละชุด</p>
-  </div>
-
-  <div class="card">
-    <h2>📜 ความโปร่งใส: log ดิบทั้งหมดของคุณ</h2>
-    <p class="tiny">${S.ev.length} events — นี่คือทุกอย่างที่เว็บนี้บันทึก ไม่มีมากกว่านี้ และไม่ได้ส่งออกไปไหน</p>
-    <div class="btn-row" style="margin-top:8px"><button id="btnLog">แสดง / ซ่อน log</button></div>
-    <div id="logBox" class="hide" style="margin-top:12px"><pre>${JSON.stringify(S.ev, null, 1).replace(/</g,"&lt;")}</pre></div>
-  </div>
-
-  <div class="card">
-    <h2>🙏 ถ้าสิ่งนี้มีค่ากับคุณ</h2>
-    <p>เว็บจริงจะขอรับบริจาคตรงนี้ — <b>จ่ายเท่าที่คุณคิดว่ามันมีค่า</b> ไม่มีขั้นบันได ไม่มีการเบลอผลเพื่อบังคับให้จ่าย</p>
-    <div class="btn-row">
-      <button>20 ฿</button><button>60 ฿</button><button>ระบุเอง</button>
+  <section class="report-head">
+    <p class="eyebrow">รายงานผล</p>
+    <h1>สิ่งที่เราเห็นจากคุณ</h1>
+    <div class="chips">
+      <span class="chip">${S.path.length} ข้อ</span>
+      <span class="chip">ตอบ ${answered}</span>
+      <span class="chip">ข้าม ${skips}</span>
+      <span class="chip">ย้อนกลับ ${backs}</span>
+      <span class="chip">${REASON[reason] || reason}</span>
     </div>
-    <p class="tiny" style="margin-top:10px">(ปุ่มพวกนี้ยังไม่ทำงาน — เดโมไม่มีระบบจ่ายเงินจริง)</p>
-    <div class="btn-row"><button class="btn-primary" id="btnRestart">↺ ทำใหม่ ลองเดินกิ่งอื่น</button></div>
+  </section>
+
+  <hr class="rule">
+
+  <section class="sec sec-a">
+    <div class="sec-head"><span class="sec-tag">สาย A</span><h2>คะแนนจากคำตอบของคุณ</h2></div>
+    <p class="sec-note">อิงกรอบ Big Five — ไม่มีปลายไหนดีกว่าอีกปลาย</p>
+    ${bars}
+    <div class="gauge">
+      <div class="axis-top"><span class="axis-name">Growth ↔ Fixed Mindset</span>
+        <span class="axis-conf">${st.G.confidence >= .75 ? "ข้อมูลพอสมควร" : st.G.confidence >= .4 ? "ข้อมูลน้อย" : "ข้อมูลไม่พอ"}</span></div>
+      <div class="track"><i style="left:${axisPct(st.G)}%"></i></div>
+      <div class="axis-ends"><span>Fixed · ความสามารถเป็นของตายตัว</span><span>Growth · พัฒนาได้</span></div>
+    </div>
+  </section>
+
+  <hr class="rule">
+
+  <section class="sec sec-b">
+    <div class="sec-head"><span class="sec-tag">สาย B</span><h2>สิ่งที่เราสังเกตจากพฤติกรรม</h2></div>
+    <p class="sec-note">บรรทัดแรกคือสิ่งที่เกิดขึ้นจริง บรรทัดจางคือสมมติฐานที่<b>ยังพิสูจน์ไม่ได้</b> — เราจึงแสดงเป็นข้อสังเกต ไม่ใช่ผลการวัด และไม่เอาไปรวมกับคะแนนสาย A</p>
+    <div class="obs">${obsHtml || '<p class="muted small">ไม่มีพฤติกรรมพิเศษให้สังเกตในรอบนี้</p>'}</div>
+  </section>
+
+  <hr class="rule">
+
+  <section class="sec">
+    <h2>เส้นทางที่คุณเดิน</h2>
+    <p class="sec-note">เรียงตามลำดับที่เจอ · <b style="color:var(--clay)">กรอบสีดินเผา</b> คือข้อที่คำตอบของคุณบังคับให้มาเจอ · เส้นประขีดฆ่าคือข้อที่ข้าม</p>
+    <div class="path">${pathHtml}</div>
+    <p class="tiny" style="margin-top:14px">
+      อีก <b>${unseen} ข้อ</b> ในคลังที่คุณไม่ได้เจอเพราะเดินคนละกิ่ง · ตอบต่างออกไปแล้วทำใหม่ จะเจอคำถามคนละชุด
+    </p>
+  </section>
+
+  <hr class="rule">
+
+  <section class="sec">
+    <h2>log ดิบทั้งหมดของคุณ</h2>
+    <p class="sec-note">${S.ev.length} events — นี่คือทุกอย่างที่เว็บนี้บันทึก ไม่มีมากกว่านี้ และไม่ได้ส่งออกไปไหน</p>
+    <button id="btnLog" class="btn-ghost">ดู log ดิบทั้งหมด</button>
+    <div id="logBox" class="hide" style="margin-top:12px"><pre>${esc(JSON.stringify(S.ev, null, 1))}</pre></div>
+  </section>
+
+  <hr class="rule">
+
+  <section class="give">
+    <h2>ถ้าสิ่งนี้มีค่ากับคุณ</h2>
+    <p class="small" style="margin:10px 0 0; color:var(--seal-ink)">
+      จ่ายเท่าที่คุณคิดว่ามันมีค่า ไม่มีขั้นบันได ไม่มีการเบลอผลเพื่อบังคับให้จ่าย — คุณเห็นผลทั้งหมดไปแล้วก่อนถูกขออะไร
+    </p>
+    <div class="amounts">
+      <button type="button">20 ฿</button><button type="button">60 ฿</button><button type="button">ระบุเอง</button>
+    </div>
+    <p class="tiny" style="margin:12px 0 0">ปุ่มพวกนี้ยังไม่ทำงาน — เดโมยังไม่มีระบบจ่ายเงินจริง</p>
+  </section>
+
+  <div class="btn-row" style="margin-top:22px">
+    <button class="btn-primary" id="btnRestart" style="flex:1">ทำใหม่ ลองเดินกิ่งอื่น</button>
   </div>
 
-  <p class="tiny">⚕️ ไม่ใช่การวินิจฉัยหรือคำแนะนำทางจิตวิทยา/การแพทย์ · สายด่วนสุขภาพจิต 1323</p>
-  `;
+  <footer>
+    ไม่ใช่การวินิจฉัยหรือคำแนะนำทางจิตวิทยาหรือการแพทย์ · สายด่วนสุขภาพจิต 1323<br>
+    ข้อคำถามส่วนบุคลิกภาพดัดแปลงจาก International Personality Item Pool (IPIP) ซึ่งเป็นสาธารณสมบัติ
+  </footer>`;
 }
 </script>
 </body>
