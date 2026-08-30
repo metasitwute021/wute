@@ -496,7 +496,7 @@ footer{padding:34px 0 40px; font-size:.75rem; line-height:1.65; color:var(--mute
   <div class="btn-row" style="margin-top:24px">
     <button class="btn-primary" id="btnStart" style="flex:1">เริ่มทำ</button>
   </div>
-  <p class="tiny" style="margin-top:12px">ประมาณ 18–26 ข้อ · 5–7 นาที · การกดเริ่มถือว่าคุณยินยอมให้บันทึกตามรายการด้านบน</p>
+  <p class="tiny" style="margin-top:12px">ประมาณ 18–22 ข้อ · 4–6 นาที · การกดเริ่มถือว่าคุณยินยอมให้บันทึกตามรายการด้านบน</p>
 
   <footer>
     ไม่ใช่การวินิจฉัยหรือคำแนะนำทางจิตวิทยาหรือการแพทย์ · หากมีความทุกข์ทางใจ สายด่วนสุขภาพจิต 1323<br>
@@ -556,7 +556,7 @@ footer{padding:34px 0 40px; font-size:.75rem; line-height:1.65; color:var(--mute
       (ฉีดเพราะเปิดผ่าน file:// แล้ว fetch() จะโดน CORS บล็อก
        ตอนทำระบบจริงคลังข้อต้องอยู่ฝั่งเซิร์ฟเวอร์และส่งมาทีละข้อ)
    ═══════════════════════════════════════════════════════════════ */
-const MAX_ITEMS       = 26;  // ข้อสูงสุดต่อ session
+const MAX_ITEMS       = 22;  // ข้อสูงสุดต่อ session (โควตาขั้นต่ำกิน 18 เหลือ 4 ช่องให้เจาะลึก)
 const MIN_ITEMS       = 18;  // ต่ำสุดก่อนยอมจบเพราะ "ข้อมูลพอแล้ว"
 const MIN_PER_AXIS    = 2;   // ทุกแกนต้องถูกถามอย่างน้อยกี่ข้อ
 const MIN_PER_FACET   = 2;   // Dark Triad ต้องได้ครบทั้ง 3 ด้าน ด้านละกี่ข้อ
