@@ -255,6 +255,25 @@ details.fold .fold-body{padding-bottom:22px}
 .ob-fact{font-weight:600; font-size:1.02rem; line-height:1.6; margin:0 0 7px}
 .ob-guess{font-size:.92rem; line-height:1.68; color:var(--muted); margin:0}
 
+/* ── prompt สำหรับเอาไปเจนภาพเอง ── */
+.pbox{padding:19px 18px; border-radius:14px; background:var(--card-2); border:1px solid var(--line)}
+.pbox textarea{
+  width:100%; min-height:190px; resize:vertical; margin-top:14px;
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:.78rem; line-height:1.65;
+  color:var(--ink-2); background:var(--card); border:1px solid var(--line);
+  border-radius:10px; padding:13px; -webkit-appearance:none;
+}
+.pbox textarea:focus-visible{outline:2px solid var(--seal); outline-offset:1px}
+.pbox-note{font-size:.85rem; line-height:1.66; color:var(--muted); margin:0}
+.pbox-status{
+  font-family:"IBM Plex Mono",monospace; font-size:.76rem; color:var(--seal);
+  margin:10px 0 0; min-height:1.2em;
+}
+.soon{
+  margin-top:14px; padding:12px 14px; border-radius:10px; background:var(--seal-soft);
+  font-size:.82rem; line-height:1.62; color:var(--seal-ink);
+}
+
 /* ── สัตว์ประจำตัว ── */
 .beast{
   padding:26px 20px 22px; border-radius:16px; text-align:center;
@@ -6610,64 +6629,64 @@ const DARK = {
    ⚠️ ตั้งใจไม่ผูกสัตว์ตัวไหนเข้ากับ psychopathy โดยตรง — สัตว์คือสัญลักษณ์ของ "แรงขับ"
    ไม่ใช่ฉลากวินิจฉัย มิติ psyc ใช้เป็นส่วนประกอบเล็ก ๆ ในความหมาย "ตัดสินใจเย็น" เท่านั้น */
 const BEASTS = [
-  {e:"🦁", n:"สิงโต",     d:"อำนาจ",
+  {e:"🦁", n:"สิงโต",     d:"อำนาจ", n2:"lion", d2:"power and command",
    t:{E:.8, A:-.6, N:-.7, narc:.7},
    s:"คุณเดินเข้าหาสถานการณ์ที่ต้องมีคนตัดสินใจ และไม่รังเกียจการเป็นคนนั้น เสียงของคุณดังพอที่คนจะหันมามอง"},
-  {e:"🦅", n:"อินทรี",    d:"อิสระและวิสัยทัศน์",
+  {e:"🦅", n:"อินทรี",    d:"อิสระและวิสัยทัศน์", n2:"eagle", d2:"freedom and long sight",
    t:{O:.9, E:-.4, A:-.4, N:-.6},
    s:"คุณมองไกลกว่าที่ตรงหน้า และไม่อยากถูกผูกไว้กับใครหรืออะไรนานเกินไป ที่สูงไม่ทำให้คุณกลัว"},
-  {e:"🐺", n:"หมาป่า",    d:"ความภักดีต่อฝูง",
+  {e:"🐺", n:"หมาป่า",    d:"ความภักดีต่อฝูง", n2:"wolf", d2:"loyalty to the pack",
    t:{C:.7, A:.7, E:.5, mach:.3},
    s:"คุณทำงานได้ดีที่สุดเมื่อมีทีม รู้ว่าใครถนัดอะไร และยอมแบกส่วนที่หนักเพื่อให้ทั้งฝูงไปถึง"},
-  {e:"🐆", n:"เสือดาว",   d:"นักล่าเดี่ยว",
+  {e:"🐆", n:"เสือดาว",   d:"นักล่าเดี่ยว", n2:"leopard", d2:"solitary decisiveness",
    t:{E:-.6, C:.6, N:-.7, psyc:.4},
    s:"คุณเงียบ เร็ว และตัดสินใจเองได้โดยไม่ต้องรอใครเห็นด้วย งานที่ต้องประชุมสามรอบทำให้คุณเหนื่อยกว่างานเอง"},
-  {e:"🦈", n:"ฉลาม",      d:"การแข่งขัน",
+  {e:"🦈", n:"ฉลาม",      d:"การแข่งขัน", n2:"shark", d2:"relentless competition",
    t:{A:-.9, E:.5, N:-.6, mach:.5},
    s:"คุณเห็นเป้าหมายแล้วไม่ปล่อย ตรงไปตรงมาจนบางครั้งคนรอบตัวตามไม่ทัน และคุณไม่ค่อยเสียเวลากับการถนอมน้ำใจ"},
-  {e:"🦊", n:"สุนัขจิ้งจอก", d:"กลยุทธ์",
+  {e:"🦊", n:"สุนัขจิ้งจอก", d:"กลยุทธ์", n2:"fox", d2:"strategy and cunning",
    t:{mach:.9, O:.5, C:.5},
    s:"คุณอ่านเกมออกก่อนคนอื่น รู้ว่าใครต้องการอะไรและจังหวะไหนควรพูด คุณชนะด้วยการคิด ไม่ใช่ด้วยแรง"},
-  {e:"🐍", n:"งู",        d:"การปรับตัว",
+  {e:"🐍", n:"งู",        d:"การปรับตัว", n2:"snake", d2:"adaptation and quiet manoeuvre",
    t:{mach:.8, E:-.6, A:-.4},
    s:"คุณเปลี่ยนรูปให้เข้ากับสถานการณ์ได้เนียนมาก ไม่ต้องอยู่ในสายตาใครก็ไปถึงที่หมายได้ และคุณเลือกจะพูดเท่าที่จำเป็น"},
-  {e:"🕷️", n:"แมงมุม",    d:"เครือข่ายและความอดทน",
+  {e:"🕷️", n:"แมงมุม",    d:"เครือข่ายและความอดทน", n2:"spider", d2:"patience and the webs it builds",
    t:{C:.9, E:-.5, mach:.4},
    s:"คุณสร้างระบบไว้ล่วงหน้าแล้วรอ ไม่ต้องวิ่งไล่อะไรเพราะสิ่งที่คุณวางไว้ทำงานแทนคุณอยู่แล้ว"},
-  {e:"🐙", n:"หมึกยักษ์",  d:"ควบคุมหลายทางพร้อมกัน",
+  {e:"🐙", n:"หมึกยักษ์",  d:"ควบคุมหลายทางพร้อมกัน", n2:"octopus", d2:"holding many threads at once",
    t:{O:.8, C:.5, mach:.5, E:-.3},
    s:"คุณจับหลายเรื่องพร้อมกันได้โดยไม่หลุด และมองเห็นว่าเรื่องที่ดูไม่เกี่ยวกันเชื่อมกันตรงไหน"},
-  {e:"🦚", n:"นกยูง",     d:"การยอมรับ",
+  {e:"🦚", n:"นกยูง",     d:"การยอมรับ", n2:"peacock", d2:"recognition and display",
    t:{narc:.9, E:.6, O:.4},
    s:"คุณกล้าแสดงสิ่งที่คุณเป็นโดยไม่ต้องขอโทษใคร และการถูกมองเห็นคือสิ่งที่ทำให้คุณมีแรงทำต่อ"},
-  {e:"🦉", n:"นกฮูก",     d:"ความรู้",
+  {e:"🦉", n:"นกฮูก",     d:"ความรู้", n2:"owl", d2:"knowledge and observation",
    t:{O:.9, C:.5, E:-.6},
    s:"คุณอยากเข้าใจก่อนจะลงมือ และสบายใจกับการอยู่กับคำถามที่ยังไม่มีคำตอบมากกว่าการรีบสรุป"},
-  {e:"🐢", n:"เต่า",      d:"ความมั่นคง",
+  {e:"🐢", n:"เต่า",      d:"ความมั่นคง", n2:"tortoise", d2:"steadiness that never stops",
    t:{N:-.9, C:.5, O:-.4},
    s:"คุณไม่รีบ และแทบไม่หวั่นไหวกับเรื่องที่ทำให้คนอื่นตื่นตระหนก คุณไปช้าแต่ไม่เคยหยุด"},
-  {e:"🦫", n:"บีเวอร์",   d:"สร้างระบบ",
+  {e:"🦫", n:"บีเวอร์",   d:"สร้างระบบ", n2:"beaver", d2:"building systems that work alone",
    t:{C:.9, A:.5, O:-.4},
    s:"คุณเปลี่ยนความยุ่งเหยิงให้เป็นขั้นตอนได้ และรู้สึกดีจริง ๆ เวลาเห็นของที่ตัวเองสร้างทำงานได้เอง"},
-  {e:"🐘", n:"ช้าง",      d:"ความสัมพันธ์",
+  {e:"🐘", n:"ช้าง",      d:"ความสัมพันธ์", n2:"elephant", d2:"bonds and long memory",
    t:{A:.9, N:.4, C:.4},
    s:"คุณจำได้ว่าใครเคยอยู่ข้างคุณ และคุณอยู่ข้างเขากลับเสมอ ความผูกพันของคุณไม่ใช่เรื่องชั่วคราว"},
-  {e:"🐬", n:"โลมา",      d:"สังคมและการเล่น",
+  {e:"🐬", n:"โลมา",      d:"สังคมและการเล่น", n2:"dolphin", d2:"play and connection",
    t:{E:.9, A:.5, O:.4, N:-.4},
    s:"คุณทำให้คนรอบตัวรู้สึกสบายใจได้เร็ว และงานที่ไม่มีคนคุยด้วยทำให้คุณหมดพลังเร็วกว่างานที่หนักกว่า"},
-  {e:"🐕", n:"สุนัข",     d:"ความซื่อสัตย์",
+  {e:"🐕", n:"สุนัข",     d:"ความซื่อสัตย์", n2:"dog", d2:"loyalty and straightness",
    t:{A:.9, E:.5, mach:-.6},
    s:"คุณตรงกับคนที่คุณเลือกจะอยู่ด้วย และการเล่นเกมกับความสัมพันธ์ทำให้คุณอึดอัดมากกว่าจะได้เปรียบ"},
-  {e:"🦋", n:"ผีเสื้อ",   d:"การเปลี่ยนแปลง",
+  {e:"🦋", n:"ผีเสื้อ",   d:"การเปลี่ยนแปลง", n2:"butterfly", d2:"transformation",
    t:{O:.9, G:.6, C:-.5},
    s:"คุณไม่ยึดว่าตัวเองต้องเป็นเหมือนเดิม และเชื่อว่าสิ่งที่ทำไม่ได้วันนี้เป็นแค่เรื่องของเวลากับวิธี"},
-  {e:"🐦‍⬛", n:"อีกา",     d:"ความฉลาดเงียบ ๆ",
+  {e:"🐦‍⬛", n:"อีกา",     d:"ความฉลาดเงียบ ๆ", n2:"crow", d2:"quiet intelligence",
    t:{O:.7, E:-.7, mach:.4, C:.4},
    s:"คุณสังเกตมากกว่าที่พูด และมักรู้เรื่องในวงมากกว่าคนที่พูดเยอะที่สุดในวง"},
-  {e:"🦂", n:"แมงป่อง",   d:"การป้องกันตัว",
+  {e:"🦂", n:"แมงป่อง",   d:"การป้องกันตัว", n2:"scorpion", d2:"self-defence and the sting held back",
    t:{A:-.8, N:.5, E:-.5},
    s:"คุณไม่ไปหาเรื่องใคร แต่ถ้าถูกล้ำเส้นคุณตอบกลับทันทีและไม่ลืมง่าย ๆ"},
-  {e:"🐊", n:"จระเข้",    d:"รอจังหวะ",
+  {e:"🐊", n:"จระเข้",    d:"รอจังหวะ", n2:"crocodile", d2:"waiting for the exact moment",
    t:{N:-.8, E:-.5, C:.5, psyc:.3},
    s:"คุณรอได้นานกว่าคนอื่นมาก และเมื่อถึงจังหวะคุณลงมือโดยไม่ลังเลและไม่เสียเวลากับความรู้สึกผิด"}
 ];
@@ -7207,9 +7226,75 @@ function finish(reason){
   show("result");
   $("#result").innerHTML = buildReport(reason);
   $("#btnRestart").onclick = () => { show("intro"); window.scrollTo(0,0); };
+  $("#btnCopyPrompt").onclick = async () => {
+    const ta = $("#promptBox"), st = $("#copyStatus");
+    try{
+      await navigator.clipboard.writeText(ta.value);
+      st.textContent = "✓ คัดลอกแล้ว — เอาไปวางในเครื่องมือเจนภาพได้เลย";
+      logEvent("prompt_copied", null, {method:"clipboard"});
+    }catch(e){
+      // เบราว์เซอร์ไม่ให้สิทธิ์คลิปบอร์ด -> เลือกข้อความไว้ให้ ผู้ใช้กดคัดลอกเอง
+      ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length);
+      let ok = false;
+      try{ ok = document.execCommand("copy"); }catch(e2){}
+      st.textContent = ok
+        ? "✓ คัดลอกแล้ว — เอาไปวางในเครื่องมือเจนภาพได้เลย"
+        : "เบราว์เซอร์นี้ไม่ให้คัดลอกอัตโนมัติ — เราเลือกข้อความไว้ให้แล้ว กดค้างแล้วเลือก Copy ได้เลย";
+      logEvent("prompt_copied", null, {method: ok ? "execCommand" : "manual"});
+    }
+  };
   $("#sheetBody").innerHTML = buildSummary();
   [...document.querySelectorAll(".openSheet")].forEach(b => b.onclick = openSheet);
   window.scrollTo(0,0);
+}
+
+/* ── prompt สำหรับเอาไปเจนภาพเอง ──
+   อนาคตจะให้ AI เจนภาพสรุปผลมาแทนไอคอนสัตว์ ตอนนี้ยังไม่ถึงขั้นนั้น
+   จึงประกอบ prompt จากผลจริงของผู้ใช้ให้ก๊อปไปวางในเครื่องมือเจนภาพเอง
+   ตอนทำจริง จุดที่จะเสียบ API เจนภาพคือฟังก์ชันนี้ — เปลี่ยนจาก "คืนข้อความ"
+   เป็น "ส่งข้อความไปขอรูป" ได้เลย ไม่ต้องแก้ที่อื่น */
+const PROMPT_TRAITS = {
+  O:{hi:"drawn to the unfamiliar, exploratory", lo:"rooted in the familiar, unhurried"},
+  C:{hi:"precise and deliberate, every detail placed", lo:"loose and improvisational, unplanned"},
+  E:{hi:"outward-facing, movement and life around it", lo:"solitary, quiet empty space around it"},
+  A:{hi:"warm and protective in posture",             lo:"sharp, unsentimental, self-contained"},
+  N:{hi:"alert and watchful, senses turned up",       lo:"calm and unshaken, weight settled"}
+};
+const PROMPT_DARK = {
+  mach:"a sense of reading the room, one move ahead",
+  narc:"aware of being looked at, and comfortable with it",
+  psyc:"cool and unhurried, untroubled by the moment"
+};
+
+function imagePrompt(st){
+  const b  = matchBeast(st);
+  const ds = darkScores();
+
+  // เอา 3 แกนที่ห่างจากกึ่งกลางมากที่สุด มาเป็นคำบรรยายบุคลิกในภาพ
+  const traits = AXES
+    .map(a => ({a, pct: axisPct(st[a]), d: Math.abs(axisPct(st[a]) - 50)}))
+    .filter(x => x.d >= 8)
+    .sort((x,y) => y.d - x.d)
+    .slice(0, 3)
+    .map(x => PROMPT_TRAITS[x.a][x.pct >= 50 ? "hi" : "lo"]);
+
+  const topDark = FACETS.filter(f => ds[f].pct != null).sort((a,c) => ds[c].pct - ds[a].pct)[0];
+  if(topDark && darkBand(ds[topDark].pct).lv >= 3) traits.push(PROMPT_DARK[topDark]);
+
+  const nPct = axisPct(st.N);
+  const mood = nPct >= 62 ? "tense, charged air, storm light"
+             : nPct <= 38 ? "still, steady, wide calm light"
+             : "quiet and balanced, soft even light";
+
+  return [
+    "A symbolic portrait of a " + b.n2 + " — not a mascot, not a cartoon.",
+    "The animal stands for one inner drive: " + b.d2 + ".",
+    traits.length ? "Express these qualities through posture, light and setting: " + traits.join("; ") + "." : "",
+    "Mood: " + mood + ".",
+    "Style: painterly digital illustration, textured brushwork, centered subject, shallow depth,",
+    "deep pine-green and warm terracotta palette on an off-white ground, square 1:1 composition.",
+    "No text, no letters, no words, no logo, no watermark, no human faces."
+  ].filter(Boolean).join("\n");
 }
 
 function openSheet(){
@@ -7522,6 +7607,29 @@ function buildReport(reason){
         <pre>${esc(JSON.stringify(S.ev, null, 1))}</pre>
       </div>
     </details>
+  </section>
+
+  <hr class="rule">
+
+  <section class="sec">
+    <div class="sec-head"><span class="sec-tag" style="background:var(--card-2); color:var(--muted)">ภาพ</span>
+      <h2>เอาผลนี้ไปเจนเป็นภาพ</h2></div>
+    <p class="sec-note">เราประกอบคำสั่งจากผลของคุณไว้ให้แล้ว ก๊อปไปวางในเครื่องมือเจนภาพที่คุณใช้ได้เลย</p>
+    <div class="pbox">
+      <p class="pbox-note">
+        คำสั่งเป็น<b>ภาษาอังกฤษ</b> เพราะโมเดลเจนภาพเข้าใจอังกฤษดีกว่าไทยมาก
+        และมีบรรทัดสั่งห้ามใส่ตัวหนังสือลงในภาพ เพราะโมเดลเขียนภาษาไทยไม่ได้ จะออกมาเป็นตัวอักษรมั่ว ๆ
+      </p>
+      <textarea id="promptBox" spellcheck="false" aria-label="คำสั่งสำหรับเจนภาพ">${esc(imagePrompt(st))}</textarea>
+      <div class="btn-row" style="margin-top:12px">
+        <button class="btn-primary" id="btnCopyPrompt" style="flex:1">คัดลอกคำสั่ง</button>
+      </div>
+      <p class="pbox-status" id="copyStatus"></p>
+      <div class="soon">
+        🔜 <b>อนาคต</b> — ตรงนี้จะกลายเป็นภาพที่ AI เจนให้อัตโนมัติแทนไอคอนสัตว์
+        ตอนนี้ยังไม่ถึงขั้นนั้น เลยให้ก๊อปคำสั่งไปทำเองก่อน
+      </div>
+    </div>
   </section>
 
   <hr class="rule">
