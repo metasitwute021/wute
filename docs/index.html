@@ -203,8 +203,8 @@ button:focus-visible{outline:2px solid var(--seal); outline-offset:2px}
 .report-head{padding:32px 0 4px}
 .chips{display:flex; flex-wrap:wrap; gap:6px; margin-top:14px}
 .chip{
-  font-family:"IBM Plex Mono",monospace; font-size:.72rem; color:var(--muted);
-  border:1px solid var(--line); border-radius:99px; padding:3px 11px;
+  font-family:"IBM Plex Mono",monospace; font-size:.78rem; color:var(--muted);
+  border:1px solid var(--line); border-radius:99px; padding:4px 12px;
 }
 .sec{padding-top:6px}
 .sec-head{display:flex; align-items:baseline; gap:10px; margin-bottom:6px}
@@ -214,38 +214,84 @@ button:focus-visible{outline:2px solid var(--seal); outline-offset:2px}
 }
 .sec-a .sec-tag{background:var(--seal-soft); color:var(--seal-ink)}
 .sec-b .sec-tag{background:var(--clay-soft); color:var(--clay)}
-.sec-note{font-size:.82rem; color:var(--muted); margin:0 0 20px}
+.sec-note{font-size:.9rem; line-height:1.65; color:var(--muted); margin:0 0 18px}
 
-.axis{margin-bottom:19px}
-.axis-top{display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:7px}
-.axis-name{font-size:.92rem; font-weight:600}
-.axis-conf{font-family:"IBM Plex Mono",monospace; font-size:.68rem; color:var(--muted); white-space:nowrap}
-.track{position:relative; height:4px; background:var(--line); border-radius:99px}
-.track::after{content:""; position:absolute; left:50%; top:-3px; width:1px; height:10px; background:var(--line-2)}
+.axis{padding:20px 0; border-top:1px solid var(--line-2)}
+.axis:first-of-type{border-top:0}
+.axis-top{display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:2px}
+.axis-name{font-family:"Noto Serif Thai",Georgia,serif; font-size:1.14rem; font-weight:600; line-height:1.4}
+.axis-en{font-family:"IBM Plex Mono",monospace; font-size:.68rem; color:var(--muted); letter-spacing:.02em}
+.axis-conf{font-family:"IBM Plex Mono",monospace; font-size:.72rem; color:var(--muted); white-space:nowrap; flex:none}
+.verdict{font-size:1.04rem; line-height:1.55; color:var(--seal); font-weight:600; margin:10px 0 14px}
+.verdict.mid{color:var(--muted); font-weight:500}
+.track{position:relative; height:5px; background:var(--line); border-radius:99px}
+.track::after{content:""; position:absolute; left:50%; top:-4px; width:1px; height:13px; background:var(--line-2)}
 .track i{
-  position:absolute; top:-5px; width:14px; height:14px; border-radius:99px;
-  background:var(--seal); border:3px solid var(--card); transform:translateX(-50%);
+  position:absolute; top:-6px; width:17px; height:17px; border-radius:99px;
+  background:var(--seal); border:4px solid var(--card); transform:translateX(-50%);
   box-shadow:0 0 0 1px var(--line);
 }
-.axis-ends{display:flex; justify-content:space-between; gap:12px; margin-top:8px; font-size:.755rem; color:var(--muted)}
+.axis-ends{display:flex; justify-content:space-between; gap:14px; margin-top:11px; font-size:.83rem; color:var(--muted)}
 .axis-ends span:last-child{text-align:end}
 
-.gauge{margin-top:4px; padding:18px; border-radius:12px; background:var(--card-2); border:1px solid var(--line)}
+.gauge{margin-top:22px; padding:20px 18px; border-radius:14px; background:var(--card-2); border:1px solid var(--line)}
+.gauge .axis{padding:0; border:0}
 
-.obs{display:flex; flex-direction:column; gap:12px}
-.ob{padding:15px 16px; border-radius:12px; background:var(--card); border:1px solid var(--line)}
-.ob-fact{font-weight:600; font-size:.95rem; line-height:1.6; margin:0 0 6px}
-.ob-guess{font-size:.85rem; line-height:1.62; color:var(--muted); margin:0}
+/* พับส่วนรายละเอียดเก็บไว้ ให้หน้าหลักโฟกัสที่คะแนน */
+details.fold{border-top:1px solid var(--line); padding:4px 0}
+details.fold > summary{
+  list-style:none; cursor:pointer; padding:17px 0; display:flex;
+  align-items:center; justify-content:space-between; gap:12px;
+  font-family:"Noto Serif Thai",Georgia,serif; font-size:1.06rem; font-weight:600;
+}
+details.fold > summary::-webkit-details-marker{display:none}
+details.fold > summary::after{content:"+"; font-family:"IBM Plex Mono",monospace; color:var(--muted); font-size:1.15rem; flex:none}
+details.fold[open] > summary::after{content:"–"}
+details.fold > summary:focus-visible{outline:2px solid var(--seal); outline-offset:3px; border-radius:6px}
+details.fold .fold-body{padding-bottom:22px}
+
+.obs{display:flex; flex-direction:column; gap:13px}
+.ob{padding:16px 17px; border-radius:12px; background:var(--card); border:1px solid var(--line)}
+.ob-fact{font-weight:600; font-size:1.02rem; line-height:1.6; margin:0 0 7px}
+.ob-guess{font-size:.92rem; line-height:1.68; color:var(--muted); margin:0}
+
+/* ── การ์ดสรุปรวม เต็มจอ ── */
+.sheet{position:fixed; inset:0; z-index:60; background:var(--paper); overflow-y:auto; -webkit-overflow-scrolling:touch}
+.sheet-bar{
+  position:sticky; top:0; background:var(--paper); border-bottom:1px solid var(--line);
+  padding-top:env(safe-area-inset-top);
+}
+.sheet-bar-in{
+  max-width:34rem; margin:0 auto; padding:10px 18px;
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+}
+.sheet-in{max-width:34rem; margin:0 auto; padding:26px 18px calc(34px + env(safe-area-inset-bottom))}
+.hl{padding:19px 0; border-top:1px solid var(--line-2)}
+.hl:first-of-type{border-top:0; padding-top:6px}
+.hl-label{
+  font-family:"IBM Plex Mono",monospace; font-size:.71rem; letter-spacing:.03em;
+  color:var(--muted); margin:0 0 6px;
+}
+.hl-value{
+  font-family:"Noto Serif Thai",Georgia,serif; font-size:1.28rem; line-height:1.5;
+  font-weight:600; margin:0; text-wrap:pretty;
+}
+.hl-value.b{color:var(--clay)}
+.hl-sub{font-size:.88rem; line-height:1.6; color:var(--muted); margin:6px 0 0}
+.sheet-foot{
+  margin-top:26px; padding-top:18px; border-top:1px solid var(--line);
+  font-family:"IBM Plex Mono",monospace; font-size:.73rem; color:var(--muted); line-height:1.8;
+}
 .ob-conf{
-  display:inline-flex; align-items:center; gap:6px; margin-top:10px;
-  font-family:"IBM Plex Mono",monospace; font-size:.68rem; color:var(--muted);
+  display:inline-flex; align-items:center; gap:7px; margin-top:12px;
+  font-family:"IBM Plex Mono",monospace; font-size:.73rem; color:var(--muted);
 }
 .dot{width:7px; height:7px; border-radius:99px; flex:none}
 .dot.high{background:var(--sure)} .dot.mid{background:var(--maybe)} .dot.low{background:var(--guess)}
 
 .path{display:flex; flex-wrap:wrap; gap:5px; align-items:center}
 .node{
-  font-family:"IBM Plex Mono",monospace; font-size:.71rem; padding:3px 9px;
+  font-family:"IBM Plex Mono",monospace; font-size:.76rem; padding:4px 10px;
   border-radius:7px; border:1px solid var(--line); background:var(--card); color:var(--muted);
 }
 .node.edge{border-color:var(--clay); color:var(--clay)}
@@ -358,6 +404,15 @@ footer{padding:34px 0 40px; font-size:.75rem; line-height:1.65; color:var(--mute
       <button id="btnEnd" class="btn-ghost end" title="จบแล้วดูผลทันที">จบ</button>
     </div>
   </div>
+</div>
+
+<!-- ══════════════ การ์ดสรุปรวม (เต็มจอ) ══════════════ -->
+<div id="sheet" class="sheet hide" role="dialog" aria-modal="true" aria-label="สรุปรวม">
+  <div class="sheet-bar"><div class="sheet-bar-in">
+    <span class="eyebrow" style="margin:0">สรุปรวม</span>
+    <button class="icon-btn" id="sheetClose" aria-label="ปิดสรุปรวม">ปิด ✕</button>
+  </div></div>
+  <div class="sheet-in" id="sheetBody"></div>
 </div>
 
 <!-- ══════════════ หน้าผล ══════════════ -->
@@ -5663,12 +5718,14 @@ const AXES_ALL = [...AXES, "G"];
 const shuffle  = a => a.map(v => [Math.random(), v]).sort((x,y) => x[0]-y[0]).map(x => x[1]);
 
 const AXIS_INFO = {
-  O:{name:"Openness · เปิดรับสิ่งใหม่",       lo:"ชอบของคุ้นเคย รูปธรรม",   hi:"ชอบของใหม่ ความคิดนามธรรม"},
-  C:{name:"Conscientiousness · ความมีระเบียบ", lo:"ยืดหยุ่น ไปตามน้ำ",       hi:"วางแผน มีวินัย"},
-  E:{name:"Extraversion · ที่มาของพลัง",       lo:"ได้พลังจากการอยู่คนเดียว", hi:"ได้พลังจากผู้คน"},
-  A:{name:"Agreeableness · ความประนีประนอม",   lo:"ตรงไปตรงมา แข่งขัน",      hi:"เห็นใจ ยอมกัน"},
-  N:{name:"Neuroticism · ความอ่อนไหว",         lo:"นิ่ง ไม่หวั่นไหว",        hi:"อ่อนไหว คิดมาก"}
+  O:{th:"เปิดรับสิ่งใหม่",   en:"Openness",          lo:"ชอบของคุ้นเคย รูปธรรม",   hi:"ชอบของใหม่ ความคิดนามธรรม"},
+  C:{th:"ความมีระเบียบ",    en:"Conscientiousness", lo:"ยืดหยุ่น ไปตามน้ำ",       hi:"วางแผน มีวินัย"},
+  E:{th:"ที่มาของพลัง",     en:"Extraversion",      lo:"ได้พลังจากการอยู่คนเดียว", hi:"ได้พลังจากผู้คน"},
+  A:{th:"ความประนีประนอม",  en:"Agreeableness",     lo:"ตรงไปตรงมา แข่งขัน",      hi:"เห็นใจ ยอมกัน"},
+  N:{th:"ความอ่อนไหว",      en:"Neuroticism",       lo:"นิ่ง ไม่หวั่นไหว",        hi:"อ่อนไหว คิดมาก"}
 };
+const GROWTH_INFO = {th:"มุมมองต่อความสามารถ", en:"Growth ↔ Fixed Mindset",
+                     lo:"ความสามารถเป็นของตายตัว", hi:"ความสามารถพัฒนาได้"};
 const KIND = {trait:"ข้อความ · ตรงกับคุณแค่ไหน", scenario:"สถานการณ์", reading:"บทความสั้น", video:"คลิป"};
 
 /* ═══════════════════════════════════════════════════════════════
@@ -6022,17 +6079,103 @@ function axisPct(x){
   return Math.max(7, Math.min(93, 50 + (x.raw / max) * 45));
 }
 
+/** แปลงตำแหน่งบนแถบเป็นประโยคที่อ่านรู้เรื่องทันที ไม่ต้องเดาจากจุดบนเส้น */
+function lean(pct, info){
+  const d = pct - 50, a = Math.abs(d), side = d >= 0 ? info.hi : info.lo;
+  if(a < 7)  return {text:"อยู่ตรงกลาง ไม่เอียงไปทางไหนชัด", mid:true};
+  if(a < 17) return {text:'เอียงไปทาง “' + side + '” เล็กน้อย', mid:false};
+  if(a < 30) return {text:'ค่อนไปทาง “' + side + '”',           mid:false};
+  return            {text:'ไปทาง “' + side + '” ชัดเจน',        mid:false};
+}
+
+const confWord = c => c >= .75 ? "ข้อมูลพอสมควร" : c >= .4 ? "ข้อมูลน้อย" : "ข้อมูลไม่พอ";
+
+function axisBlock(key, x, info){
+  const pct = axisPct(x), lz = lean(pct, info);
+  return '<div class="axis">' +
+    '<div class="axis-top"><div><div class="axis-name">' + info.th + '</div>' +
+      '<div class="axis-en">' + info.en + '</div></div>' +
+      '<span class="axis-conf">' + confWord(x.confidence) + '</span></div>' +
+    '<p class="verdict' + (lz.mid ? " mid" : "") + '">' + lz.text + '</p>' +
+    '<div class="track"><i style="left:' + pct + '%"></i></div>' +
+    '<div class="axis-ends"><span>' + info.lo + '</span><span>' + info.hi + '</span></div>' +
+    '</div>';
+}
+
 function finish(reason){
   logEvent("session_end", null, {reason, itemsSeen:S.path.length});
   show("result");
   $("#result").innerHTML = buildReport(reason);
   $("#btnRestart").onclick = () => { show("intro"); window.scrollTo(0,0); };
-  $("#btnLog").onclick = () => {
-    const box = $("#logBox");
-    box.classList.toggle("hide");
-    $("#btnLog").textContent = box.classList.contains("hide") ? "ดู log ดิบทั้งหมด" : "ซ่อน log";
-  };
+  $("#sheetBody").innerHTML = buildSummary();
+  [...document.querySelectorAll(".openSheet")].forEach(b => b.onclick = openSheet);
   window.scrollTo(0,0);
+}
+
+function openSheet(){
+  $("#sheet").classList.remove("hide");
+  document.body.style.overflow = "hidden";
+  $("#sheet").scrollTop = 0;
+  $("#sheetClose").focus();
+  logEvent("summary_open", null, {});
+}
+function closeSheet(){
+  $("#sheet").classList.add("hide");
+  document.body.style.overflow = "";
+}
+$("#sheetClose").onclick = closeSheet;
+addEventListener("keydown", e => { if(e.key === "Escape" && !$("#sheet").classList.contains("hide")) closeSheet(); });
+
+/** การ์ดสรุปรวม — ทุกอย่างที่สำคัญในจอเดียว เหมาะกับการแคปหน้าจอ */
+function buildSummary(){
+  const st = scoreState();
+
+  // แกนที่ "เด่นที่สุด" = ห่างจากกึ่งกลางมากสุด และมีหลักฐานพอจะพูดถึง
+  const ranked = AXES
+    .map(a => ({a, pct:axisPct(st[a]), d:Math.abs(axisPct(st[a]) - 50), conf:st[a].confidence}))
+    .filter(x => x.conf >= .4 && x.d >= 7)
+    .sort((x,y) => y.d - x.d);
+
+  const top = ranked.slice(0,3).map(x => {
+    const info = AXIS_INFO[x.a], lz = lean(x.pct, info);
+    return '<div class="hl"><p class="hl-label">' + info.th + ' · ' + info.en + '</p>' +
+           '<p class="hl-value">' + lz.text + '</p></div>';
+  }).join("");
+
+  const gz = lean(axisPct(st.G), GROWTH_INFO);
+  const growth = '<div class="hl"><p class="hl-label">Growth ↔ Fixed Mindset</p>' +
+    '<p class="hl-value">' + (st.G.confidence >= .4 ? gz.text : "ข้อมูลยังไม่พอจะบอก") + '</p>' +
+    '<p class="hl-sub">' + (st.G.confidence >= .4
+      ? "วัดจากคำตอบ ไม่ได้รวมพฤติกรรมระหว่างทำ"
+      : "ทำใหม่แล้วตอบให้ครบขึ้น จะบอกได้ชัดกว่านี้") + '</p></div>';
+
+  // สาย B — เอาเฉพาะ "ข้อเท็จจริง" ที่เด่นสุด 3 ข้อ ไม่เอาสมมติฐานมาปน
+  const facts = [];
+  const skips = Object.keys(S.skipped).length;
+  const backs = S.ev.filter(e => e.kind === "back").length;
+  const changes = Object.values(S.changes).reduce((a,b) => a+b, 0);
+  if(skips)  facts.push("ข้ามไป " + skips + " ข้อ");
+  if(backs)  facts.push("ย้อนกลับ " + backs + " ครั้ง" + (changes ? " และเปลี่ยนคำตอบจริง " + changes + " ครั้ง" : " แต่ไม่เปลี่ยนคำตอบ"));
+  Object.entries(S.scroll).forEach(([id,p]) =>
+    facts.push(p >= 90 ? "อ่านบทความจนจบ" : "อ่านบทความถึง " + p + "% แล้วตอบ"));
+  Object.entries(S.feedback).forEach(([id,r]) =>
+    facts.push(r === "changed" ? "ยอมทบทวนคำตอบเมื่อเจอข้อมูลที่สวนทาง" : "ยืนยันคำตอบเดิมเมื่อเจอข้อมูลที่สวนทาง"));
+  const fis = S.path.map(id => S.firstInput[id]).filter(v => typeof v === "number");
+  if(fis.length >= 3)
+    facts.push("ใช้เวลาเฉลี่ย " + (Math.round(fis.reduce((a,b)=>a+b,0)/fis.length/100)/10) + " วินาที ก่อนแตะตัวเลือกแรก");
+  if(!skips && !backs) facts.push("ตอบทุกข้อโดยไม่ข้ามและไม่ย้อนกลับ");
+
+  const behav = '<div class="hl"><p class="hl-label">สิ่งที่คุณทำระหว่างตอบ</p>' +
+    '<p class="hl-value b">' + facts.slice(0,3).join(" · ") + '</p>' +
+    '<p class="hl-sub">เป็นข้อเท็จจริงที่วัดได้ตรง ส่วนการตีความว่าแปลว่าอะไร ดูในหน้าผล</p></div>';
+
+  return '<h1 style="margin-bottom:8px">สิ่งที่เด่นที่สุดของคุณ</h1>' +
+    '<p class="small muted" style="margin-bottom:20px">จาก ' + S.path.length + ' ข้อที่คุณตอบ · ถ้าไม่มีแกนไหนขึ้นแปลว่าข้อมูลยังไม่พอจะฟันธง</p>' +
+    (top || '<div class="hl"><p class="hl-value">ยังไม่มีแกนไหนเอียงชัดพอจะสรุป</p>' +
+            '<p class="hl-sub">คุณอยู่ค่อนไปทางกลาง ๆ ในทุกแกน หรือข้อมูลยังไม่พอ</p></div>') +
+    growth + behav +
+    '<div class="sheet-foot">' + S.ev.length + ' events บันทึกไว้ · ข้อมูลไม่ออกจากเครื่องคุณ<br>' +
+    'ไม่ใช่การวินิจฉัยทางจิตวิทยา · แบบทดสอบยังไม่ผ่านการ validate</div>';
 }
 
 function buildReport(reason){
@@ -6044,16 +6187,7 @@ function buildReport(reason){
   const changes  = Object.values(S.changes).reduce((a,b) => a+b, 0);
 
   /* ── สาย A — คะแนนจากคำตอบ ── */
-  const bars = AXES.map(a => {
-    const c = st[a].confidence;
-    const conf = c >= .75 ? "ข้อมูลพอสมควร" : c >= .4 ? "ข้อมูลน้อย" : "ข้อมูลไม่พอ";
-    return '<div class="axis">' +
-      '<div class="axis-top"><span class="axis-name">' + AXIS_INFO[a].name + '</span>' +
-      '<span class="axis-conf">' + conf + '</span></div>' +
-      '<div class="track"><i style="left:' + axisPct(st[a]) + '%"></i></div>' +
-      '<div class="axis-ends"><span>' + AXIS_INFO[a].lo + '</span><span>' + AXIS_INFO[a].hi + '</span></div>' +
-      '</div>';
-  }).join("");
+  const bars = AXES.map(a => axisBlock(a, st[a], AXIS_INFO[a])).join("");
 
   /* ── สาย B — ข้อสังเกตจากพฤติกรรม ── */
   const obs = [];
@@ -6133,48 +6267,49 @@ function buildReport(reason){
       <span class="chip">ย้อนกลับ ${backs}</span>
       <span class="chip">${REASON[reason] || reason}</span>
     </div>
+    <div class="btn-row" style="margin-top:20px">
+      <button class="btn-primary openSheet" style="flex:1">ดูสรุปรวม</button>
+    </div>
   </section>
 
   <hr class="rule">
 
   <section class="sec sec-a">
     <div class="sec-head"><span class="sec-tag">สาย A</span><h2>คะแนนจากคำตอบของคุณ</h2></div>
-    <p class="sec-note">อิงกรอบ Big Five — ไม่มีปลายไหนดีกว่าอีกปลาย</p>
+    <p class="sec-note">อิงกรอบ Big Five — ไม่มีปลายไหน “ดีกว่า” อีกปลาย</p>
     ${bars}
-    <div class="gauge">
-      <div class="axis-top"><span class="axis-name">Growth ↔ Fixed Mindset</span>
-        <span class="axis-conf">${st.G.confidence >= .75 ? "ข้อมูลพอสมควร" : st.G.confidence >= .4 ? "ข้อมูลน้อย" : "ข้อมูลไม่พอ"}</span></div>
-      <div class="track"><i style="left:${axisPct(st.G)}%"></i></div>
-      <div class="axis-ends"><span>Fixed · ความสามารถเป็นของตายตัว</span><span>Growth · พัฒนาได้</span></div>
-    </div>
-  </section>
-
-  <hr class="rule">
-
-  <section class="sec sec-b">
-    <div class="sec-head"><span class="sec-tag">สาย B</span><h2>สิ่งที่เราสังเกตจากพฤติกรรม</h2></div>
-    <p class="sec-note">บรรทัดแรกคือสิ่งที่เกิดขึ้นจริง บรรทัดจางคือสมมติฐานที่<b>ยังพิสูจน์ไม่ได้</b> — เราจึงแสดงเป็นข้อสังเกต ไม่ใช่ผลการวัด และไม่เอาไปรวมกับคะแนนสาย A</p>
-    <div class="obs">${obsHtml || '<p class="muted small">ไม่มีพฤติกรรมพิเศษให้สังเกตในรอบนี้</p>'}</div>
+    <div class="gauge">${axisBlock("G", st.G, GROWTH_INFO)}</div>
   </section>
 
   <hr class="rule">
 
   <section class="sec">
-    <h2>เส้นทางที่คุณเดิน</h2>
-    <p class="sec-note">เรียงตามลำดับที่เจอ · <b style="color:var(--clay)">กรอบสีดินเผา</b> คือข้อที่คำตอบของคุณบังคับให้มาเจอ · เส้นประขีดฆ่าคือข้อที่ข้าม</p>
-    <div class="path">${pathHtml}</div>
-    <p class="tiny" style="margin-top:14px">
-      อีก <b>${unseen} ข้อ</b> ในคลังที่คุณไม่ได้เจอเพราะเดินคนละกิ่ง · ตอบต่างออกไปแล้วทำใหม่ จะเจอคำถามคนละชุด
-    </p>
-  </section>
+    <details class="fold">
+      <summary>สิ่งที่เราสังเกตจากพฤติกรรม</summary>
+      <div class="fold-body">
+        <p class="sec-note">บรรทัดแรกคือสิ่งที่เกิดขึ้นจริง บรรทัดจางคือสมมติฐานที่<b>ยังพิสูจน์ไม่ได้</b> — เราจึงแสดงเป็นข้อสังเกต ไม่ใช่ผลการวัด และไม่เอาไปรวมกับคะแนนสาย A</p>
+        <div class="obs">${obsHtml || '<p class="muted small">ไม่มีพฤติกรรมพิเศษให้สังเกตในรอบนี้</p>'}</div>
+      </div>
+    </details>
 
-  <hr class="rule">
+    <details class="fold">
+      <summary>เส้นทางที่คุณเดิน</summary>
+      <div class="fold-body">
+        <p class="sec-note">เรียงตามลำดับที่เจอ · <b style="color:var(--clay)">กรอบสีดินเผา</b> คือข้อที่คำตอบของคุณบังคับให้มาเจอ · เส้นประขีดฆ่าคือข้อที่ข้าม</p>
+        <div class="path">${pathHtml}</div>
+        <p class="tiny" style="margin-top:16px">
+          อีก <b>${unseen} ข้อ</b> ในคลังที่คุณไม่ได้เจอเพราะเดินคนละกิ่ง · ตอบต่างออกไปแล้วทำใหม่ จะเจอคำถามคนละชุด
+        </p>
+      </div>
+    </details>
 
-  <section class="sec">
-    <h2>log ดิบทั้งหมดของคุณ</h2>
-    <p class="sec-note">${S.ev.length} events — นี่คือทุกอย่างที่เว็บนี้บันทึก ไม่มีมากกว่านี้ และไม่ได้ส่งออกไปไหน</p>
-    <button id="btnLog" class="btn-ghost">ดู log ดิบทั้งหมด</button>
-    <div id="logBox" class="hide" style="margin-top:12px"><pre>${esc(JSON.stringify(S.ev, null, 1))}</pre></div>
+    <details class="fold">
+      <summary>log ดิบทั้งหมด</summary>
+      <div class="fold-body">
+        <p class="sec-note">${S.ev.length} events — นี่คือทุกอย่างที่เว็บนี้บันทึก ไม่มีมากกว่านี้ และไม่ได้ส่งออกไปไหน</p>
+        <pre>${esc(JSON.stringify(S.ev, null, 1))}</pre>
+      </div>
+    </details>
   </section>
 
   <hr class="rule">
@@ -6191,7 +6326,10 @@ function buildReport(reason){
   </section>
 
   <div class="btn-row" style="margin-top:22px">
-    <button class="btn-primary" id="btnRestart" style="flex:1">ทำใหม่ ลองเดินกิ่งอื่น</button>
+    <button class="btn-primary openSheet" style="flex:1">ดูสรุปรวม</button>
+  </div>
+  <div class="btn-row" style="margin-top:10px">
+    <button class="btn-ghost" id="btnRestart" style="flex:1">ทำใหม่ ลองเดินกิ่งอื่น</button>
   </div>
 
   <footer>
