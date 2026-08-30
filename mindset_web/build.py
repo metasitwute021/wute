@@ -51,7 +51,8 @@ ICON = (
     '</svg>'
 )
 
-AXES        = ["O", "C", "E", "A", "N", "G"]
+AXES        = ["O", "C", "E", "A", "N", "G", "D"]
+FACETS      = {"mach", "narc", "psyc"}
 MIN_PER_AXIS   = 12    # ข้อต่อแกนขั้นต่ำในคลัง
 MIN_REVERSE    = 0.40  # สัดส่วนข้อ trait ที่ต้องกลับด้าน (กัน acquiescence bias)
 MIN_FORCED     = 12    # ข้อ forced-choice ขั้นต่ำ (กัน social desirability bias)
@@ -77,6 +78,15 @@ def validate(items):
 
         for ax in it.get("tags", []):
             if ax not in AXES: errs.append(f"{iid}: tag ไม่รู้จัก {ax}")
+
+        # แกน D (Dark Triad) ต้องระบุ facet เสมอ ไม่งั้นรายงานแยกสามด้านไม่ได้
+        if "D" in it.get("tags", []):
+            if it.get("facet") not in FACETS:
+                errs.append(f"{iid}: ข้อแกน D ต้องมี facet เป็นหนึ่งใน {sorted(FACETS)}")
+            if len(it.get("tags", [])) > 1:
+                errs.append(f"{iid}: ข้อแกน D ห้ามผูกกับแกนอื่น (จะทำให้คะแนน Big Five ปนกับ Dark Triad)")
+        elif it.get("facet"):
+            errs.append(f"{iid}: มี facet แต่ไม่ได้ tag แกน D")
         for o in it.get("options", []):
             for ax in o.get("w", {}):
                 if ax not in AXES: errs.append(f"{iid}: แกนไม่รู้จัก {ax}")
@@ -104,6 +114,12 @@ def validate(items):
         if i.get("type") != "scenario":
             errs.append(f"{i['id']}: ตั้งเป็นข้อเปิดได้เฉพาะข้อสถานการณ์")
 
+    # ทุก facet ของ Dark Triad ต้องมีข้อพอ ๆ กัน ไม่งั้นด้านที่ข้อน้อยจะถูกประเมินจากหลักฐานบางเกินไป
+    fc = collections.Counter(i.get("facet") for i in items if "D" in i.get("tags", []))
+    for f in sorted(FACETS):
+        if fc[f] < 4:
+            errs.append(f"Dark Triad facet '{f}' มีแค่ {fc[f]} ข้อ (ต้อง >= 4)")
+
     forced = [i for i in items if i.get("forced")]
     if len(forced) < MIN_FORCED:
         errs.append(f"forced-choice มีแค่ {len(forced)} ข้อ (ต้อง >= {MIN_FORCED})")
@@ -120,6 +136,7 @@ def main():
     print("แยกตามชนิด :", dict(collections.Counter(i["type"] for i in items)))
     print("แยกตามที่มา:", dict(collections.Counter(i["source"] for i in items)))
     print("ข้อต่อแกน   :", {a: per_axis[a] for a in AXES})
+    print("Dark Triad  :", dict(collections.Counter(i.get("facet") for i in items if "D" in i.get("tags", []))))
     print("forced-choice:", len(forced), "| เส้นบังคับ:", sum(1 for i in items if i.get("edges")), "| ข้อเปิด:", len(openers))
 
     if errs:

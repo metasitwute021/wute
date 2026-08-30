@@ -213,7 +213,7 @@ button:focus-visible{outline:2px solid var(--seal); outline-offset:2px}
   text-transform:uppercase; padding:3px 10px; border-radius:99px; flex:none;
 }
 .sec-a .sec-tag{background:var(--seal-soft); color:var(--seal-ink)}
-.sec-b .sec-tag{background:var(--clay-soft); color:var(--clay)}
+.sec-b .sec-tag, .sec-d .sec-tag{background:var(--clay-soft); color:var(--clay)}
 .sec-note{font-size:.9rem; line-height:1.65; color:var(--muted); margin:0 0 18px}
 
 .axis{padding:20px 0; border-top:1px solid var(--line-2)}
@@ -254,6 +254,53 @@ details.fold .fold-body{padding-bottom:22px}
 .ob{padding:16px 17px; border-radius:12px; background:var(--card); border:1px solid var(--line)}
 .ob-fact{font-weight:600; font-size:1.02rem; line-height:1.6; margin:0 0 7px}
 .ob-guess{font-size:.92rem; line-height:1.68; color:var(--muted); margin:0}
+
+/* ── งานที่น่าจะเข้ากับคุณ ── */
+.fit{display:flex; flex-direction:column; gap:13px}
+.fit-card{padding:17px 18px; border-radius:13px; background:var(--card); border:1px solid var(--line)}
+.fit-card.top{border-color:var(--seal); background:var(--seal-soft)}
+.fit-head{display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:7px}
+.fit-name{font-family:"Noto Serif Thai",Georgia,serif; font-size:1.1rem; font-weight:600}
+.fit-card.top .fit-name{color:var(--seal-ink)}
+.fit-score{font-family:"IBM Plex Mono",monospace; font-size:.73rem; color:var(--muted); flex:none}
+.fit-why{font-size:.93rem; line-height:1.6; margin:0 0 9px; color:var(--ink-2)}
+.fit-jobs{font-size:.9rem; line-height:1.7; margin:0; color:var(--muted)}
+.fit-weak{
+  display:inline-block; font-family:"IBM Plex Mono",monospace; font-size:.68rem;
+  color:var(--maybe); border:1px solid var(--maybe); border-radius:99px;
+  padding:1px 8px; margin-left:7px; opacity:.85;
+}
+
+/* ── Dark Triad ── */
+.dark-lead{
+  padding:16px 17px; border-radius:12px; background:var(--card-2);
+  border:1px solid var(--line); font-size:.92rem; line-height:1.68; margin-bottom:18px;
+}
+.dt{padding:19px 0; border-top:1px solid var(--line-2)}
+.dt:first-of-type{border-top:0; padding-top:4px}
+.dt-head{display:flex; align-items:baseline; justify-content:space-between; gap:10px}
+.dt-name{font-family:"Noto Serif Thai",Georgia,serif; font-size:1.08rem; font-weight:600}
+.dt-en{font-family:"IBM Plex Mono",monospace; font-size:.67rem; color:var(--muted)}
+.dt-band{font-size:.86rem; font-weight:600; white-space:nowrap; flex:none}
+.dt-band.lv1,.dt-band.lv2{color:var(--muted)}
+.dt-band.lv3{color:var(--maybe)}
+.dt-band.lv4{color:var(--clay)}
+.dt-band.lv0{color:var(--muted); font-weight:400}
+.dt-track{position:relative; height:5px; background:var(--line); border-radius:99px; margin:12px 0 11px}
+.dt-track::after{content:""; position:absolute; left:50%; top:-4px; width:1px; height:13px; background:var(--line-2)}
+.dt-track i{
+  position:absolute; top:-6px; width:17px; height:17px; border-radius:99px;
+  background:var(--clay); border:4px solid var(--card); transform:translateX(-50%);
+  box-shadow:0 0 0 1px var(--line);
+}
+.dt-desc{font-size:.92rem; line-height:1.66; margin:0 0 10px; color:var(--ink-2)}
+.dt-side{display:flex; gap:9px; font-size:.86rem; line-height:1.58; margin:0 0 5px}
+.dt-side b{flex:none; width:52px; color:var(--muted); font-weight:500; font-size:.8rem; padding-top:1px}
+.dt-guard{
+  margin-top:20px; padding:16px 17px; border-radius:12px;
+  background:var(--clay-soft); font-size:.88rem; line-height:1.68;
+}
+.dt-guard b{color:var(--clay)}
 
 /* ── ผังห้าเหลี่ยม Big Five ── */
 .radar-wrap{margin:6px 0 4px}
@@ -354,7 +401,7 @@ footer{padding:34px 0 40px; font-size:.75rem; line-height:1.65; color:var(--mute
     <h1>เราไม่ได้ดูแค่คำตอบของคุณ<br>เราดูว่าคุณลังเลตรงไหน</h1>
     <p class="lede" style="margin-top:18px">
       แบบทดสอบนี้ไม่มีชุดคำถามตายตัว คำตอบแต่ละข้อจะพาคุณไปเจอคำถามคนละชุด
-      แตกกิ่งจากคลัง <b>120 ข้อ</b> — คนสองคนที่ทำเว็บนี้แทบไม่มีทางเจอคำถามเหมือนกัน
+      แตกกิ่งจากคลัง <b>135 ข้อ</b> — คนสองคนที่ทำเว็บนี้แทบไม่มีทางเจอคำถามเหมือนกัน
     </p>
   </section>
 
@@ -373,6 +420,18 @@ footer{padding:34px 0 40px; font-size:.75rem; line-height:1.65; color:var(--mute
 
   <hr class="rule">
 
+  <section>
+    <h2 style="margin-bottom:14px">สิ่งที่คุณจะได้กลับไป</h2>
+    <dl class="dl">
+      <div><dt>นิสัย</dt><dd>บุคลิกภาพ 5 ด้านตามกรอบ Big Five พร้อมผังห้าเหลี่ยม</dd></div>
+      <div><dt>มุมมอง</dt><dd>คุณมองความสามารถเป็นของตายตัว หรือของที่พัฒนาได้</dd></div>
+      <div><dt>งาน</dt><dd>กลุ่มงานที่น่าจะเข้ากับนิสัยคุณ พร้อมตัวอย่างอาชีพ</dd></div>
+      <div><dt>Dark<br>Triad</dt><dd>แนวโน้ม 3 ด้านที่คนมักไม่พูดถึง — การวางกลยุทธ์กับคน การเห็นตัวเองสำคัญ และความเย็นชา/หุนหัน <b>เป็นแนวโน้มที่พบในคนทั่วไป ไม่ใช่การวินิจฉัย</b></dd></div>
+    </dl>
+  </section>
+
+  <hr class="rule">
+
   <section class="card" style="background:var(--seal-soft); border-color:transparent">
     <p class="small" style="margin:0; color:var(--seal-ink)">
       <b>ข้อมูลไม่ออกจากเครื่องคุณ</b> — เว็บนี้ไม่มีเซิร์ฟเวอร์เก็บคำตอบ ทุกอย่างอยู่ในหน่วยความจำเบราว์เซอร์
@@ -383,7 +442,7 @@ footer{padding:34px 0 40px; font-size:.75rem; line-height:1.65; color:var(--mute
   <div class="btn-row" style="margin-top:24px">
     <button class="btn-primary" id="btnStart" style="flex:1">เริ่มทำ</button>
   </div>
-  <p class="tiny" style="margin-top:12px">ประมาณ 12–20 ข้อ · 4–6 นาที · การกดเริ่มถือว่าคุณยินยอมให้บันทึกตามรายการด้านบน</p>
+  <p class="tiny" style="margin-top:12px">ประมาณ 18–26 ข้อ · 5–7 นาที · การกดเริ่มถือว่าคุณยินยอมให้บันทึกตามรายการด้านบน</p>
 
   <footer>
     ไม่ใช่การวินิจฉัยหรือคำแนะนำทางจิตวิทยาหรือการแพทย์ · หากมีความทุกข์ทางใจ สายด่วนสุขภาพจิต 1323<br>
@@ -443,10 +502,12 @@ footer{padding:34px 0 40px; font-size:.75rem; line-height:1.65; color:var(--mute
       (ฉีดเพราะเปิดผ่าน file:// แล้ว fetch() จะโดน CORS บล็อก
        ตอนทำระบบจริงคลังข้อต้องอยู่ฝั่งเซิร์ฟเวอร์และส่งมาทีละข้อ)
    ═══════════════════════════════════════════════════════════════ */
-const MAX_ITEMS       = 20;  // ข้อสูงสุดต่อ session
-const MIN_ITEMS       = 12;  // ต่ำสุดก่อนยอมจบเพราะ "ข้อมูลพอแล้ว"
+const MAX_ITEMS       = 26;  // ข้อสูงสุดต่อ session
+const MIN_ITEMS       = 18;  // ต่ำสุดก่อนยอมจบเพราะ "ข้อมูลพอแล้ว"
 const MIN_PER_AXIS    = 2;   // ทุกแกนต้องถูกถามอย่างน้อยกี่ข้อ
+const MIN_PER_FACET   = 2;   // Dark Triad ต้องได้ครบทั้ง 3 ด้าน ด้านละกี่ข้อ
 const TARGET_EVIDENCE = 4;   // หลักฐานกี่ชิ้นต่อแกนถึงเรียกว่ามั่นใจเต็ม
+const FACETS          = ["mach","narc","psyc"];
 
 /* === ITEMS:BEGIN === */
 const POOL = [];
@@ -454,7 +515,7 @@ const POOL = [];
 
 const BY_ID    = Object.fromEntries(POOL.map(i => [i.id, i]));
 const AXES     = ["O","C","E","A","N"];
-const AXES_ALL = [...AXES, "G"];
+const AXES_ALL = [...AXES, "G", "D"];
 const shuffle  = a => a.map(v => [Math.random(), v]).sort((x,y) => x[0]-y[0]).map(x => x[1]);
 
 const AXIS_INFO = {
@@ -466,6 +527,45 @@ const AXIS_INFO = {
 };
 const GROWTH_INFO = {th:"มุมมองต่อความสามารถ", en:"Growth ↔ Fixed Mindset",
                      lo:"ความสามารถเป็นของตายตัว", hi:"ความสามารถพัฒนาได้"};
+/* ── ความสนใจอาชีพ (RIASEC) ประเมินจาก Big Five ──
+   น้ำหนักมาจากค่าสหสัมพันธ์ใน meta-analysis (Barrick, Mount & Gupta 2003;
+   Larson, Rottinghaus & Borgen 2002) ไม่ได้ตั้งเอา:
+     Artistic–O .48 · Enterprising–E .41 · Social–E .31 · Investigative–O .28 · Social–A .19
+   Realistic แทบไม่สัมพันธ์กับ Big Five เลย เราจึงไม่จัดอันดับให้ และบอกเหตุผลไว้ในรายงาน */
+const RIASEC = [
+  {k:"I", th:"ค้นคว้าและวิเคราะห์", w:{O:.28, C:.10},
+   why:"ชอบตั้งคำถาม หาคำตอบ อยู่กับปัญหาที่ซับซ้อนได้นาน",
+   jobs:"นักวิจัย · นักวิเคราะห์ข้อมูล · โปรแกรมเมอร์ · สายการแพทย์ · วิศวกรออกแบบ", strong:true},
+  {k:"A", th:"สร้างสรรค์และออกแบบ", w:{O:.48, C:-.10},
+   why:"ชอบงานที่ไม่มีคำตอบตายตัว ได้ตีความและสร้างของใหม่",
+   jobs:"นักออกแบบ · ครีเอทีฟ · นักเขียน · สถาปนิก · ผู้กำกับ · นักดนตรี", strong:true},
+  {k:"S", th:"ทำงานกับคน", w:{E:.31, A:.19},
+   why:"ได้พลังจากการอยู่กับคน และสนใจว่าคนตรงหน้ารู้สึกยังไง",
+   jobs:"ครู · พยาบาล · นักจิตวิทยา · HR · นักสังคมสงเคราะห์ · โค้ช", strong:true},
+  {k:"E", th:"ผลักดันและโน้มน้าว", w:{E:.41, A:-.12, N:-.10},
+   why:"ชอบขับเคลื่อนให้เกิดขึ้นจริง และไม่กลัวการต่อรอง",
+   jobs:"ผู้ประกอบการ · ฝ่ายขาย · ผู้จัดการ · การตลาด · ทนาย · PR", strong:true},
+  {k:"C", th:"ระเบียบและข้อมูล", w:{C:.20, O:-.30},
+   why:"ทำงานได้ดีกับระบบที่ชัดเจน มีขั้นตอน ตรวจสอบได้",
+   jobs:"บัญชี · ตรวจสอบภายใน · ธุรการ · โลจิสติกส์ · งานทะเบียนและกฎระเบียบ", strong:false}
+];
+
+/* ── Dark Triad — ใช้ภาษากลาง ไม่ใช้ศัพท์วินิจฉัย ── */
+const DARK = {
+  mach:{th:"การวางกลยุทธ์กับคน", en:"Machiavellianism",
+        desc:"แนวโน้มที่จะมองความสัมพันธ์เป็นเกมที่วางแผนได้ เก็บข้อมูลไว้เป็นแต้มต่อ และคิดล่วงหน้าว่าจะรับมือใครยังไง",
+        up:"ในงานเจรจา ต่อรอง หรือการเมืององค์กร คนกลุ่มนี้มักอ่านสถานการณ์ขาด",
+        down:"ถ้าสูงมากและอีกฝ่ายรู้ตัว ความไว้ใจระยะยาวจะพังเร็ว"},
+  narc:{th:"การเห็นตัวเองสำคัญ", en:"Narcissism",
+        desc:"แนวโน้มที่จะประเมินตัวเองสูง อยากได้การยอมรับ และรู้สึกไม่ดีเมื่อผลงานไม่ถูกมองเห็น",
+        up:"มักมาพร้อมความมั่นใจ กล้านำเสนอ และไม่กลัวเวทีใหญ่",
+        down:"ทำให้รับคำวิจารณ์ยาก และมองข้ามส่วนที่คนอื่นช่วย"},
+  psyc:{th:"ความเย็นชาและหุนหัน", en:"Psychopathy (ระดับคนทั่วไป)",
+        desc:"แนวโน้มที่จะตัดสินใจเร็วโดยไม่ลังเล ไม่ค่อยจมกับความรู้สึกผิด และเข้าใจอารมณ์คนอื่นได้โดยไม่รู้สึกตาม",
+        up:"ทำให้ตัดสินใจในภาวะกดดันได้โดยไม่ถูกอารมณ์ลาก",
+        down:"เสี่ยงมองข้ามผลกระทบต่อคนอื่น และตัดสินใจโดยไม่ดูผลระยะยาว"}
+};
+
 const KIND = {trait:"ข้อความ · ตรงกับคุณแค่ไหน", scenario:"สถานการณ์", reading:"บทความสั้น", video:"คลิป"};
 
 /* ═══════════════════════════════════════════════════════════════
@@ -513,26 +613,38 @@ function scoreState(){
 }
 
 const seen      = id => S.path.includes(id);
-const axisCount = ax => S.path.filter(id => (BY_ID[id].tags||[]).includes(ax)).length;
+const axisCount  = ax => S.path.filter(id => (BY_ID[id].tags||[]).includes(ax)).length;
+const facetCount = f  => S.path.filter(id => BY_ID[id].facet === f).length;
+
+/** ยังติดค้างอีกกี่ข้อถึงจะครบโควตาขั้นต่ำทุกแกน
+    แกน D นับเป็นราย facet เพราะถ้าได้แต่ด้านเดียว รายงาน Dark Triad จะว่างสองด้าน */
+const owedFor = ax => ax === "D"
+  ? FACETS.reduce((n,f) => n + Math.max(0, MIN_PER_FACET - facetCount(f)), 0)
+  : Math.max(0, MIN_PER_AXIS - axisCount(ax));
+const totalOwed = () => AXES_ALL.reduce((n,a) => n + owedFor(a), 0);
+/** ด้าน Dark Triad ที่ยังขาดข้อมากที่สุด */
+const neediestFacet = () => [...FACETS].sort((a,b) => facetCount(a) - facetCount(b))[0];
 const isMedia   = i  => i.type === "reading" || i.type === "video";
 
 /** ทุกแกนพร้อมจบหรือยัง — ต้องทั้งหลักฐานพอ *และ* ถูกถามตรง ๆ ถึงโควตา
     (ไม่งั้นแกนหนึ่งอาจได้หลักฐานทางอ้อมจากน้ำหนักข้ามแกนจนครบ ทั้งที่ไม่เคยถูกถามเลย) */
 function allAxesConfident(){
   const st = scoreState();
-  return AXES_ALL.every(a => st[a].evidence >= TARGET_EVIDENCE && axisCount(a) >= MIN_PER_AXIS);
+  return totalOwed() === 0 && AXES_ALL.every(a => st[a].evidence >= TARGET_EVIDENCE);
 }
 
 /** ⭐ เลือกข้อถัดไป 4 ชั้น แล้วสุ่มในกลุ่มที่ดีเท่ากัน
     (ถ้าไม่สุ่ม คลัง 120 ข้อจะถูกใช้จริงแค่ 20 ข้อเดิมตลอดกาล) */
 function pickNext(){
   const cur = BY_ID[S.path[S.idx]], ans = S.answers[cur.id];
+  const st = scoreState(), shown = S.path.length, left = MAX_ITEMS - shown;
+  const owed = totalOwed();
 
   // ชั้น 1 — เส้นบังคับที่ผูกกับคำตอบ
-  if(cur.edges && ans && cur.edges[ans] && !seen(cur.edges[ans]))
+  // ข้ามชั้นนี้เมื่อช่องที่เหลือไม่พอกับโควตาขั้นต่ำแล้ว ไม่งั้นเส้นบังคับจะแย่งช่องท้าย ๆ
+  // ไปจนบางแกน (โดยเฉพาะ Dark Triad รายด้าน) ตกโควตา
+  if(left > owed && cur.edges && ans && cur.edges[ans] && !seen(cur.edges[ans]))
     return {id:cur.edges[ans], via:"edge", why:"คำตอบที่คุณเลือกในข้อก่อนหน้ากำหนดข้อนี้ไว้ล่วงหน้า"};
-
-  const st = scoreState(), shown = S.path.length, left = MAX_ITEMS - shown;
 
   // ชั้น 2 — รับประกันว่ามีข้อบทความอย่างน้อย 1 ข้อ (ไม่งั้นจะไม่มีข้อมูลพฤติกรรมเลย)
   if(shown >= 4 && !S.path.some(id => isMedia(BY_ID[id]))){
@@ -541,11 +653,10 @@ function pickNext(){
   }
 
   // ชั้น 3 — แกนที่ยังไม่ถึงโควตาขั้นต่ำ และเหลือข้ออีกไม่มาก
-  const short = AXES_ALL.filter(a => axisCount(a) < MIN_PER_AXIS);
   let order, why;
-  if(short.length && left <= short.length + 1){
-    order = short;
-    why = "โควตาขั้นต่ำ — แกนนี้ยังไม่ถึง " + MIN_PER_AXIS + " ข้อ และเหลืออีกแค่ " + left + " ข้อ";
+  if(owed && left <= owed + 2){
+    order = AXES_ALL.filter(a => owedFor(a) > 0);
+    why = "โควตาขั้นต่ำ — ยังค้างอยู่ " + owed + " ข้อ และเหลือให้ถามอีกแค่ " + left + " ข้อ";
   } else {
     // ชั้น 4 — แกนที่หลักฐานน้อยที่สุด (เสมอกันดูที่คะแนนก้ำกึ่งสุด)
     order = [...AXES_ALL].sort((a,b) =>
@@ -556,6 +667,17 @@ function pickNext(){
   for(const axis of order){
     let cand = POOL.filter(i => !seen(i.id) && (i.tags||[]).includes(axis));
     if(!cand.length) continue;
+
+    // แกน D: บังคับให้ไปที่ด้านที่ยังขาดข้อมากที่สุดก่อน
+    if(axis === "D"){
+      const f = neediestFacet();
+      const byFacet = cand.filter(i => i.facet === f);
+      if(byFacet.length){
+        const pick = shuffle(byFacet)[0];
+        return {id:pick.id, via:"adaptive",
+                why:"Dark Triad — ด้าน " + DARK[f].th + " ยังตอบไปแค่ " + facetCount(f) + " ข้อ น้อยที่สุดในสามด้าน"};
+      }
+    }
 
     // สมดุล keying — กันคนที่กด "เห็นด้วย" รัวไปหมด (acquiescence bias)
     const tr  = S.path.map(id => BY_ID[id]).filter(i => i.type === "trait" && i.tags.includes(axis));
@@ -871,6 +993,41 @@ function radarSVG(st, uid){
     (weak ? '<br>จุดกลวง = แกนที่ข้อมูลยังน้อย (' + weak + ' แกน)' : '') + '</p></div>';
 }
 
+/** จัดอันดับความสนใจอาชีพจากโปรไฟล์ Big Five
+    z = ตำแหน่งบนแถบแปลงเป็นช่วง -1..1 · คะแนน = ผลรวมถ่วงน้ำหนัก หารด้วยน้ำหนักรวม */
+function careers(st){
+  const z = {};
+  AXES.forEach(a => z[a] = (axisPct(st[a]) - 50) / 45);
+  return RIASEC.map(c => {
+    let sum = 0, tot = 0;
+    Object.entries(c.w).forEach(([a,w]) => { sum += z[a] * w; tot += Math.abs(w); });
+    return {...c, score: sum / tot};
+  }).sort((x,y) => y.score - x.score);
+}
+
+/** คะแนน Dark Triad แยกสามด้าน — นับเฉพาะข้อที่ผู้ใช้ตอบจริง */
+function darkScores(){
+  const out = {mach:{raw:0,n:0}, narc:{raw:0,n:0}, psyc:{raw:0,n:0}};
+  S.path.forEach(id => {
+    const it = BY_ID[id];
+    if(!it.facet || !out[it.facet]) return;
+    const opt = pickedOption(id); if(!opt) return;
+    out[it.facet].raw += opt.w.D; out[it.facet].n += 1;
+  });
+  Object.values(out).forEach(f => f.pct = f.n ? Math.max(6, Math.min(94, 50 + (f.raw/(f.n*2))*45)) : null);
+  out.total = out.mach.n + out.narc.n + out.psyc.n;
+  return out;
+}
+
+/** แปลงคะแนน Dark Triad เป็นคำ — ตั้งใจไม่ใช้คำตัดสินคน */
+function darkBand(pct){
+  if(pct == null)  return {t:"ข้อมูลไม่พอ",              lv:0};
+  if(pct < 38)     return {t:"ต่ำกว่าค่ากลาง",            lv:1};
+  if(pct <= 62)    return {t:"ประมาณค่ากลาง",             lv:2};
+  if(pct <= 76)    return {t:"สูงกว่าค่ากลางเล็กน้อย",     lv:3};
+  return                  {t:"สูงกว่าค่ากลางชัดเจน",      lv:4};
+}
+
 const confWord = c => c >= .75 ? "ข้อมูลพอสมควร" : c >= .4 ? "ข้อมูลน้อย" : "ข้อมูลไม่พอ";
 
 function axisBlock(key, x, info){
@@ -925,6 +1082,29 @@ function buildSummary(){
            '<p class="hl-value">' + lz.text + '</p></div>';
   }).join("");
 
+  // งานที่เข้ากันที่สุด
+  const best = careers(st)[0];
+  const fit = '<div class="hl"><p class="hl-label">งานที่น่าจะเข้ากับคุณที่สุด</p>' +
+    '<p class="hl-value">' + best.th + '</p>' +
+    '<p class="hl-sub">' + best.jobs + '<br>เป็นความเข้ากัน ไม่ใช่ความสามารถ' +
+    (best.strong ? '' : ' · กลุ่มนี้งานวิจัยรองรับอ่อนกว่ากลุ่มอื่น') + '</p></div>';
+
+  // Dark Triad — สรุปเฉพาะด้านที่โดดที่สุด และเฉพาะเมื่อมีหลักฐานพอ
+  const ds = darkScores();
+  let dark = "";
+  if(ds.total >= 3){
+    const top = ["mach","narc","psyc"]
+      .filter(f => ds[f].pct != null)
+      .sort((a,b) => ds[b].pct - ds[a].pct)[0];
+    const band = darkBand(ds[top].pct);
+    dark = '<div class="hl"><p class="hl-label">Dark Triad · ด้านที่โดดที่สุด</p>' +
+      '<p class="hl-value">' + DARK[top].th + ' — ' + band.t + '</p>' +
+      '<p class="hl-sub">' + (band.lv >= 3
+        ? 'ด้านนี้เด่นกว่าอีกสองด้านของคุณ ดูข้อดีและข้อเสี่ยงของมันในหน้าผล'
+        : 'ทั้งสามด้านอยู่ในช่วงที่พบได้ทั่วไป') +
+      ' · เป็นแนวโน้ม ไม่ใช่การวินิจฉัย</p></div>';
+  }
+
   const gz = lean(axisPct(st.G), GROWTH_INFO);
   const growth = '<div class="hl"><p class="hl-label">Growth ↔ Fixed Mindset</p>' +
     '<p class="hl-value">' + (st.G.confidence >= .4 ? gz.text : "ข้อมูลยังไม่พอจะบอก") + '</p>' +
@@ -958,7 +1138,7 @@ function buildSummary(){
     '<div style="height:14px"></div>' +
     (top || '<div class="hl"><p class="hl-value">ยังไม่มีแกนไหนเอียงชัดพอจะสรุป</p>' +
             '<p class="hl-sub">คุณอยู่ค่อนไปทางกลาง ๆ ในทุกแกน หรือข้อมูลยังไม่พอ</p></div>') +
-    growth + behav +
+    growth + fit + dark + behav +
     '<div class="sheet-foot">' + S.ev.length + ' events บันทึกไว้ · ข้อมูลไม่ออกจากเครื่องคุณ<br>' +
     'ไม่ใช่การวินิจฉัยทางจิตวิทยา · แบบทดสอบยังไม่ผ่านการ validate</div>';
 }
@@ -1036,6 +1216,33 @@ function buildReport(reason){
   }).join("");
   const unseen = POOL.length - S.path.length;
 
+  /* ── งานที่น่าจะเข้ากับคุณ ── */
+  const cs = careers(st);
+  const fitHtml = cs.map((c,i) =>
+    '<div class="fit-card' + (i === 0 ? " top" : "") + '">' +
+      '<div class="fit-head"><span class="fit-name">' + c.th +
+        (c.strong ? "" : '<span class="fit-weak">เดาอ่อน</span>') + '</span>' +
+        '<span class="fit-score">' + (c.score >= 0 ? "+" : "") + c.score.toFixed(2) + '</span></div>' +
+      '<p class="fit-why">' + c.why + '</p>' +
+      '<p class="fit-jobs">' + c.jobs + '</p></div>').join("");
+
+  /* ── Dark Triad ── */
+  const ds = darkScores();
+  const dtHtml = ["mach","narc","psyc"].map(f => {
+    const info = DARK[f], sc = ds[f], band = darkBand(sc.pct);
+    return '<div class="dt">' +
+      '<div class="dt-head"><div><div class="dt-name">' + info.th + '</div>' +
+        '<div class="dt-en">' + info.en + '</div></div>' +
+        '<span class="dt-band lv' + band.lv + '">' + band.t + '</span></div>' +
+      (sc.pct == null
+        ? '<p class="dt-desc" style="margin-top:11px">รอบนี้ยังไม่ได้ถามด้านนี้เลย ทำใหม่อาจได้เจอ</p>'
+        : '<div class="dt-track"><i style="left:' + sc.pct + '%"></i></div>') +
+      '<p class="dt-desc">' + info.desc + '</p>' +
+      '<p class="dt-side"><b>ข้อดี</b><span>' + info.up + '</span></p>' +
+      '<p class="dt-side"><b>ข้อเสี่ยง</b><span>' + info.down + '</span></p>' +
+      '<p class="tiny" style="margin:8px 0 0">ตอบไปแล้ว ' + sc.n + ' ข้อในด้านนี้</p></div>';
+  }).join("");
+
   const REASON = {
     reached_max:"ครบจำนวนข้อ", user_ended:"คุณกดจบเอง",
     pool_exhausted:"คลังข้อหมด", confident:"ข้อมูลครบทุกแกนแล้ว"
@@ -1065,6 +1272,45 @@ function buildReport(reason){
     ${radarSVG(st, "radar-report")}
     ${bars}
     <div class="gauge">${axisBlock("G", st.G, GROWTH_INFO)}</div>
+  </section>
+
+  <hr class="rule">
+
+  <section class="sec sec-a">
+    <div class="sec-head"><span class="sec-tag">งาน</span><h2>งานที่น่าจะเข้ากับคุณ</h2></div>
+    <p class="sec-note">
+      แปลงคะแนน Big Five เป็นความสนใจอาชีพตามกรอบ RIASEC ของ Holland โดยใช้ค่าสหสัมพันธ์จากงาน meta-analysis
+      เป็นน้ำหนัก ไม่ได้ตั้งเอง — <b>นี่คือความ “เข้ากัน” ไม่ใช่ความสามารถ</b> คนเก่งในงานที่ไม่เข้ากับนิสัยมีเยอะมาก
+    </p>
+    <div class="fit">${fitHtml}</div>
+    <p class="tiny" style="margin-top:16px">
+      <b>ข้อจำกัดที่ต้องรู้:</b> เส้นเชื่อมที่งานวิจัยรองรับแน่นมีแค่ไม่กี่เส้น (สร้างสรรค์↔เปิดรับสิ่งใหม่ r≈.48 ·
+      ผลักดัน↔เข้าสังคม r≈.41 · ทำงานกับคน↔เข้าสังคม r≈.31) ที่ติดป้าย “เดาอ่อน” คือเส้นที่งานวิจัยรองรับน้อยกว่า<br><br>
+      และ <b>กลุ่มงานลงมือทำ</b> (ช่างเทคนิค · วิศวกรภาคสนาม · เกษตร · กีฬา · งานที่ใช้ร่างกายและเครื่องมือ)
+      <b>ไม่อยู่ในอันดับนี้</b> เพราะงานวิจัยพบว่ามันแทบไม่สัมพันธ์กับ Big Five เลย —
+      ประเมินจากข้อมูลชุดนี้ไม่ได้ ไม่ได้แปลว่าไม่เหมาะกับคุณ
+    </p>
+  </section>
+
+  <hr class="rule">
+
+  <section class="sec sec-d">
+    <div class="sec-head"><span class="sec-tag">Dark Triad</span><h2>ด้านที่คนมักไม่พูดถึง</h2></div>
+    <div class="dark-lead">
+      <b>Dark Triad</b> คือกลุ่มบุคลิกภาพ 3 ด้านที่นักจิตวิทยาศึกษามาตั้งแต่ปี 2002 (Paulhus &amp; Williams) —
+      การวางกลยุทธ์กับคน การเห็นตัวเองสำคัญ และความเย็นชา/หุนหัน<br><br>
+      สิ่งสำคัญที่สุดที่ต้องเข้าใจ: นี่คือระดับที่พบใน<b>คนทั่วไป</b> ทุกคนมีทั้งสามด้านในระดับหนึ่ง
+      มันคนละเรื่องกับการวินิจฉัยทางจิตเวช และ <b>คะแนนสูงไม่ได้แปลว่าเป็นคนไม่ดี</b> —
+      แต่ละด้านมีทั้งข้อดีและข้อเสี่ยงตามสถานการณ์
+    </div>
+    ${ds.total >= 3 ? dtHtml : '<p class="muted small">รอบนี้ตอบข้อกลุ่มนี้ไปแค่ ' + ds.total + ' ข้อ ยังน้อยเกินกว่าจะสรุปอะไรได้ — ทำใหม่แล้วตอบให้ครบขึ้นจะได้ผลที่มีความหมายกว่านี้</p>'}
+    <div class="dt-guard">
+      <b>อ่านผลนี้ยังไงให้ถูก</b><br>
+      • เป็น<b>แนวโน้ม</b> ไม่ใช่การวินิจฉัย ไม่มีใครถูกตัดสินว่าเป็นอะไรจากแบบทดสอบออนไลน์<br>
+      • คะแนนขยับได้ตามช่วงชีวิตและสถานการณ์ ไม่ใช่ตราประทับถาวร<br>
+      • <b>ห้ามใช้ตัดสินคนอื่น หรือใช้คัดคนเข้าทำงาน</b> — ทั้งไม่แม่นพอและไม่เป็นธรรม<br>
+      • ถ้าผลนี้ทำให้กังวลเรื่องตัวเองหรือความสัมพันธ์ คุยกับนักจิตวิทยาได้ · สายด่วนสุขภาพจิต 1323
+    </div>
   </section>
 
   <hr class="rule">
