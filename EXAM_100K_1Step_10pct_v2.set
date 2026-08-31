@@ -1,0 +1,64 @@
+; ========================================================================
+;  Metasit XAUUSD EA — EXAM preset v2 (BANK-EARLY) [FORWARD-TEST PROVEN]
+;  The5ers 1-Step 100K  |  Target 10% ($10,000)  |  Max Loss $6,000 (6%)
+;  Daily Loss 3% ($3,000)  |  Leverage 1:100  |  Consistency 50%
+;  แก้จาก v1 ค่าเดียว: InpStagedMinProfitR 0.5 -> 1.0 (พิสูจน์จริง 3 เดือน อีก 1% ผ่าน)
+;  โหลด: หน้า Inputs -> ปุ่ม Load -> เลือกไฟล์นี้
+; ========================================================================
+
+; ---- Entry (ค่ามาตรฐานที่พิสูจน์แล้ว ห้ามแก้) ----
+InpUseMomentumFilter=true
+InpMomentumPct=30.0
+InpADXMin=20.0
+InpSL_ATRMult=1.5
+
+; ---- Risk (ผู้ใช้เลือกคง 1% เท่าเดิม) ----
+InpRiskPercent=1.0
+InpMaxPositions=1
+InpReentryCooldownBars=1
+InpMaxRiskCapPercent=1.7
+
+; ---- Break-even + Staged closes (BANK-EARLY, ห้ามแก้) ----
+InpBreakEvenR=0.25
+InpUseBE_ATR=true
+InpBE_TriggerATR=1.0
+InpBE_BufferPts=200.0
+InpPartialR=2.0
+InpPartialPercent=40.0
+InpLockTrailUntilPartial=true
+InpUseFixedTP=false
+InpFixedTP_R=2.0
+InpUseStagedCloses=true
+InpStagedMinProfitR=1.0
+InpStrongMoveSLPercent=60.0
+InpMiniMoveClosePercent=70.0
+InpStagedMomentumPct=30.0
+InpTrailWidest=true
+InpLetWinnersRun=false
+InpRunTrailWiden=1.5
+
+; ---- Drawdown protection (ปรับให้เข้ากับ 6% max / 3% daily) ----
+InpMaxDD_Percent=3.5
+InpMaxDD_ResumeBuffer=2.0
+InpDailyDD_Percent=2.0
+InpProfitTargetPercent=10.0
+InpMaxTotalLossPercent=4.5
+InpPeakDDStopPercent=0.0
+
+; ---- Weekend guard ----
+InpNoWeekendHold=true
+InpWeekendCloseHour=20
+
+; ---- News filter (LIVE ใช้ปฏิทิน MT5 อัตโนมัติ ไม่ต้องใช้ไฟล์ CSV) ----
+InpEnableNewsFilter=true
+InpNewsMinutesBefore=90
+InpNewsMinutesAfter=30
+InpNewsCurrencies=USD
+InpUseFFNews=false
+InpFFNewsFile=ff_news.csv
+InpFFBlockImpact=High
+InpFFTimeOffsetHours=0
+InpFFCloseBeforeNews=false
+
+; ---- Confidence scaling OFF (คงที่ ปลอดภัย) ----
+InpEnableConfidence=false
