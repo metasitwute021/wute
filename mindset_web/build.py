@@ -53,8 +53,6 @@ ICON = (
 
 AXES        = ["O", "C", "E", "A", "N", "G", "D"]
 FACETS      = {"mach", "narc", "psyc"}
-RIASEC      = {"R", "I", "A", "S", "E", "C"}
-MIN_PER_RIASEC = 5   # ข้อต่อกลุ่มงานขั้นต่ำในคลัง
 MIN_PER_AXIS   = 12    # ข้อต่อแกนขั้นต่ำในคลัง
 MIN_REVERSE    = 0.40  # สัดส่วนข้อ trait ที่ต้องกลับด้าน (กัน acquiescence bias)
 MIN_FORCED     = 12    # ข้อ forced-choice ขั้นต่ำ (กัน social desirability bias)
@@ -70,22 +68,13 @@ def validate(items):
         iid = it.get("id", "?")
         for f in ("id", "type", "source", "tags", "prompt", "options", "skippable"):
             if f not in it: errs.append(f"{iid}: ขาดฟิลด์ {f}")
-        if it.get("type") not in ("trait", "scenario", "video", "reading", "interest"):
+        if it.get("type") not in ("trait", "scenario", "video", "reading"):
             errs.append(f"{iid}: type ไม่รู้จัก {it.get('type')}")
         if it.get("type") == "video"   and not it.get("slides"): errs.append(f"{iid}: video ไม่มี slides")
         if it.get("type") == "reading" and not it.get("body"):   errs.append(f"{iid}: reading ไม่มี body")
         if len(it.get("options", [])) < 2: errs.append(f"{iid}: ตัวเลือกน้อยกว่า 2")
 
-        if it.get("type") == "interest":
-            # ข้อวัดความสนใจอาชีพให้คะแนนที่ช่อง ri ไม่ใช่ w และห้ามผูกแกนบุคลิกภาพ
-            if it.get("tags"):
-                errs.append(f"{iid}: ข้อ interest ห้าม tag แกนบุคลิกภาพ (คนละระบบคะแนน)")
-            if not any(o.get("ri") for o in it.get("options", [])):
-                errs.append(f"{iid}: ข้อ interest ต้องมีคะแนน ri อย่างน้อยหนึ่งตัวเลือก")
-            for o in it.get("options", []):
-                for k in o.get("ri", {}):
-                    if k not in RIASEC: errs.append(f"{iid}: กลุ่มงานไม่รู้จัก {k}")
-        elif not any(o.get("w") for o in it.get("options", [])):
+        if not any(o.get("w") for o in it.get("options", [])):
             errs.append(f"{iid}: ไม่มีตัวเลือกที่ให้คะแนนเลย")
 
         for ax in it.get("tags", []):
@@ -132,13 +121,6 @@ def validate(items):
         if fc[f] < 4:
             errs.append(f"Dark Triad facet '{f}' มีแค่ {fc[f]} ข้อ (ต้อง >= 4)")
 
-    # ทุกกลุ่มงานต้องมีข้อพอ ๆ กัน ไม่งั้นกลุ่มที่ข้อน้อยจะถูกประเมินจากหลักฐานบางเกินไป
-    rc = collections.Counter(k for i in items if i.get("type") == "interest"
-                             for o in i.get("options", []) for k in o.get("ri", {}))
-    for k in sorted(RIASEC):
-        if rc[k] < MIN_PER_RIASEC:
-            errs.append(f"กลุ่มงาน '{k}' มีแค่ {rc[k]} ข้อ (ต้อง >= {MIN_PER_RIASEC})")
-
     forced = [i for i in items if i.get("forced")]
     if len(forced) < MIN_FORCED:
         errs.append(f"forced-choice มีแค่ {len(forced)} ข้อ (ต้อง >= {MIN_FORCED})")
@@ -156,8 +138,6 @@ def main():
     print("แยกตามที่มา:", dict(collections.Counter(i["source"] for i in items)))
     print("ข้อต่อแกน   :", {a: per_axis[a] for a in AXES})
     print("Dark Triad  :", dict(collections.Counter(i.get("facet") for i in items if "D" in i.get("tags", []))))
-    print("กลุ่มงาน     :", dict(collections.Counter(k for i in items if i.get("type") == "interest"
-                                              for o in i.get("options", []) for k in o.get("ri", {}))))
     print("forced-choice:", len(forced), "| เส้นบังคับ:", sum(1 for i in items if i.get("edges")), "| ข้อเปิด:", len(openers))
 
     if errs:

@@ -494,7 +494,6 @@ footer{padding:34px 0 40px; font-size:.75rem; line-height:1.65; color:var(--mute
     <dl class="dl">
       <div><dt>นิสัย</dt><dd>บุคลิกภาพ 5 ด้านตามกรอบ Big Five พร้อมผังห้าเหลี่ยม</dd></div>
       <div><dt>มุมมอง</dt><dd>คุณมองความสามารถเป็นของตายตัว หรือของที่พัฒนาได้</dd></div>
-      <div><dt>งาน</dt><dd>กลุ่มงานที่น่าจะเข้ากับคุณ จากการถามเรื่องงานตรง ๆ ไม่ใช่เดาจากนิสัยอย่างเดียว</dd></div>
       <div><dt>Dark<br>Triad</dt><dd>แนวโน้ม 3 ด้านที่คนมักไม่พูดถึง — การวางกลยุทธ์กับคน การเห็นตัวเองสำคัญ และความเย็นชา/หุนหัน <b>เป็นแนวโน้มที่พบในคนทั่วไป ไม่ใช่การวินิจฉัย</b></dd></div>
     </dl>
   </section>
@@ -511,7 +510,7 @@ footer{padding:34px 0 40px; font-size:.75rem; line-height:1.65; color:var(--mute
   <div class="btn-row" style="margin-top:24px">
     <button class="btn-primary" id="btnStart" style="flex:1">เริ่มทำ</button>
   </div>
-  <p class="tiny" style="margin-top:12px">ประมาณ 27–30 ข้อ · 6–8 นาที · การกดเริ่มถือว่าคุณยินยอมให้บันทึกตามรายการด้านบน</p>
+  <p class="tiny" style="margin-top:12px">ประมาณ 21–24 ข้อ · 5–7 นาที · การกดเริ่มถือว่าคุณยินยอมให้บันทึกตามรายการด้านบน</p>
 
   <footer>
     ไม่ใช่การวินิจฉัยหรือคำแนะนำทางจิตวิทยาหรือการแพทย์ · หากมีความทุกข์ทางใจ สายด่วนสุขภาพจิต 1323<br>
@@ -571,14 +570,12 @@ footer{padding:34px 0 40px; font-size:.75rem; line-height:1.65; color:var(--mute
       (ฉีดเพราะเปิดผ่าน file:// แล้ว fetch() จะโดน CORS บล็อก
        ตอนทำระบบจริงคลังข้อต้องอยู่ฝั่งเซิร์ฟเวอร์และส่งมาทีละข้อ)
    ═══════════════════════════════════════════════════════════════ */
-const MAX_ITEMS       = 30;  // ข้อสูงสุดต่อ session (โควตาขั้นต่ำกิน 27 เหลือ 3 ช่องให้เจาะลึก)
-const MIN_ITEMS       = 27;  // ต่ำสุดก่อนยอมจบเพราะ "ข้อมูลพอแล้ว"
+const MAX_ITEMS       = 24;  // ข้อสูงสุดต่อ session (โควตาขั้นต่ำกิน 21 เหลือ 3 ช่องให้เจาะลึก)
+const MIN_ITEMS       = 21;  // ต่ำสุดก่อนยอมจบเพราะ "ข้อมูลพอแล้ว"
 const MIN_PER_AXIS    = 2;   // ทุกแกนต้องถูกถามอย่างน้อยกี่ข้อ
 const MIN_PER_FACET   = 3;   // Dark Triad ด้านละกี่ข้อ (วัดแล้ว 3 คุ้มกว่า 2 ชัดเจน ส่วน 4 แทบไม่ต่าง)
-const MIN_INTEREST    = 6;   // ข้อวัดความสนใจอาชีพขั้นต่ำต่อ session
 const TARGET_EVIDENCE = 4;   // หลักฐานกี่ชิ้นต่อแกนถึงเรียกว่ามั่นใจเต็ม
 const FACETS          = ["mach","narc","psyc"];
-const RIASEC_KEYS     = ["R","I","A","S","E","C"];
 
 /* === ITEMS:BEGIN === */
 const POOL = [
@@ -7419,566 +7416,6 @@ const POOL = [
   ]
  },
  {
-  "id": "i_ri_01",
-  "type": "interest",
-  "source": "original",
-  "tags": [],
-  "reverse": false,
-  "prompt": "งานสองแบบนี้ อยากทำแบบไหนมากกว่า",
-  "skippable": true,
-  "forced": true,
-  "options": [
-   {
-    "id": "a",
-    "label": "ซ่อมและปรับเครื่องให้กลับมาทำงานได้",
-    "w": {},
-    "ri": {
-     "R": 2
-    }
-   },
-   {
-    "id": "b",
-    "label": "หาสาเหตุว่าทำไมมันพัง แล้วเขียนอธิบายไว้",
-    "w": {},
-    "ri": {
-     "I": 2
-    }
-   }
-  ]
- },
- {
-  "id": "i_ra_01",
-  "type": "interest",
-  "source": "original",
-  "tags": [],
-  "reverse": false,
-  "prompt": "งานสองแบบนี้ อยากทำแบบไหนมากกว่า",
-  "skippable": true,
-  "forced": true,
-  "options": [
-   {
-    "id": "a",
-    "label": "ลงมือสร้างของให้ใช้งานได้จริง",
-    "w": {},
-    "ri": {
-     "R": 2
-    }
-   },
-   {
-    "id": "b",
-    "label": "ออกแบบหน้าตาของมันให้น่าใช้",
-    "w": {},
-    "ri": {
-     "A": 2
-    }
-   }
-  ]
- },
- {
-  "id": "i_rs_01",
-  "type": "interest",
-  "source": "original",
-  "tags": [],
-  "reverse": false,
-  "prompt": "งานสองแบบนี้ อยากทำแบบไหนมากกว่า",
-  "skippable": true,
-  "forced": true,
-  "options": [
-   {
-    "id": "a",
-    "label": "ทำงานกลางแจ้งกับเครื่องมือและอุปกรณ์",
-    "w": {},
-    "ri": {
-     "R": 2
-    }
-   },
-   {
-    "id": "b",
-    "label": "ทำงานกับคนที่กำลังต้องการความช่วยเหลือ",
-    "w": {},
-    "ri": {
-     "S": 2
-    }
-   }
-  ]
- },
- {
-  "id": "i_re_01",
-  "type": "interest",
-  "source": "original",
-  "tags": [],
-  "reverse": false,
-  "prompt": "งานสองแบบนี้ อยากทำแบบไหนมากกว่า",
-  "skippable": true,
-  "forced": true,
-  "options": [
-   {
-    "id": "a",
-    "label": "ลงมือทำงานหน้างานด้วยตัวเอง",
-    "w": {},
-    "ri": {
-     "R": 2
-    }
-   },
-   {
-    "id": "b",
-    "label": "คุมทีมหน้างานและดีลกับลูกค้า",
-    "w": {},
-    "ri": {
-     "E": 2
-    }
-   }
-  ]
- },
- {
-  "id": "i_rc_01",
-  "type": "interest",
-  "source": "original",
-  "tags": [],
-  "reverse": false,
-  "prompt": "งานสองแบบนี้ อยากทำแบบไหนมากกว่า",
-  "skippable": true,
-  "forced": true,
-  "options": [
-   {
-    "id": "a",
-    "label": "ประกอบและติดตั้งอุปกรณ์",
-    "w": {},
-    "ri": {
-     "R": 2
-    }
-   },
-   {
-    "id": "b",
-    "label": "ตรวจรับและบันทึกว่าของครบถูกต้อง",
-    "w": {},
-    "ri": {
-     "C": 2
-    }
-   }
-  ]
- },
- {
-  "id": "i_ia_01",
-  "type": "interest",
-  "source": "original",
-  "tags": [],
-  "reverse": false,
-  "prompt": "งานสองแบบนี้ อยากทำแบบไหนมากกว่า",
-  "skippable": true,
-  "forced": true,
-  "options": [
-   {
-    "id": "a",
-    "label": "วิเคราะห์ข้อมูลจนได้คำตอบที่ถูกต้อง",
-    "w": {},
-    "ri": {
-     "I": 2
-    }
-   },
-   {
-    "id": "b",
-    "label": "ตีความข้อมูลออกมาเป็นเรื่องที่คนอยากอ่าน",
-    "w": {},
-    "ri": {
-     "A": 2
-    }
-   }
-  ]
- },
- {
-  "id": "i_is_01",
-  "type": "interest",
-  "source": "original",
-  "tags": [],
-  "reverse": false,
-  "prompt": "งานสองแบบนี้ อยากทำแบบไหนมากกว่า",
-  "skippable": true,
-  "forced": true,
-  "options": [
-   {
-    "id": "a",
-    "label": "นั่งแก้ปัญหาที่ยากจนได้คำตอบ",
-    "w": {},
-    "ri": {
-     "I": 2
-    }
-   },
-   {
-    "id": "b",
-    "label": "ทำให้คนอื่นเข้าใจเรื่องที่ยาก",
-    "w": {},
-    "ri": {
-     "S": 2
-    }
-   }
-  ]
- },
- {
-  "id": "i_ie_01",
-  "type": "interest",
-  "source": "original",
-  "tags": [],
-  "reverse": false,
-  "prompt": "งานสองแบบนี้ อยากทำแบบไหนมากกว่า",
-  "skippable": true,
-  "forced": true,
-  "options": [
-   {
-    "id": "a",
-    "label": "ทำวิจัยให้ลึกที่สุดเท่าที่ทำได้",
-    "w": {},
-    "ri": {
-     "I": 2
-    }
-   },
-   {
-    "id": "b",
-    "label": "เอาผลวิจัยไปทำให้คนเชื่อและใช้จริง",
-    "w": {},
-    "ri": {
-     "E": 2
-    }
-   }
-  ]
- },
- {
-  "id": "i_ic_01",
-  "type": "interest",
-  "source": "original",
-  "tags": [],
-  "reverse": false,
-  "prompt": "งานสองแบบนี้ อยากทำแบบไหนมากกว่า",
-  "skippable": true,
-  "forced": true,
-  "options": [
-   {
-    "id": "a",
-    "label": "ตั้งคำถามใหม่ ๆ กับข้อมูลที่มี",
-    "w": {},
-    "ri": {
-     "I": 2
-    }
-   },
-   {
-    "id": "b",
-    "label": "ทำให้ข้อมูลถูกต้องครบถ้วนทุกช่อง",
-    "w": {},
-    "ri": {
-     "C": 2
-    }
-   }
-  ]
- },
- {
-  "id": "i_as_01",
-  "type": "interest",
-  "source": "original",
-  "tags": [],
-  "reverse": false,
-  "prompt": "งานสองแบบนี้ อยากทำแบบไหนมากกว่า",
-  "skippable": true,
-  "forced": true,
-  "options": [
-   {
-    "id": "a",
-    "label": "สร้างงานที่คนเห็นแล้วรู้สึกอะไรบางอย่าง",
-    "w": {},
-    "ri": {
-     "A": 2
-    }
-   },
-   {
-    "id": "b",
-    "label": "อยู่กับคนตรงหน้าจนเขาดีขึ้น",
-    "w": {},
-    "ri": {
-     "S": 2
-    }
-   }
-  ]
- },
- {
-  "id": "i_ae_01",
-  "type": "interest",
-  "source": "original",
-  "tags": [],
-  "reverse": false,
-  "prompt": "งานสองแบบนี้ อยากทำแบบไหนมากกว่า",
-  "skippable": true,
-  "forced": true,
-  "options": [
-   {
-    "id": "a",
-    "label": "คิดงานใหม่ที่ยังไม่มีใครทำ",
-    "w": {},
-    "ri": {
-     "A": 2
-    }
-   },
-   {
-    "id": "b",
-    "label": "พาไอเดียไปผลักดันจนเกิดขึ้นจริง",
-    "w": {},
-    "ri": {
-     "E": 2
-    }
-   }
-  ]
- },
- {
-  "id": "i_ac_01",
-  "type": "interest",
-  "source": "original",
-  "tags": [],
-  "reverse": false,
-  "prompt": "งานสองแบบนี้ อยากทำแบบไหนมากกว่า",
-  "skippable": true,
-  "forced": true,
-  "options": [
-   {
-    "id": "a",
-    "label": "ทำงานที่ไม่มีคำตอบตายตัว",
-    "w": {},
-    "ri": {
-     "A": 2
-    }
-   },
-   {
-    "id": "b",
-    "label": "ทำงานที่มีมาตรฐานชัดว่าถูกหรือผิด",
-    "w": {},
-    "ri": {
-     "C": 2
-    }
-   }
-  ]
- },
- {
-  "id": "i_se_01",
-  "type": "interest",
-  "source": "original",
-  "tags": [],
-  "reverse": false,
-  "prompt": "งานสองแบบนี้ อยากทำแบบไหนมากกว่า",
-  "skippable": true,
-  "forced": true,
-  "options": [
-   {
-    "id": "a",
-    "label": "ช่วยให้คนคนหนึ่งดีขึ้นจริง ๆ",
-    "w": {},
-    "ri": {
-     "S": 2
-    }
-   },
-   {
-    "id": "b",
-    "label": "ทำให้ทีมทั้งทีมไปถึงเป้าที่ตั้งไว้",
-    "w": {},
-    "ri": {
-     "E": 2
-    }
-   }
-  ]
- },
- {
-  "id": "i_sc_01",
-  "type": "interest",
-  "source": "original",
-  "tags": [],
-  "reverse": false,
-  "prompt": "งานสองแบบนี้ อยากทำแบบไหนมากกว่า",
-  "skippable": true,
-  "forced": true,
-  "options": [
-   {
-    "id": "a",
-    "label": "ฟังปัญหาของคนแล้วช่วยหาทางออก",
-    "w": {},
-    "ri": {
-     "S": 2
-    }
-   },
-   {
-    "id": "b",
-    "label": "จัดระบบให้ทุกอย่างเรียบร้อยไม่มีพลาด",
-    "w": {},
-    "ri": {
-     "C": 2
-    }
-   }
-  ]
- },
- {
-  "id": "i_ec_01",
-  "type": "interest",
-  "source": "original",
-  "tags": [],
-  "reverse": false,
-  "prompt": "งานสองแบบนี้ อยากทำแบบไหนมากกว่า",
-  "skippable": true,
-  "forced": true,
-  "options": [
-   {
-    "id": "a",
-    "label": "ไปเจรจาดีลใหม่ ๆ เข้ามา",
-    "w": {},
-    "ri": {
-     "E": 2
-    }
-   },
-   {
-    "id": "b",
-    "label": "ดูแลให้ดีลที่ทำไปแล้วไม่มีอะไรผิดพลาด",
-    "w": {},
-    "ri": {
-     "C": 2
-    }
-   }
-  ]
- },
- {
-  "id": "i_mix_01",
-  "type": "interest",
-  "source": "original",
-  "tags": [],
-  "reverse": false,
-  "prompt": "ถ้าเลือกเรียนเพิ่มได้หนึ่งอย่างโดยไม่ต้องคิดเรื่องเงิน",
-  "skippable": true,
-  "options": [
-   {
-    "id": "a",
-    "label": "งานช่าง งานฝีมือ หรือกีฬา",
-    "w": {},
-    "ri": {
-     "R": 2
-    }
-   },
-   {
-    "id": "b",
-    "label": "วิทยาศาสตร์หรือคณิตศาสตร์",
-    "w": {},
-    "ri": {
-     "I": 2
-    }
-   },
-   {
-    "id": "c",
-    "label": "ศิลปะ ดนตรี หรือการเขียน",
-    "w": {},
-    "ri": {
-     "A": 2
-    }
-   }
-  ]
- },
- {
-  "id": "i_mix_02",
-  "type": "interest",
-  "source": "original",
-  "tags": [],
-  "reverse": false,
-  "prompt": "ถ้าเลือกเรียนเพิ่มได้หนึ่งอย่างโดยไม่ต้องคิดเรื่องเงิน",
-  "skippable": true,
-  "options": [
-   {
-    "id": "a",
-    "label": "จิตวิทยาหรือการสอน",
-    "w": {},
-    "ri": {
-     "S": 2
-    }
-   },
-   {
-    "id": "b",
-    "label": "ธุรกิจหรือการตลาด",
-    "w": {},
-    "ri": {
-     "E": 2
-    }
-   },
-   {
-    "id": "c",
-    "label": "บัญชีหรือกฎหมาย",
-    "w": {},
-    "ri": {
-     "C": 2
-    }
-   }
-  ]
- },
- {
-  "id": "i_mix_03",
-  "type": "interest",
-  "source": "original",
-  "tags": [],
-  "reverse": false,
-  "prompt": "วันทำงานที่คุณจะรู้สึกว่า “วันนี้ดีจัง” คือวันที่...",
-  "skippable": true,
-  "options": [
-   {
-    "id": "a",
-    "label": "ซ่อมหรือสร้างอะไรเสร็จไปหนึ่งชิ้น",
-    "w": {},
-    "ri": {
-     "R": 2
-    }
-   },
-   {
-    "id": "b",
-    "label": "เข้าใจเรื่องที่งงมานานได้ในที่สุด",
-    "w": {},
-    "ri": {
-     "I": 2
-    }
-   },
-   {
-    "id": "c",
-    "label": "มีคนบอกว่าคุณช่วยเขาไว้",
-    "w": {},
-    "ri": {
-     "S": 2
-    }
-   }
-  ]
- },
- {
-  "id": "i_mix_04",
-  "type": "interest",
-  "source": "original",
-  "tags": [],
-  "reverse": false,
-  "prompt": "วันทำงานที่คุณจะรู้สึกว่า “วันนี้ดีจัง” คือวันที่...",
-  "skippable": true,
-  "options": [
-   {
-    "id": "a",
-    "label": "ทำอะไรที่ตัวเองภูมิใจในความสวยงามของมัน",
-    "w": {},
-    "ri": {
-     "A": 2
-    }
-   },
-   {
-    "id": "b",
-    "label": "ปิดดีลหรือทำให้คนเห็นด้วยกับคุณได้",
-    "w": {},
-    "ri": {
-     "E": 2
-    }
-   },
-   {
-    "id": "c",
-    "label": "เคลียร์งานค้างจนไม่เหลืออะไรตกหล่น",
-    "w": {},
-    "ri": {
-     "C": 2
-    }
-   }
-  ]
- },
- {
   "id": "d_m_06",
   "type": "trait",
   "source": "original",
@@ -8289,33 +7726,6 @@ const AXIS_INFO = {
 };
 const GROWTH_INFO = {th:"มุมมองต่อความสามารถ", en:"Growth ↔ Fixed Mindset",
                      lo:"ความสามารถเป็นของตายตัว", hi:"ความสามารถพัฒนาได้"};
-/* ── ความสนใจอาชีพ (RIASEC) ประเมินจาก Big Five ──
-   น้ำหนักมาจากค่าสหสัมพันธ์ใน meta-analysis (Barrick, Mount & Gupta 2003;
-   Larson, Rottinghaus & Borgen 2002) ไม่ได้ตั้งเอา:
-     Artistic–O .48 · Enterprising–E .41 · Social–E .31 · Investigative–O .28 · Social–A .19
-   Realistic แทบไม่สัมพันธ์กับ Big Five เลย เราจึงไม่จัดอันดับให้ และบอกเหตุผลไว้ในรายงาน */
-const RIASEC = [
-  {k:"R", th:"ลงมือทำและงานช่าง", w:{},
-   why:"ชอบงานที่เห็นผลด้วยมือตัวเอง ใช้เครื่องมือและร่างกายมากกว่านั่งโต๊ะ",
-   jobs:"ช่างเทคนิค · วิศวกรภาคสนาม · เกษตร · นักกีฬา · งานติดตั้งและซ่อมบำรุง", strong:true},
-  {k:"I", th:"ค้นคว้าและวิเคราะห์", w:{O:.28, C:.10},
-   why:"ชอบตั้งคำถาม หาคำตอบ อยู่กับปัญหาที่ซับซ้อนได้นาน",
-   jobs:"นักวิจัย · นักวิเคราะห์ข้อมูล · โปรแกรมเมอร์ · สายการแพทย์ · วิศวกรออกแบบ", strong:true},
-  {k:"A", th:"สร้างสรรค์และออกแบบ", w:{O:.48, C:-.10},
-   why:"ชอบงานที่ไม่มีคำตอบตายตัว ได้ตีความและสร้างของใหม่",
-   jobs:"นักออกแบบ · ครีเอทีฟ · นักเขียน · สถาปนิก · ผู้กำกับ · นักดนตรี", strong:true},
-  {k:"S", th:"ทำงานกับคน", w:{E:.31, A:.19},
-   why:"ได้พลังจากการอยู่กับคน และสนใจว่าคนตรงหน้ารู้สึกยังไง",
-   jobs:"ครู · พยาบาล · นักจิตวิทยา · HR · นักสังคมสงเคราะห์ · โค้ช", strong:true},
-  {k:"E", th:"ผลักดันและโน้มน้าว", w:{E:.41, A:-.12, N:-.10},
-   why:"ชอบขับเคลื่อนให้เกิดขึ้นจริง และไม่กลัวการต่อรอง",
-   jobs:"ผู้ประกอบการ · ฝ่ายขาย · ผู้จัดการ · การตลาด · ทนาย · PR", strong:true},
-  {k:"C", th:"ระเบียบและข้อมูล", w:{C:.20, O:-.30},
-   why:"ทำงานได้ดีกับระบบที่ชัดเจน มีขั้นตอน ตรวจสอบได้",
-   jobs:"บัญชี · ตรวจสอบภายใน · ธุรการ · โลจิสติกส์ · งานทะเบียนและกฎระเบียบ", strong:false}
-];
-
-/* ── Dark Triad — ใช้ภาษากลาง ไม่ใช้ศัพท์วินิจฉัย ── */
 const DARK = {
   mach:{th:"การวางกลยุทธ์กับคน", en:"Machiavellianism",
         desc:"แนวโน้มที่จะมองความสัมพันธ์เป็นเกมที่วางแผนได้ เก็บข้อมูลไว้เป็นแต้มต่อ และคิดล่วงหน้าว่าจะรับมือใครยังไง",
@@ -8406,7 +7816,7 @@ const DIM_TH = {O:"เปิดรับสิ่งใหม่", C:"ควา�
                 mach:"การวางกลยุทธ์กับคน", narc:"การเห็นตัวเองสำคัญ", psyc:"ความเย็นชาและหุนหัน"};
 
 const KIND = {trait:"ข้อความ · ตรงกับคุณแค่ไหน", scenario:"สถานการณ์", reading:"บทความสั้น",
-              interest:"ความสนใจเรื่องงาน", video:"คลิป"};
+              video:"คลิป"};
 
 /* ═══════════════════════════════════════════════════════════════
    2) ENGINE — logEvent / scoreState / pickNext
@@ -8458,29 +7868,17 @@ const facetCount = f  => S.path.filter(id => BY_ID[id].facet === f).length;
 
 /** ยังติดค้างอีกกี่ข้อถึงจะครบโควตาขั้นต่ำทุกแกน
     แกน D นับเป็นราย facet เพราะถ้าได้แต่ด้านเดียว รายงาน Dark Triad จะว่างสองด้าน */
+const isMedia   = i  => i.type === "reading" || i.type === "video";
+
+/** ด้าน Dark Triad ที่ยังขาดข้อมากที่สุด — ใช้กระจายข้อให้ครบทั้งสามด้าน */
+const neediestFacet = () => [...FACETS].sort((a,b) => facetCount(a) - facetCount(b))[0];
+
 const owedFor = ax => ax === "D"
   ? FACETS.reduce((n,f) => n + Math.max(0, MIN_PER_FACET - facetCount(f)), 0)
   : Math.max(0, MIN_PER_AXIS - axisCount(ax));
 
-const interestCount = () => S.path.filter(id => BY_ID[id].type === "interest").length;
-const owedInterest  = () => Math.max(0, MIN_INTEREST - interestCount());
-const totalOwed = () => AXES_ALL.reduce((n,a) => n + owedFor(a), 0) + owedInterest();
+const totalOwed = () => AXES_ALL.reduce((n,a) => n + owedFor(a), 0);
 
-/** กลุ่มงานที่ยังมีหลักฐานน้อยที่สุด — ใช้กระจายข้อเรื่องงานให้ครบทุกกลุ่ม */
-function neediestRiasec(){
-  const seen = {}; RIASEC_KEYS.forEach(k => seen[k] = 0);
-  S.path.forEach(id => {
-    const it = BY_ID[id]; if(it.type !== "interest") return;
-    it.options.forEach(o => Object.keys(o.ri || {}).forEach(k => { if(k in seen) seen[k]++; }));
-  });
-  return [...RIASEC_KEYS].sort((a,b) => seen[a] - seen[b])[0];
-}
-/** ด้าน Dark Triad ที่ยังขาดข้อมากที่สุด */
-const neediestFacet = () => [...FACETS].sort((a,b) => facetCount(a) - facetCount(b))[0];
-const isMedia   = i  => i.type === "reading" || i.type === "video";
-
-/** ทุกแกนพร้อมจบหรือยัง — ต้องทั้งหลักฐานพอ *และ* ถูกถามตรง ๆ ถึงโควตา
-    (ไม่งั้นแกนหนึ่งอาจได้หลักฐานทางอ้อมจากน้ำหนักข้ามแกนจนครบ ทั้งที่ไม่เคยถูกถามเลย) */
 function allAxesConfident(){
   const st = scoreState();
   return totalOwed() === 0 && AXES_ALL.every(a => st[a].evidence >= TARGET_EVIDENCE);
@@ -8505,27 +7903,9 @@ function pickNext(){
     if(m) return {id:m.id, via:"adaptive", why:"รอบนี้ยังไม่มีข้อบทความเลย — ต้องมีอย่างน้อย 1 ข้อเพื่อวัดพฤติกรรม"};
   }
 
-  // ชั้น 2.5 — ข้อเรื่องงาน แทรกให้กระจายทั้งแบบทดสอบ (ไม่กองไว้ท้าย)
-  if(owedInterest() > 0 && interestCount() / MIN_INTEREST <= shown / MAX_ITEMS){
-    const want = neediestRiasec();
-    const pool = POOL.filter(i => !seen(i.id) && i.type === "interest");
-    const hit  = pool.filter(i => i.options.some(o => (o.ri || {})[want]));
-    const pick = shuffle(hit.length ? hit : pool)[0];
-    if(pick) return {id:pick.id, via:"adaptive",
-      why:"ข้อเรื่องงาน — กลุ่ม " + want + " ยังมีหลักฐานน้อยที่สุดในหกกลุ่ม"};
-  }
-
   // ชั้น 3 — แกนที่ยังไม่ถึงโควตาขั้นต่ำ และเหลือข้ออีกไม่มาก
   let order, why;
   if(owed && left <= owed + 2){
-    if(owedInterest() > 0){
-      const want = neediestRiasec();
-      const pool = POOL.filter(i => !seen(i.id) && i.type === "interest");
-      const hit  = pool.filter(i => i.options.some(o => (o.ri || {})[want]));
-      const pick = shuffle(hit.length ? hit : pool)[0];
-      if(pick) return {id:pick.id, via:"adaptive",
-        why:"โควตาขั้นต่ำ — ยังขาดข้อเรื่องงานอีก " + owedInterest() + " ข้อ (กลุ่ม " + want + " ขาดสุด)"};
-    }
     order = AXES_ALL.filter(a => owedFor(a) > 0);
     why = "โควตาขั้นต่ำ — ยังค้างอยู่ " + owed + " ข้อ และเหลือให้ถามอีกแค่ " + left + " ข้อ";
   } else {
@@ -8876,51 +8256,6 @@ function radarSVG(st, uid){
     (weak ? '<br>จุดกลวง = แกนที่ข้อมูลยังน้อย (' + weak + ' แกน)' : '') + '</p></div>';
 }
 
-/** คะแนนความสนใจอาชีพจากข้อที่ถามตรง ๆ (คนละระบบกับคะแนนบุคลิกภาพ) */
-function interestScores(){
-  const out = {}; RIASEC_KEYS.forEach(k => out[k] = {raw:0, n:0});
-  let total = 0;
-  S.path.forEach(id => {
-    const it = BY_ID[id]; if(it.type !== "interest") return;
-    const opt = pickedOption(id); if(!opt) return;
-    total++;
-    // ตัวเลือกที่ "ไม่ได้เลือก" ก็เป็นข้อมูล: คู่เทียบบอกว่าเขาเลือกอะไรแทนอะไร
-    const picked = new Set(Object.keys(opt.ri || {}));
-    it.options.forEach(o => {
-      Object.keys(o.ri || {}).forEach(k => {
-        if(!out[k]) return;
-        out[k].n += 1;
-        out[k].raw += picked.has(k) ? 1 : -1;
-      });
-    });
-  });
-  RIASEC_KEYS.forEach(k => out[k].score = out[k].n ? out[k].raw / out[k].n : null);
-  out.total = total;
-  return out;
-}
-
-/** จัดอันดับความสนใจอาชีพจากโปรไฟล์ Big Five
-    z = ตำแหน่งบนแถบแปลงเป็นช่วง -1..1 · คะแนน = ผลรวมถ่วงน้ำหนัก หารด้วยน้ำหนักรวม */
-function careers(st){
-  const z = {}; AXES.forEach(a => z[a] = (axisPct(st[a]) - 50) / 45);
-  const is = interestScores();
-  return RIASEC.map(c => {
-    // เดาจากบุคลิกภาพ (มีงานวิจัยรองรับ แต่เชื่อมกันอ่อน — กลุ่ม R เดาไม่ได้เลย)
-    let sum = 0, tot = 0;
-    Object.entries(c.w).forEach(([a,w]) => { sum += z[a] * w; tot += Math.abs(w); });
-    const inferred = tot ? sum / tot : null;
-    // วัดตรงจากข้อที่ถามเรื่องงาน
-    const direct = is[c.k].score;
-    // ถ่วงตามหลักฐานที่มีจริง: ยิ่งตอบข้อเรื่องงานเยอะ ยิ่งเชื่อค่าที่วัดตรง
-    const wd = Math.min(1, is[c.k].n / 4) * (direct == null ? 0 : 1);
-    const score = inferred == null ? (direct == null ? 0 : direct)
-                : direct   == null ? inferred
-                : wd * direct + (1 - wd) * inferred;
-    return {...c, score, direct, inferred, evidence: is[c.k].n,
-            basis: wd >= .75 ? "ถามตรง" : wd > 0 ? "ถามตรง + เดาจากนิสัย" : "เดาจากนิสัย"};
-  }).sort((x,y) => y.score - x.score);
-}
-
 /** คะแนน Dark Triad แยกสามด้าน — นับเฉพาะข้อที่ผู้ใช้ตอบจริง */
 function darkScores(){
   const out = {mach:{raw:0,n:0}, narc:{raw:0,n:0}, psyc:{raw:0,n:0}};
@@ -9119,16 +8454,6 @@ function buildSummary(){
       '<p class="hl-value">ยังไม่มีแกนไหนเอียงชัดพอจะสรุป</p>' +
       '<p class="hl-sub">คุณอยู่ค่อนไปทางกลาง ๆ ในทุกแกน หรือข้อมูลยังไม่พอ</p></div>';
 
-  // งาน — โชว์ 2 อันดับแรกพร้อมตัวอย่างอาชีพ ไม่ใช่แค่ชื่อกลุ่มบรรทัดเดียว
-  const cs = careers(st);
-  const fit = '<div class="hl"><p class="hl-label">งานที่น่าจะเข้ากับคุณ</p>' +
-    cs.slice(0,2).map((c,i) =>
-      '<p class="hl-value" style="margin-top:' + (i ? 14 : 2) + 'px">' +
-        '<span class="hl-rank">' + (i+1) + '</span>' + c.th + '</p>' +
-      '<p class="hl-sub">' + c.jobs + '</p>').join("") +
-    '<p class="hl-sub" style="margin-top:12px">เป็นความ “เข้ากัน” ไม่ใช่ความสามารถ · ที่มา: ' +
-      cs[0].basis + '</p></div>';
-
   // Dark Triad — โชว์ครบสามด้าน เรียงจากด้านที่คะแนนสูงสุด
   const ds = darkScores();
   const dsRank = FACETS.filter(f => ds[f].pct != null).sort((a,b) => ds[b].pct - ds[a].pct);
@@ -9172,7 +8497,7 @@ function buildSummary(){
     '<p class="small muted" style="margin-bottom:16px">จาก ' + S.path.length + ' ข้อที่คุณตอบ</p>' +
     radarSVG(st, "radar-sheet") +
     '<div style="height:10px"></div>' +
-    fit + dark + traits + growth + behav +
+    dark + traits + growth + behav +
     '<div class="sheet-foot">' + S.ev.length + ' events บันทึกไว้ · ข้อมูลไม่ออกจากเครื่องคุณ<br>' +
     'ไม่ใช่การวินิจฉัยทางจิตวิทยา · แบบทดสอบยังไม่ผ่านการ validate</div>';
 }
@@ -9249,18 +8574,6 @@ function buildReport(reason){
     return '<span class="' + cls + '">' + esc(id) + '</span>';
   }).join("");
   const unseen = POOL.length - S.path.length;
-
-  /* ── งานที่น่าจะเข้ากับคุณ ── */
-  const cs = careers(st);
-  const fitHtml = cs.map((c,i) =>
-    '<div class="fit-card' + (i === 0 ? " top" : "") + '">' +
-      '<div class="fit-head"><span class="fit-name">' + c.th +
-        (c.basis === "เดาจากนิสัย" ? '<span class="fit-weak">เดาจากนิสัย</span>' : '') + '</span>' +
-        '<span class="fit-score">' + (c.score >= 0 ? "+" : "") + c.score.toFixed(2) + '</span></div>' +
-      '<p class="fit-why">' + c.why + '</p>' +
-      '<p class="fit-jobs">' + c.jobs + '</p>' +
-      '<p class="tiny" style="margin:9px 0 0">ที่มา: ' + c.basis +
-        (c.evidence ? ' · ตอบข้อเรื่องงานที่แตะกลุ่มนี้ไป ' + c.evidence + ' ครั้ง' : '') + '</p></div>').join("");
 
   /* ── Dark Triad ── */
   const ds = darkScores();
@@ -9344,23 +8657,6 @@ function buildReport(reason){
   </section>
 
   <hr class="rule">
-
-  <section class="sec sec-a">
-    <div class="sec-head"><span class="sec-tag">งาน</span><h2>งานที่น่าจะเข้ากับคุณ</h2></div>
-    <p class="sec-note">
-      มาจาก 2 ทาง: <b>ข้อที่ถามเรื่องงานคุณตรง ๆ</b> (กรอบ RIASEC ของ Holland) ผสมกับการเดาจากคะแนน Big Five
-      ด้วยค่าสหสัมพันธ์จากงาน meta-analysis — ยิ่งตอบข้อเรื่องงานมาก ระบบยิ่งเชื่อคำตอบตรง ๆ มากกว่าการเดา ·
-      <b>นี่คือความ “เข้ากัน” ไม่ใช่ความสามารถ</b> คนเก่งในงานที่ไม่เข้ากับนิสัยมีเยอะมาก
-    </p>
-    <div class="fit">${fitHtml}</div>
-    <p class="tiny" style="margin-top:16px">
-      <b>ข้อจำกัดที่ต้องรู้:</b> การเดาจากบุคลิกภาพอย่างเดียวเชื่อมโยงกันอ่อน เส้นที่งานวิจัยรองรับแน่นมีแค่
-      ไม่กี่เส้น (สร้างสรรค์↔เปิดรับสิ่งใหม่ r≈.48 · ผลักดัน↔เข้าสังคม r≈.41 · ทำงานกับคน↔เข้าสังคม r≈.31)
-      และ <b>กลุ่มงานลงมือทำแทบไม่สัมพันธ์กับ Big Five เลย</b> เดิมเราจึงตัดกลุ่มนั้นออกจากอันดับ<br><br>
-      ตอนนี้เราถามเรื่องงานคุณตรง ๆ แล้ว <b>กลุ่มงานลงมือทำจึงกลับเข้ามาอยู่ในอันดับได้</b> ·
-      กลุ่มที่ติดป้าย “เดาจากนิสัย” คือกลุ่มที่รอบนี้คุณยังไม่ได้ตอบข้อเรื่องงานที่แตะมันเลย
-    </p>
-  </section>
 
   <hr class="rule">
 
