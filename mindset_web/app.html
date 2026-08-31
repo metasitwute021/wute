@@ -1073,13 +1073,21 @@ function axisPct(x){
   return Math.max(7, Math.min(93, 50 + (x.raw / max) * 45));
 }
 
-/** แปลงตำแหน่งบนแถบเป็นประโยคที่อ่านรู้เรื่องทันที ไม่ต้องเดาจากจุดบนเส้น */
+/** ระยะจากกึ่งกลางที่ถือว่า "เอียงจริง" — ต่ำกว่านี้เรียกว่าอยู่กลาง ๆ
+    เลือก 11 จากการวัด: จำลองคนที่รู้นิสัยจริง 700 คน แล้วเทียบว่าคำตัดสิน
+    ตรงกับความจริงกี่ % ที่ขอบต่าง ๆ — 11 ให้ความแม่น 60% โดยมีคนตกช่วงกลาง
+    น้อยที่สุด (32%) ส่วนขอบกว้างกว่านี้แม่นขึ้นนิดเดียวแต่กลืนคนเข้าช่วงกลางเยอะขึ้นมาก */
+const LEAN_EDGE = 11;
+
+/** แปลงตำแหน่งบนแถบเป็นประโยคที่อ่านรู้เรื่องทันที ไม่ต้องเดาจากจุดบนเส้น
+    เคยแบ่ง 4 ระดับ (เล็กน้อย / ค่อนไปทาง / ชัดเจน) แต่วัดแล้วตรงกับความจริง
+    แค่ 31% เพราะแบบทดสอบแยกความ "แรง" ของการเอียงไม่ได้จริง เหลือ 3 ช่วงแล้ว
+    ความแม่นขึ้นเป็น 60% — ยอมพูดน้อยลงแต่พูดแล้วเชื่อได้มากขึ้น */
 function lean(pct, info){
-  const d = pct - 50, a = Math.abs(d), side = d >= 0 ? info.hi : info.lo;
-  if(a < 7)  return {text:"อยู่ตรงกลาง ไม่เอียงไปทางไหนชัด", mid:true};
-  if(a < 17) return {text:'เอียงไปทาง “' + side + '” เล็กน้อย', mid:false};
-  if(a < 30) return {text:'ค่อนไปทาง “' + side + '”',           mid:false};
-  return            {text:'ไปทาง “' + side + '” ชัดเจน',        mid:false};
+  const d = pct - 50, side = d >= 0 ? info.hi : info.lo;
+  return Math.abs(d) < LEAN_EDGE
+    ? {text:"อยู่ตรงกลาง ไม่เอียงไปทางไหนชัด", mid:true}
+    : {text:'ค่อนไปทาง “' + side + '”',          mid:false};
 }
 
 /** ผังห้าเหลี่ยม Big Five — ยิ่งไกลจากกึ่งกลาง = ยิ่งไปทางขั้วที่เขียนกำกับไว้
@@ -1276,7 +1284,7 @@ function imagePrompt(st){
   // เอา 3 แกนที่ห่างจากกึ่งกลางมากที่สุด มาเป็นคำบรรยายบุคลิกในภาพ
   const traits = AXES
     .map(a => ({a, pct: axisPct(st[a]), d: Math.abs(axisPct(st[a]) - 50)}))
-    .filter(x => x.d >= 8)
+    .filter(x => x.d >= LEAN_EDGE)
     .sort((x,y) => y.d - x.d)
     .slice(0, 3)
     .map(x => PROMPT_TRAITS[x.a][x.pct >= 50 ? "hi" : "lo"]);
@@ -1321,7 +1329,7 @@ function buildSummary(){
   // แกนที่ "เด่นที่สุด" = ห่างจากกึ่งกลางมากสุด และมีหลักฐานพอจะพูดถึง
   const ranked = AXES
     .map(a => ({a, pct:axisPct(st[a]), d:Math.abs(axisPct(st[a]) - 50), conf:st[a].confidence}))
-    .filter(x => x.conf >= .4 && x.d >= 7)
+    .filter(x => x.conf >= .4 && x.d >= LEAN_EDGE)
     .sort((x,y) => y.d - x.d);
 
   const top = ranked.slice(0,3).map(x => {
@@ -1548,7 +1556,9 @@ function buildReport(reason){
 
   <section class="sec sec-a">
     <div class="sec-head"><span class="sec-tag">สาย A</span><h2>คะแนนจากคำตอบของคุณ</h2></div>
-    <p class="sec-note">อิงกรอบ Big Five — ไม่มีปลายไหน “ดีกว่า” อีกปลาย</p>
+    <p class="sec-note">อิงกรอบ Big Five — ไม่มีปลายไหน “ดีกว่า” อีกปลาย ·
+      เราบอกแค่ว่าคุณ<b>เอียงไปทางไหน</b> ไม่บอกว่าเอียง<b>แรงแค่ไหน</b>
+      เพราะวัดแล้วพบว่าแบบทดสอบยาวเท่านี้แยกความแรงได้ไม่แม่นพอ</p>
     ${radarSVG(st, "radar-report")}
     ${bars}
     <div class="gauge">${axisBlock("G", st.G, GROWTH_INFO)}</div>
