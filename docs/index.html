@@ -280,7 +280,10 @@ details.fold .fold-body{padding-bottom:22px}
   background:var(--card-2); border:1px solid var(--line);
 }
 .beast-face{font-size:64px; line-height:1.15; margin-bottom:10px}
-.beast.compact .beast-face{font-size:54px}
+.beast.compact{padding:20px 18px 18px}
+.beast.compact .beast-face{font-size:50px; margin-bottom:7px}
+.beast.compact .beast-name{font-size:1.5rem; margin-bottom:0}
+.beast.compact .beast-why{margin-top:11px; padding-top:10px}
 .beast-drive{
   font-family:"IBM Plex Mono",monospace; font-size:.71rem; letter-spacing:.04em;
   color:var(--seal); margin:0 0 3px;
@@ -398,6 +401,18 @@ details.fold .fold-body{padding-bottom:22px}
 }
 .hl-value.b{color:var(--clay)}
 .hl-sub{font-size:.88rem; line-height:1.6; color:var(--muted); margin:6px 0 0}
+.hl-rows{display:flex; flex-direction:column; gap:0; margin-top:11px}
+.hl-row{
+  display:flex; justify-content:space-between; gap:14px; align-items:baseline;
+  padding:9px 0; border-top:1px solid var(--line-2);
+}
+.hl-row:first-child{border-top:0; padding-top:2px}
+.hl-row b{font-size:.94rem; font-weight:600; flex:none}
+.hl-row span{font-size:.88rem; color:var(--muted); text-align:end; line-height:1.5}
+.hl-rank{
+  font-family:"IBM Plex Mono",monospace; font-size:.72rem; color:var(--muted);
+  margin-inline-end:7px;
+}
 .sheet-foot{
   margin-top:26px; padding-top:18px; border-top:1px solid var(--line);
   font-family:"IBM Plex Mono",monospace; font-size:.73rem; color:var(--muted); line-height:1.8;
@@ -8972,7 +8987,7 @@ function beastCard(st, compact){
     '<div class="beast-face">' + b.e + '</div>' +
     '<p class="beast-drive">แรงขับ · ' + b.d + '</p>' +
     '<h3 class="beast-name">' + b.n + '</h3>' +
-    '<p class="beast-say">' + b.s + '</p>' +
+    (compact ? '' : '<p class="beast-say">' + b.s + '</p>') +
     (b.why.length ? '<p class="beast-why">ที่ได้ตัวนี้เพราะ ' + b.why.join(" และ ") + '</p>' : '') +
     (b.clear ? '' : '<p class="beast-soft">โปรไฟล์คุณค่อนไปทางกลางในหลายด้าน ' +
        'สัตว์ตัวนี้จึงบอกได้แค่แนวโน้มอ่อน ๆ — อันดับรองคือ ' + b.runnerUp.e + ' ' + b.runnerUp.n + '</p>') +
@@ -9093,41 +9108,44 @@ function buildSummary(){
     .filter(x => x.conf >= .4 && x.d >= LEAN_EDGE)
     .sort((x,y) => y.d - x.d);
 
-  const top = ranked.slice(0,3).map(x => {
-    const info = AXIS_INFO[x.a], lz = lean(x.pct, info);
-    return '<div class="hl"><p class="hl-label">' + info.th + ' · ' + info.en + '</p>' +
-           '<p class="hl-value">' + lz.text + '</p></div>';
-  }).join("");
+  const traits = ranked.length
+    ? '<div class="hl"><p class="hl-label">นิสัยที่เด่นที่สุด</p><div class="hl-rows">' +
+      ranked.slice(0,3).map(x => {
+        const info = AXIS_INFO[x.a];
+        return '<div class="hl-row"><b>' + info.th + '</b><span>' +
+               (x.pct >= 50 ? info.hi : info.lo) + '</span></div>';
+      }).join("") + '</div></div>'
+    : '<div class="hl"><p class="hl-label">นิสัยที่เด่นที่สุด</p>' +
+      '<p class="hl-value">ยังไม่มีแกนไหนเอียงชัดพอจะสรุป</p>' +
+      '<p class="hl-sub">คุณอยู่ค่อนไปทางกลาง ๆ ในทุกแกน หรือข้อมูลยังไม่พอ</p></div>';
 
-  // งานที่เข้ากันที่สุด
-  const best = careers(st)[0];
-  const fit = '<div class="hl"><p class="hl-label">งานที่น่าจะเข้ากับคุณที่สุด</p>' +
-    '<p class="hl-value">' + best.th + '</p>' +
-    '<p class="hl-sub">' + best.jobs + '<br>เป็นความเข้ากัน ไม่ใช่ความสามารถ' +
-    (best.strong ? '' : ' · กลุ่มนี้งานวิจัยรองรับอ่อนกว่ากลุ่มอื่น') + '</p></div>';
+  // งาน — โชว์ 2 อันดับแรกพร้อมตัวอย่างอาชีพ ไม่ใช่แค่ชื่อกลุ่มบรรทัดเดียว
+  const cs = careers(st);
+  const fit = '<div class="hl"><p class="hl-label">งานที่น่าจะเข้ากับคุณ</p>' +
+    cs.slice(0,2).map((c,i) =>
+      '<p class="hl-value" style="margin-top:' + (i ? 14 : 2) + 'px">' +
+        '<span class="hl-rank">' + (i+1) + '</span>' + c.th + '</p>' +
+      '<p class="hl-sub">' + c.jobs + '</p>').join("") +
+    '<p class="hl-sub" style="margin-top:12px">เป็นความ “เข้ากัน” ไม่ใช่ความสามารถ · ที่มา: ' +
+      cs[0].basis + '</p></div>';
 
-  // Dark Triad — สรุปเฉพาะด้านที่โดดที่สุด และเฉพาะเมื่อมีหลักฐานพอ
+  // Dark Triad — โชว์ครบสามด้าน เรียงจากด้านที่คะแนนสูงสุด
   const ds = darkScores();
-  let dark = "";
-  if(ds.total >= 3){
-    const top = ["mach","narc","psyc"]
-      .filter(f => ds[f].pct != null)
-      .sort((a,b) => ds[b].pct - ds[a].pct)[0];
-    const band = darkBand(ds[top].pct);
-    dark = '<div class="hl"><p class="hl-label">Dark Triad · ด้านที่โดดที่สุด</p>' +
-      '<p class="hl-value">' + DARK[top].th + ' — ' + band.t + '</p>' +
-      '<p class="hl-sub">' + (band.lv >= 3
-        ? 'ด้านนี้เด่นกว่าอีกสองด้านของคุณ ดูข้อดีและข้อเสี่ยงของมันในหน้าผล'
-        : 'ทั้งสามด้านอยู่ในช่วงที่พบได้ทั่วไป') +
-      ' · เป็นแนวโน้ม ไม่ใช่การวินิจฉัย</p></div>';
-  }
+  const dsRank = FACETS.filter(f => ds[f].pct != null).sort((a,b) => ds[b].pct - ds[a].pct);
+  const dark = ds.total >= 3
+    ? '<div class="hl"><p class="hl-label">Dark Triad · ทั้งสามด้าน</p>' +
+      '<div class="hl-rows">' + dsRank.map((f,i) => {
+        const bd = darkBand(ds[f].pct);
+        return '<div class="hl-row"><b><span class="hl-rank">' + (i+1) + '</span>' +
+               DARK[f].th + '</b><span class="dt-band lv' + bd.lv + '">' + bd.t + '</span></div>';
+      }).join("") + '</div>' +
+      '<p class="hl-sub" style="margin-top:11px">ด้านบนสุดคือด้านที่ใกล้เคียงคุณที่สุด · ' +
+      'เป็นแนวโน้มที่พบในคนทั่วไป <b>ไม่ใช่การวินิจฉัย</b> · ข้อดีและข้อเสี่ยงของแต่ละด้านอยู่ในหน้าผล</p></div>'
+    : '';
 
   const gz = lean(axisPct(st.G), GROWTH_INFO);
-  const growth = '<div class="hl"><p class="hl-label">Growth ↔ Fixed Mindset</p>' +
-    '<p class="hl-value">' + (st.G.confidence >= .4 ? gz.text : "ข้อมูลยังไม่พอจะบอก") + '</p>' +
-    '<p class="hl-sub">' + (st.G.confidence >= .4
-      ? "วัดจากคำตอบ ไม่ได้รวมพฤติกรรมระหว่างทำ"
-      : "ทำใหม่แล้วตอบให้ครบขึ้น จะบอกได้ชัดกว่านี้") + '</p></div>';
+  const growth = '<div class="hl"><p class="hl-label">มุมมองต่อความสามารถ</p>' +
+    '<p class="hl-value">' + (st.G.confidence >= .4 ? gz.text : "ข้อมูลยังไม่พอจะบอก") + '</p></div>';
 
   // สาย B — เอาเฉพาะ "ข้อเท็จจริง" ที่เด่นสุด 3 ข้อ ไม่เอาสมมติฐานมาปน
   const facts = [];
@@ -9150,13 +9168,11 @@ function buildSummary(){
     '<p class="hl-sub">เป็นข้อเท็จจริงที่วัดได้ตรง ส่วนการตีความว่าแปลว่าอะไร ดูในหน้าผล</p></div>';
 
   return beastCard(st, true) +
-    '<h1 style="margin:26px 0 8px">สิ่งที่เด่นที่สุดของคุณ</h1>' +
-    '<p class="small muted" style="margin-bottom:16px">จาก ' + S.path.length + ' ข้อที่คุณตอบ · ถ้าไม่มีแกนไหนขึ้นแปลว่าข้อมูลยังไม่พอจะฟันธง</p>' +
+    '<h1 style="margin:20px 0 6px">สรุปผลของคุณ</h1>' +
+    '<p class="small muted" style="margin-bottom:16px">จาก ' + S.path.length + ' ข้อที่คุณตอบ</p>' +
     radarSVG(st, "radar-sheet") +
-    '<div style="height:14px"></div>' +
-    (top || '<div class="hl"><p class="hl-value">ยังไม่มีแกนไหนเอียงชัดพอจะสรุป</p>' +
-            '<p class="hl-sub">คุณอยู่ค่อนไปทางกลาง ๆ ในทุกแกน หรือข้อมูลยังไม่พอ</p></div>') +
-    growth + fit + dark + behav +
+    '<div style="height:10px"></div>' +
+    fit + dark + traits + growth + behav +
     '<div class="sheet-foot">' + S.ev.length + ' events บันทึกไว้ · ข้อมูลไม่ออกจากเครื่องคุณ<br>' +
     'ไม่ใช่การวินิจฉัยทางจิตวิทยา · แบบทดสอบยังไม่ผ่านการ validate</div>';
 }
