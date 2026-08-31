@@ -56,6 +56,8 @@ FACETS      = {"mach", "narc", "psyc"}
 MIN_PER_AXIS   = 12    # ข้อต่อแกนขั้นต่ำในคลัง
 MIN_REVERSE    = 0.40  # สัดส่วนข้อ trait ที่ต้องกลับด้าน (กัน acquiescence bias)
 MIN_FORCED     = 12    # ข้อ forced-choice ขั้นต่ำ (กัน social desirability bias)
+MIN_DCOMP_PAIR = 4     # ข้อคู่เทียบต่อคู่ด้าน (engine หยิบไปคู่ละ 2 ต่อรอบ ต้องมีให้เลือกมากกว่านั้น)
+DPAIRS = [("mach", "narc"), ("mach", "psyc"), ("narc", "psyc")]
 
 
 def validate(items):
@@ -68,13 +70,34 @@ def validate(items):
         iid = it.get("id", "?")
         for f in ("id", "type", "source", "tags", "prompt", "options", "skippable"):
             if f not in it: errs.append(f"{iid}: ขาดฟิลด์ {f}")
-        if it.get("type") not in ("trait", "scenario", "video", "reading"):
+        if it.get("type") not in ("trait", "scenario", "video", "reading", "dcomp"):
             errs.append(f"{iid}: type ไม่รู้จัก {it.get('type')}")
         if it.get("type") == "video"   and not it.get("slides"): errs.append(f"{iid}: video ไม่มี slides")
         if it.get("type") == "reading" and not it.get("body"):   errs.append(f"{iid}: reading ไม่มี body")
         if len(it.get("options", [])) < 2: errs.append(f"{iid}: ตัวเลือกน้อยกว่า 2")
 
-        if not any(o.get("w") for o in it.get("options", [])):
+        if it.get("type") == "dcomp":
+            # ข้อคู่เทียบ: ให้คะแนนผ่าน dw ไม่ใช่ w — และต้องเป็นคู่ตรงข้ามพอดี
+            # (+1 ด้านหนึ่ง / -1 อีกด้าน) ไม่งั้นการเลือกข้างจะไม่หักล้างกันจริง
+            if not it.get("forced"):
+                errs.append(f"{iid}: ข้อคู่เทียบต้องเป็น forced-choice (ห้ามมีตัวเลือกกลาง ๆ ให้หลบ)")
+            if len(it.get("options", [])) != 2:
+                errs.append(f"{iid}: ข้อคู่เทียบต้องมี 2 ตัวเลือกพอดี")
+            sides = []
+            for o in it.get("options", []):
+                dw = o.get("dw")
+                if not dw:
+                    errs.append(f"{iid}/{o.get('id')}: ข้อคู่เทียบต้องมี dw"); continue
+                if o.get("w"):
+                    errs.append(f"{iid}/{o.get('id')}: ข้อคู่เทียบห้ามให้คะแนน w (จะไปปนกับ % ของแต่ละด้าน)")
+                if set(dw) - FACETS:
+                    errs.append(f"{iid}/{o.get('id')}: dw อ้าง facet ไม่รู้จัก {sorted(set(dw) - FACETS)}")
+                if sorted(dw.values()) != [-1, 1]:
+                    errs.append(f"{iid}/{o.get('id')}: dw ต้องเป็น +1 ด้านหนึ่ง และ -1 อีกด้าน")
+                sides.append(tuple(sorted(dw)))
+            if len(set(sides)) > 1:
+                errs.append(f"{iid}: สองตัวเลือกต้องเทียบคู่ด้านเดียวกัน")
+        elif not any(o.get("w") for o in it.get("options", [])):
             errs.append(f"{iid}: ไม่มีตัวเลือกที่ให้คะแนนเลย")
 
         for ax in it.get("tags", []):
@@ -82,7 +105,7 @@ def validate(items):
 
         # แกน D (Dark Triad) ต้องระบุ facet เสมอ ไม่งั้นรายงานแยกสามด้านไม่ได้
         if "D" in it.get("tags", []):
-            if it.get("facet") not in FACETS:
+            if it.get("type") != "dcomp" and it.get("facet") not in FACETS:
                 errs.append(f"{iid}: ข้อแกน D ต้องมี facet เป็นหนึ่งใน {sorted(FACETS)}")
             if len(it.get("tags", [])) > 1:
                 errs.append(f"{iid}: ข้อแกน D ห้ามผูกกับแกนอื่น (จะทำให้คะแนน Big Five ปนกับ Dark Triad)")
@@ -121,6 +144,14 @@ def validate(items):
         if fc[f] < 4:
             errs.append(f"Dark Triad facet '{f}' มีแค่ {fc[f]} ข้อ (ต้อง >= 4)")
 
+    # ทุกคู่ด้านต้องมีข้อคู่เทียบพอ ไม่งั้น engine จะหยิบข้อเดิมซ้ำทุกรอบ (exposure สูงเกิน)
+    dcp = collections.Counter(
+        tuple(sorted(i["options"][0]["dw"])) for i in items
+        if i.get("type") == "dcomp" and i["options"][0].get("dw"))
+    for pair in DPAIRS:
+        if dcp[pair] < MIN_DCOMP_PAIR:
+            errs.append(f"ข้อคู่เทียบ {pair[0]}-{pair[1]} มีแค่ {dcp[pair]} ข้อ (ต้อง >= {MIN_DCOMP_PAIR})")
+
     forced = [i for i in items if i.get("forced")]
     if len(forced) < MIN_FORCED:
         errs.append(f"forced-choice มีแค่ {len(forced)} ข้อ (ต้อง >= {MIN_FORCED})")
@@ -137,7 +168,10 @@ def main():
     print("แยกตามชนิด :", dict(collections.Counter(i["type"] for i in items)))
     print("แยกตามที่มา:", dict(collections.Counter(i["source"] for i in items)))
     print("ข้อต่อแกน   :", {a: per_axis[a] for a in AXES})
-    print("Dark Triad  :", dict(collections.Counter(i.get("facet") for i in items if "D" in i.get("tags", []))))
+    print("Dark Triad  :", dict(collections.Counter(
+        i.get("facet") for i in items if "D" in i.get("tags", []) and i.get("type") != "dcomp")))
+    print("ข้อคู่เทียบ  :", dict(collections.Counter(
+        "-".join(sorted(i["options"][0]["dw"])) for i in items if i.get("type") == "dcomp")))
     print("forced-choice:", len(forced), "| เส้นบังคับ:", sum(1 for i in items if i.get("edges")), "| ข้อเปิด:", len(openers))
 
     if errs:

@@ -353,6 +353,43 @@ details.fold .fold-body{padding-bottom:22px}
 .dt-mini .dt-track i{width:13px; height:13px; top:-5px; border-width:3px}
 .dt-mini-desc{font-size:.86rem; line-height:1.62; color:var(--muted); margin:0}
 
+.dt-core{
+  font-size:.89rem; line-height:1.7; margin:0 0 13px; padding:11px 13px;
+  border-left:2px solid var(--clay); border-radius:0 8px 8px 0;
+  background:var(--card-2); color:var(--ink-2);
+}
+.dt-tip{
+  font-size:.88rem; line-height:1.7; margin:13px 0 0; padding:12px 14px;
+  border-radius:11px; background:var(--card-2); color:var(--ink-2);
+}
+
+/* ── ลำดับสามด้าน ── */
+.dt-order{margin:0 0 22px; padding:15px 16px 13px; border-radius:13px; background:var(--card-2)}
+.dt-order-title{
+  font-family:"IBM Plex Mono",monospace; font-size:.66rem; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--muted); margin:0 0 11px;
+}
+.dt-ord{display:flex; align-items:center; gap:9px; margin-bottom:8px}
+.dt-ord-n{
+  flex:none; width:17px; height:17px; border-radius:50%; background:var(--muted);
+  font-size:.63rem; font-weight:600; color:var(--paper);
+  display:grid; place-items:center;
+}
+.dt-ord:first-of-type .dt-ord-n{background:var(--clay)}
+.dt-ord-name{flex:none; width:96px; font-size:.85rem; font-weight:600}
+.dt-ord-bar{flex:1; height:7px; border-radius:99px; background:var(--line); overflow:hidden}
+.dt-ord-bar i{display:block; height:100%; border-radius:99px; background:var(--muted)}
+.dt-ord:first-of-type .dt-ord-bar i{background:var(--clay)}
+.dt-order-note{font-size:.83rem; line-height:1.62; color:var(--muted); margin:11px 0 0}
+
+/* ── ผลดิบจากข้อคู่เทียบ ── */
+.dt-pairs{margin-top:22px; padding-top:18px; border-top:1px solid var(--line)}
+.dt-pair{padding:9px 0; border-bottom:1px solid var(--line-2); font-size:.86rem}
+.dt-pair:last-of-type{border-bottom:0}
+.dt-pair-q{display:block; font-weight:600}
+.dt-pair-q em{font-style:normal; white-space:nowrap}
+.dt-pair-a{display:block; margin-top:3px; color:var(--muted)}
+
 .dt-guard{
   margin-top:20px; padding:16px 17px; border-radius:12px;
   background:var(--clay-soft); font-size:.88rem; line-height:1.68;
@@ -570,10 +607,13 @@ footer{padding:34px 0 40px; font-size:.75rem; line-height:1.65; color:var(--mute
       (ฉีดเพราะเปิดผ่าน file:// แล้ว fetch() จะโดน CORS บล็อก
        ตอนทำระบบจริงคลังข้อต้องอยู่ฝั่งเซิร์ฟเวอร์และส่งมาทีละข้อ)
    ═══════════════════════════════════════════════════════════════ */
-const MAX_ITEMS       = 24;  // ข้อสูงสุดต่อ session (โควตาขั้นต่ำกิน 21 เหลือ 3 ช่องให้เจาะลึก)
-const MIN_ITEMS       = 21;  // ต่ำสุดก่อนยอมจบเพราะ "ข้อมูลพอแล้ว"
+const MAX_ITEMS       = 30;  // ข้อสูงสุดต่อ session (โควตาขั้นต่ำกิน 27 เหลือ 3 ช่องให้เจาะลึก)
+const MIN_ITEMS       = 27;  // ต่ำสุดก่อนยอมจบเพราะ "ข้อมูลพอแล้ว"
 const MIN_PER_AXIS    = 2;   // ทุกแกนต้องถูกถามอย่างน้อยกี่ข้อ
-const MIN_PER_FACET   = 3;   // Dark Triad ด้านละกี่ข้อ (วัดแล้ว 3 คุ้มกว่า 2 ชัดเจน ส่วน 4 แทบไม่ต่าง)
+const MIN_PER_FACET   = 3;   // Dark Triad ด้านละกี่ข้อ Likert
+const MIN_DCOMP       = 6;   // ข้อคู่เทียบ (ให้เลือกระหว่างสองด้าน) กี่ข้อ — คู่ละ 2 จาก 3 คู่
+const DCOMP_W         = .8;  // น้ำหนักคู่เทียบตอนจัดลำดับด้าน (สวีป .4-1.3 แล้วแทบไม่ต่าง)
+const DPAIRS          = [["mach","narc"], ["mach","psyc"], ["narc","psyc"]];
 const TARGET_EVIDENCE = 4;   // หลักฐานกี่ชิ้นต่อแกนถึงเรียกว่ามั่นใจเต็ม
 const FACETS          = ["mach","narc","psyc"];
 
@@ -7708,6 +7748,486 @@ const POOL = [
     }
    }
   ]
+ },
+ {
+  "id": "dc_mn_01",
+  "type": "dcomp",
+  "source": "original",
+  "tags": [
+   "D"
+  ],
+  "reverse": false,
+  "prompt": "คนสองแบบนี้ คุณใกล้แบบไหนกว่า",
+  "skippable": true,
+  "forced": true,
+  "options": [
+   {
+    "id": "a",
+    "label": "คนที่รู้ว่าต้องพูดยังไงให้ได้สิ่งที่ต้องการ",
+    "w": {},
+    "dw": {
+     "mach": 1,
+     "narc": -1
+    }
+   },
+   {
+    "id": "b",
+    "label": "คนที่อยากให้คนอื่นเห็นว่าตัวเองเก่ง",
+    "w": {},
+    "dw": {
+     "narc": 1,
+     "mach": -1
+    }
+   }
+  ]
+ },
+ {
+  "id": "dc_mn_02",
+  "type": "dcomp",
+  "source": "original",
+  "tags": [
+   "D"
+  ],
+  "reverse": false,
+  "prompt": "คนสองแบบนี้ คุณใกล้แบบไหนกว่า",
+  "skippable": true,
+  "forced": true,
+  "options": [
+   {
+    "id": "a",
+    "label": "คนที่ชนะโดยไม่ต้องมีใครรู้ว่าเป็นฝีมือเรา",
+    "w": {},
+    "dw": {
+     "mach": 1,
+     "narc": -1
+    }
+   },
+   {
+    "id": "b",
+    "label": "คนที่อยากให้ทุกคนรู้ว่าเป็นฝีมือเรา",
+    "w": {},
+    "dw": {
+     "narc": 1,
+     "mach": -1
+    }
+   }
+  ]
+ },
+ {
+  "id": "dc_mn_03",
+  "type": "dcomp",
+  "source": "original",
+  "tags": [
+   "D"
+  ],
+  "reverse": false,
+  "prompt": "คนสองแบบนี้ คุณใกล้แบบไหนกว่า",
+  "skippable": true,
+  "forced": true,
+  "options": [
+   {
+    "id": "a",
+    "label": "คนที่วางแผนเงียบ ๆ อยู่หลังฉาก",
+    "w": {},
+    "dw": {
+     "mach": 1,
+     "narc": -1
+    }
+   },
+   {
+    "id": "b",
+    "label": "คนที่ยืนอยู่หน้าเวทีแล้วรู้สึกว่าใช่",
+    "w": {},
+    "dw": {
+     "narc": 1,
+     "mach": -1
+    }
+   }
+  ]
+ },
+ {
+  "id": "dc_mn_04",
+  "type": "dcomp",
+  "source": "original",
+  "tags": [
+   "D"
+  ],
+  "reverse": false,
+  "prompt": "คนสองแบบนี้ คุณใกล้แบบไหนกว่า",
+  "skippable": true,
+  "forced": true,
+  "options": [
+   {
+    "id": "a",
+    "label": "คนที่เก็บไพ่ไว้ในมือ ไม่บอกใครหมด",
+    "w": {},
+    "dw": {
+     "mach": 1,
+     "narc": -1
+    }
+   },
+   {
+    "id": "b",
+    "label": "คนที่เล่าเรื่องที่ตัวเองทำสำเร็จได้ไม่เบื่อ",
+    "w": {},
+    "dw": {
+     "narc": 1,
+     "mach": -1
+    }
+   }
+  ]
+ },
+ {
+  "id": "dc_mn_05",
+  "type": "dcomp",
+  "source": "original",
+  "tags": [
+   "D"
+  ],
+  "reverse": false,
+  "prompt": "คนสองแบบนี้ คุณใกล้แบบไหนกว่า",
+  "skippable": true,
+  "forced": true,
+  "options": [
+   {
+    "id": "a",
+    "label": "คนที่ยอมถอยหนึ่งก้าว ถ้ามันทำให้ได้เปรียบทีหลัง",
+    "w": {},
+    "dw": {
+     "mach": 1,
+     "narc": -1
+    }
+   },
+   {
+    "id": "b",
+    "label": "คนที่ไม่ยอมเสียหน้าต่อหน้าคนอื่น",
+    "w": {},
+    "dw": {
+     "narc": 1,
+     "mach": -1
+    }
+   }
+  ]
+ },
+ {
+  "id": "dc_mp_01",
+  "type": "dcomp",
+  "source": "original",
+  "tags": [
+   "D"
+  ],
+  "reverse": false,
+  "prompt": "คนสองแบบนี้ คุณใกล้แบบไหนกว่า",
+  "skippable": true,
+  "forced": true,
+  "options": [
+   {
+    "id": "a",
+    "label": "คนที่คิดหลายตาก่อนขยับ",
+    "w": {},
+    "dw": {
+     "mach": 1,
+     "psyc": -1
+    }
+   },
+   {
+    "id": "b",
+    "label": "คนที่ขยับก่อนแล้วค่อยว่ากัน",
+    "w": {},
+    "dw": {
+     "psyc": 1,
+     "mach": -1
+    }
+   }
+  ]
+ },
+ {
+  "id": "dc_mp_02",
+  "type": "dcomp",
+  "source": "original",
+  "tags": [
+   "D"
+  ],
+  "reverse": false,
+  "prompt": "คนสองแบบนี้ คุณใกล้แบบไหนกว่า",
+  "skippable": true,
+  "forced": true,
+  "options": [
+   {
+    "id": "a",
+    "label": "คนที่อ่านเกมขาดแต่ยังแคร์ว่าใครจะรู้สึกยังไง",
+    "w": {},
+    "dw": {
+     "mach": 1,
+     "psyc": -1
+    }
+   },
+   {
+    "id": "b",
+    "label": "คนที่ตัดสินใจเย็นโดยไม่เอาความรู้สึกใครมาคิด",
+    "w": {},
+    "dw": {
+     "psyc": 1,
+     "mach": -1
+    }
+   }
+  ]
+ },
+ {
+  "id": "dc_mp_03",
+  "type": "dcomp",
+  "source": "original",
+  "tags": [
+   "D"
+  ],
+  "reverse": false,
+  "prompt": "คนสองแบบนี้ คุณใกล้แบบไหนกว่า",
+  "skippable": true,
+  "forced": true,
+  "options": [
+   {
+    "id": "a",
+    "label": "คนที่ได้สิ่งที่ต้องการด้วยการวางแผน",
+    "w": {},
+    "dw": {
+     "mach": 1,
+     "psyc": -1
+    }
+   },
+   {
+    "id": "b",
+    "label": "คนที่ได้สิ่งที่ต้องการเพราะกล้าเสี่ยงกว่าคนอื่น",
+    "w": {},
+    "dw": {
+     "psyc": 1,
+     "mach": -1
+    }
+   }
+  ]
+ },
+ {
+  "id": "dc_mp_04",
+  "type": "dcomp",
+  "source": "original",
+  "tags": [
+   "D"
+  ],
+  "reverse": false,
+  "prompt": "คนสองแบบนี้ คุณใกล้แบบไหนกว่า",
+  "skippable": true,
+  "forced": true,
+  "options": [
+   {
+    "id": "a",
+    "label": "คนที่รู้ว่าจังหวะไหนควรรอ",
+    "w": {},
+    "dw": {
+     "mach": 1,
+     "psyc": -1
+    }
+   },
+   {
+    "id": "b",
+    "label": "คนที่เบื่อการรอจนต้องลงมือ",
+    "w": {},
+    "dw": {
+     "psyc": 1,
+     "mach": -1
+    }
+   }
+  ]
+ },
+ {
+  "id": "dc_mp_05",
+  "type": "dcomp",
+  "source": "original",
+  "tags": [
+   "D"
+  ],
+  "reverse": false,
+  "prompt": "คนสองแบบนี้ คุณใกล้แบบไหนกว่า",
+  "skippable": true,
+  "forced": true,
+  "options": [
+   {
+    "id": "a",
+    "label": "คนที่ใช้คำพูดเป็นเครื่องมือหลัก",
+    "w": {},
+    "dw": {
+     "mach": 1,
+     "psyc": -1
+    }
+   },
+   {
+    "id": "b",
+    "label": "คนที่ใช้ความกล้าเป็นเครื่องมือหลัก",
+    "w": {},
+    "dw": {
+     "psyc": 1,
+     "mach": -1
+    }
+   }
+  ]
+ },
+ {
+  "id": "dc_np_01",
+  "type": "dcomp",
+  "source": "original",
+  "tags": [
+   "D"
+  ],
+  "reverse": false,
+  "prompt": "คนสองแบบนี้ คุณใกล้แบบไหนกว่า",
+  "skippable": true,
+  "forced": true,
+  "options": [
+   {
+    "id": "a",
+    "label": "คนที่รู้สึกแย่เวลาไม่มีใครสังเกตเห็นผลงาน",
+    "w": {},
+    "dw": {
+     "narc": 1,
+     "psyc": -1
+    }
+   },
+   {
+    "id": "b",
+    "label": "คนที่ไม่ค่อยรู้สึกอะไร ไม่ว่าใครจะสังเกตหรือไม่",
+    "w": {},
+    "dw": {
+     "psyc": 1,
+     "narc": -1
+    }
+   }
+  ]
+ },
+ {
+  "id": "dc_np_02",
+  "type": "dcomp",
+  "source": "original",
+  "tags": [
+   "D"
+  ],
+  "reverse": false,
+  "prompt": "คนสองแบบนี้ คุณใกล้แบบไหนกว่า",
+  "skippable": true,
+  "forced": true,
+  "options": [
+   {
+    "id": "a",
+    "label": "คนที่แคร์ภาพลักษณ์ของตัวเองมาก",
+    "w": {},
+    "dw": {
+     "narc": 1,
+     "psyc": -1
+    }
+   },
+   {
+    "id": "b",
+    "label": "คนที่ไม่ค่อยแคร์ว่าคนอื่นมองยังไง",
+    "w": {},
+    "dw": {
+     "psyc": 1,
+     "narc": -1
+    }
+   }
+  ]
+ },
+ {
+  "id": "dc_np_03",
+  "type": "dcomp",
+  "source": "original",
+  "tags": [
+   "D"
+  ],
+  "reverse": false,
+  "prompt": "คนสองแบบนี้ คุณใกล้แบบไหนกว่า",
+  "skippable": true,
+  "forced": true,
+  "options": [
+   {
+    "id": "a",
+    "label": "คนที่อยากเป็นที่หนึ่งเพื่อให้คนยอมรับ",
+    "w": {},
+    "dw": {
+     "narc": 1,
+     "psyc": -1
+    }
+   },
+   {
+    "id": "b",
+    "label": "คนที่อยากเป็นที่หนึ่งเพราะชอบความรู้สึกตอนชนะ",
+    "w": {},
+    "dw": {
+     "psyc": 1,
+     "narc": -1
+    }
+   }
+  ]
+ },
+ {
+  "id": "dc_np_04",
+  "type": "dcomp",
+  "source": "original",
+  "tags": [
+   "D"
+  ],
+  "reverse": false,
+  "prompt": "คนสองแบบนี้ คุณใกล้แบบไหนกว่า",
+  "skippable": true,
+  "forced": true,
+  "options": [
+   {
+    "id": "a",
+    "label": "คนที่เจ็บเวลาถูกวิจารณ์ต่อหน้าคนอื่น",
+    "w": {},
+    "dw": {
+     "narc": 1,
+     "psyc": -1
+    }
+   },
+   {
+    "id": "b",
+    "label": "คนที่ฟังคำวิจารณ์แล้วเฉย ๆ",
+    "w": {},
+    "dw": {
+     "psyc": 1,
+     "narc": -1
+    }
+   }
+  ]
+ },
+ {
+  "id": "dc_np_05",
+  "type": "dcomp",
+  "source": "original",
+  "tags": [
+   "D"
+  ],
+  "reverse": false,
+  "prompt": "คนสองแบบนี้ คุณใกล้แบบไหนกว่า",
+  "skippable": true,
+  "forced": true,
+  "options": [
+   {
+    "id": "a",
+    "label": "คนที่อยากให้คนจำชื่อเราได้",
+    "w": {},
+    "dw": {
+     "narc": 1,
+     "psyc": -1
+    }
+   },
+   {
+    "id": "b",
+    "label": "คนที่ไม่สนว่าใครจะจำชื่อเราได้หรือเปล่า",
+    "w": {},
+    "dw": {
+     "psyc": 1,
+     "narc": -1
+    }
+   }
+  ]
  }
 ];
 /* === ITEMS:END === */
@@ -7727,18 +8247,42 @@ const AXIS_INFO = {
 const GROWTH_INFO = {th:"มุมมองต่อความสามารถ", en:"Growth ↔ Fixed Mindset",
                      lo:"ความสามารถเป็นของตายตัว", hi:"ความสามารถพัฒนาได้"};
 const DARK = {
-  mach:{th:"การวางกลยุทธ์กับคน", en:"Machiavellianism",
+  mach:{th:"การวางกลยุทธ์กับคน", en:"Machiavellianism", short:"วางกลยุทธ์",
         desc:"แนวโน้มที่จะมองความสัมพันธ์เป็นเกมที่วางแผนได้ เก็บข้อมูลไว้เป็นแต้มต่อ และคิดล่วงหน้าว่าจะรับมือใครยังไง",
         up:"ในงานเจรจา ต่อรอง หรือการเมืององค์กร คนกลุ่มนี้มักอ่านสถานการณ์ขาด",
-        down:"ถ้าสูงมากและอีกฝ่ายรู้ตัว ความไว้ใจระยะยาวจะพังเร็ว"},
-  narc:{th:"การเห็นตัวเองสำคัญ", en:"Narcissism",
+        down:"ถ้าสูงมากและอีกฝ่ายรู้ตัว ความไว้ใจระยะยาวจะพังเร็ว",
+        core:"แกนกลางของด้านนี้คือ <b>การควบคุมผลลัพธ์ผ่านคน</b> ไม่ใช่ความก้าวร้าว " +
+             "คนที่สูงด้านนี้มักดูสุภาพและใจเย็นกว่าค่าเฉลี่ยด้วยซ้ำ เพราะการแสดงอารมณ์คือการเปิดไพ่",
+        daily:"เวลาจะขออะไรใคร คุณคิดก่อนว่าควรขอตอนไหน ขอผ่านใคร และควรพูดเรียงลำดับยังไง — " +
+              "ไม่ได้เดินไปขอตรง ๆ แล้วค่อยลุ้น",
+        hiLook:"อ่านการเมืองในที่ทำงานออก รู้ว่าใครคุมอะไรจริง ๆ และไม่ค่อยเผลอพูดสิ่งที่ยังไม่ควรพูด",
+        loLook:"เปิดเผยและตรงไปตรงมา คนรอบตัวเดาใจได้ง่าย แต่บางทีก็โดนคนที่วางแผนเก่งกว่าเอาเปรียบ",
+        tip:"ใช้ให้เป็นประโยชน์: เอาความสามารถอ่านเกมไปใช้ <b>วางแผนให้ทีมทั้งทีมได้</b> ไม่ใช่ให้ตัวเองคนเดียว — " +
+            "ด้านนี้จะกลายเป็นทักษะผู้นำทันทีที่เป้าหมายไม่ใช่ของตัวเองอย่างเดียว"},
+  narc:{th:"การเห็นตัวเองสำคัญ", en:"Narcissism", short:"เห็นตัวเองสำคัญ",
         desc:"แนวโน้มที่จะประเมินตัวเองสูง อยากได้การยอมรับ และรู้สึกไม่ดีเมื่อผลงานไม่ถูกมองเห็น",
         up:"มักมาพร้อมความมั่นใจ กล้านำเสนอ และไม่กลัวเวทีใหญ่",
-        down:"ทำให้รับคำวิจารณ์ยาก และมองข้ามส่วนที่คนอื่นช่วย"},
-  psyc:{th:"ความเย็นชาและหุนหัน", en:"Psychopathy (ระดับคนทั่วไป)",
+        down:"ทำให้รับคำวิจารณ์ยาก และมองข้ามส่วนที่คนอื่นช่วย",
+        core:"แกนกลางของด้านนี้คือ <b>ความต้องการให้คนมองเห็น</b> ซึ่งเป็นเชื้อเพลิงที่แรงมาก " +
+             "ทั้งด้านดี (กล้าลุกขึ้นทำ) และด้านเสี่ยง (แปลคำวิจารณ์เป็นการโจมตี)",
+        daily:"เวลาทำอะไรสำเร็จ สิ่งที่ค้างในหัวไม่ใช่แค่ผลงาน แต่คือ <b>มีใครเห็นหรือเปล่า</b> — " +
+              "และเวลาไม่มีใครเห็น มันกัดใจมากกว่าที่ควรจะเป็น",
+        hiLook:"มั่นใจ กล้าเสนอ กล้ายืนหน้าห้อง คนมักจำได้และมักถูกดันขึ้นเป็นตัวแทน",
+        loLook:"ถ่อมตัว ไม่ต้องการสปอตไลต์ ทำงานได้สบายใจเบื้องหลัง แต่บางทีก็ถูกมองข้ามทั้งที่ทำจริง",
+        tip:"ใช้ให้เป็นประโยชน์: <b>แยกคำวิจารณ์งานออกจากคำวิจารณ์ตัวเอง</b> ให้ได้ " +
+            "ถ้าทำได้ ความมั่นใจจะเหลืออยู่ครบโดยไม่ต้องเสียเพื่อนร่วมงานไปด้วย"},
+  psyc:{th:"ความเย็นชาและหุนหัน", en:"Psychopathy (ระดับคนทั่วไป)", short:"เย็นชา/หุนหัน",
         desc:"แนวโน้มที่จะตัดสินใจเร็วโดยไม่ลังเล ไม่ค่อยจมกับความรู้สึกผิด และเข้าใจอารมณ์คนอื่นได้โดยไม่รู้สึกตาม",
         up:"ทำให้ตัดสินใจในภาวะกดดันได้โดยไม่ถูกอารมณ์ลาก",
-        down:"เสี่ยงมองข้ามผลกระทบต่อคนอื่น และตัดสินใจโดยไม่ดูผลระยะยาว"}
+        down:"เสี่ยงมองข้ามผลกระทบต่อคนอื่น และตัดสินใจโดยไม่ดูผลระยะยาว",
+        core:"ด้านนี้จริง ๆ มีสองส่วนที่แยกกันได้: <b>ความเย็น</b> (อารมณ์คนอื่นไม่ค่อยลามมาถึงเรา) " +
+             "กับ <b>ความหุนหัน</b> (ลงมือก่อนคิดจบ) คนหนึ่งคนอาจสูงแค่ส่วนเดียวก็ได้ " +
+             "และคำว่า psychopathy ในงานวิจัยบุคลิกภาพหมายถึงสองส่วนนี้เท่านั้น",
+        daily:"ตอนที่คนอื่นยังลังเลหรือยังสะเทือนใจอยู่ คุณมักเป็นคนที่พูดว่า “เอาไงต่อ” ได้ก่อน",
+        hiLook:"ในภาวะฉุกเฉินคุณเป็นคนที่ยังคิดออก ตัดสินใจได้ ไม่แข็งค้างเพราะอารมณ์",
+        loLook:"รู้สึกตามคนอื่นง่าย เห็นใจไว ซึ่งดีมากกับงานที่ต้องดูแลคน แต่เหนื่อยเวลาต้องตัดสินใจเรื่องยาก",
+        tip:"ใช้ให้เป็นประโยชน์: ก่อนตัดสินใจเรื่องที่กระทบคนอื่น <b>ตั้งกติกาให้ตัวเองรอ 24 ชั่วโมง</b> — " +
+            "ความเย็นยังอยู่ครบ แต่ส่วนที่หุนหันจะถูกตัดออกไป ซึ่งเป็นส่วนที่สร้างปัญหาจริง ๆ"}
 };
 
 /* ── สัตว์ประจำตัว — เลือกมาให้ "ตัวเดียว" ──
@@ -7873,8 +8417,17 @@ const isMedia   = i  => i.type === "reading" || i.type === "video";
 /** ด้าน Dark Triad ที่ยังขาดข้อมากที่สุด — ใช้กระจายข้อให้ครบทั้งสามด้าน */
 const neediestFacet = () => [...FACETS].sort((a,b) => facetCount(a) - facetCount(b))[0];
 
+/** คู่เทียบที่ตอบไปแล้ว — นับรวม และนับแยกรายคู่ (ต้องกระจายให้ครบทั้งสามคู่
+    ไม่งั้นจะเทียบได้แค่บางด้าน แล้วการจัดลำดับสามด้านจะยังคลอนเหมือนเดิม) */
+const dcompCount = () => S.path.filter(id => BY_ID[id].type === "dcomp").length;
+const pairKey    = it => Object.keys(it.options[0].dw).sort().join("-");
+const pairCount  = pk => S.path.filter(id => BY_ID[id].type === "dcomp" && pairKey(BY_ID[id]) === pk).length;
+const neediestPair = () => DPAIRS.map(p => [...p].sort().join("-"))
+                                 .sort((a,b) => pairCount(a) - pairCount(b))[0];
+const owedDcomp  = () => Math.max(0, MIN_DCOMP - dcompCount());
+
 const owedFor = ax => ax === "D"
-  ? FACETS.reduce((n,f) => n + Math.max(0, MIN_PER_FACET - facetCount(f)), 0)
+  ? FACETS.reduce((n,f) => n + Math.max(0, MIN_PER_FACET - facetCount(f)), 0) + owedDcomp()
   : Math.max(0, MIN_PER_AXIS - axisCount(ax));
 
 const totalOwed = () => AXES_ALL.reduce((n,a) => n + owedFor(a), 0);
@@ -7903,6 +8456,16 @@ function pickNext(){
     if(m) return {id:m.id, via:"adaptive", why:"รอบนี้ยังไม่มีข้อบทความเลย — ต้องมีอย่างน้อย 1 ข้อเพื่อวัดพฤติกรรม"};
   }
 
+  // ชั้น 2.5 — ทยอยจ่ายข้อคู่เทียบให้กระจายทั้งรอบ (ไม่งั้นจะไปกองท้ายรอบตอนไล่โควตา
+  // แล้วคนตอบจะเจอคำถามหน้าตาเหมือนกันติดกัน 6 ข้อรวด)
+  if(owedDcomp() > 0 && dcompCount() / MIN_DCOMP <= shown / MAX_ITEMS){
+    const pk = neediestPair();
+    const c  = shuffle(POOL.filter(i => !seen(i.id) && i.type === "dcomp" && pairKey(i) === pk))[0];
+    if(c) return {id:c.id, via:"adaptive",
+      why:"ข้อคู่เทียบ Dark Triad — วัดว่าระหว่างสองด้านนี้ คุณเอียงไปทางไหนมากกว่า " +
+          "(ตอบไปแล้ว " + dcompCount() + "/" + MIN_DCOMP + " ข้อ)"};
+  }
+
   // ชั้น 3 — แกนที่ยังไม่ถึงโควตาขั้นต่ำ และเหลือข้ออีกไม่มาก
   let order, why;
   if(owed && left <= owed + 2){
@@ -7919,10 +8482,17 @@ function pickNext(){
     let cand = POOL.filter(i => !seen(i.id) && (i.tags||[]).includes(axis));
     if(!cand.length) continue;
 
-    // แกน D: บังคับให้ไปที่ด้านที่ยังขาดข้อมากที่สุดก่อน
+    // แกน D: ถ้ายังค้างคู่เทียบให้จ่ายก่อน แล้วค่อยไปด้านที่ยังขาดข้อมากที่สุด
     if(axis === "D"){
+      if(owedDcomp() > 0){
+        const pk = neediestPair();
+        const c  = shuffle(cand.filter(i => i.type === "dcomp" && pairKey(i) === pk))[0]
+                || shuffle(cand.filter(i => i.type === "dcomp"))[0];
+        if(c) return {id:c.id, via:"adaptive",
+          why:"Dark Triad — ยังค้างข้อคู่เทียบอีก " + owedDcomp() + " ข้อ"};
+      }
       const f = neediestFacet();
-      const byFacet = cand.filter(i => i.facet === f);
+      const byFacet = cand.filter(i => i.facet === f && i.type !== "dcomp");
       if(byFacet.length){
         const pick = shuffle(byFacet)[0];
         return {id:pick.id, via:"adaptive",
@@ -8256,19 +8826,41 @@ function radarSVG(st, uid){
     (weak ? '<br>จุดกลวง = แกนที่ข้อมูลยังน้อย (' + weak + ' แกน)' : '') + '</p></div>';
 }
 
-/** คะแนน Dark Triad แยกสามด้าน — นับเฉพาะข้อที่ผู้ใช้ตอบจริง */
+/** คะแนน Dark Triad แยกสามด้าน — นับเฉพาะข้อที่ผู้ใช้ตอบจริง
+    ข้อสองชนิดทำคนละหน้าที่ และตั้งใจไม่เอามาปนกัน:
+      · ข้อ Likert (ตอบทีละด้าน)  -> pct  ใช้ตอบว่า "ด้านนี้สูงต่ำแค่ไหน"
+      · ข้อคู่เทียบ (เลือกสองด้าน) -> rank ใช้ตอบว่า "สามด้านนี้ ด้านไหนโดดกว่ากัน"
+    วัดที่ 30 ข้อ 600 คน ตอบคนละสองรอบ: ถ้าเอาคู่เทียบไปปนใน pct ด้วย
+    ความแม่นของ % ตกจาก .86 เหลือ .81 แต่ถ้าแยกกันแบบนี้ % แม่นเท่าเดิม
+    ส่วนการชี้ด้านที่โดดขึ้นจาก 75% เป็น 86% และตอบสองรอบได้ด้านเดิม 70% -> 83%
+    (วัดบน build ตัวจริง เซสชันเดียวกัน คำตอบเดียวกัน ต่างกันแค่กติกาจัดลำดับ) */
 function darkScores(){
-  const out = {mach:{raw:0,n:0}, narc:{raw:0,n:0}, psyc:{raw:0,n:0}};
+  const out = {mach:{raw:0,n:0,cmp:0,cn:0}, narc:{raw:0,n:0,cmp:0,cn:0}, psyc:{raw:0,n:0,cmp:0,cn:0}};
   S.path.forEach(id => {
-    const it = BY_ID[id];
+    const it = BY_ID[id], opt = pickedOption(id);
+    if(!opt) return;
+    if(opt.dw){                                  // ข้อคู่เทียบ: ให้คะแนนสองด้านพร้อมกัน (+1 / -1)
+      Object.entries(opt.dw).forEach(([f, v]) => { if(out[f]){ out[f].cmp += v; out[f].cn += 1; } });
+      return;
+    }
     if(!it.facet || !out[it.facet]) return;
-    const opt = pickedOption(id); if(!opt) return;
     out[it.facet].raw += opt.w.D; out[it.facet].n += 1;
   });
-  Object.values(out).forEach(f => f.pct = f.n ? Math.max(6, Math.min(94, 50 + (f.raw/(f.n*2))*45)) : null);
-  out.total = out.mach.n + out.narc.n + out.psyc.n;
+  FACETS.forEach(f => {
+    const o = out[f];
+    o.pct  = o.n ? Math.max(6, Math.min(94, 50 + (o.raw/(o.n*2))*45)) : null;
+    o.tilt = o.cn ? o.cmp/o.cn : 0;                       // -1..1 เอียงไปทางด้านนี้แค่ไหนเวลาต้องเลือก
+    o.rank = (o.pct == null ? 0 : (o.pct-50)/45) + o.tilt*DCOMP_W;
+  });
+  out.likert = out.mach.n + out.narc.n + out.psyc.n;
+  out.comp   = S.path.filter(id => BY_ID[id].type === "dcomp" && pickedOption(id)).length;
+  out.total  = out.likert + out.comp;
   return out;
 }
+
+/** เรียงสามด้านจากโดดสุดไปน้อยสุด — ใช้ rank (Likert + คู่เทียบ) ไม่ใช่ pct */
+const darkRank = ds => FACETS.filter(f => ds[f].pct != null || ds[f].cn > 0)
+                             .sort((a,b) => ds[b].rank - ds[a].rank);
 
 /** แปลงคะแนน Dark Triad เป็นคำ — ตั้งใจไม่ใช้คำตัดสินคน */
 function darkBand(pct){
@@ -8400,7 +8992,7 @@ function imagePrompt(st){
     .slice(0, 3)
     .map(x => PROMPT_TRAITS[x.a][x.pct >= 50 ? "hi" : "lo"]);
 
-  const topDark = FACETS.filter(f => ds[f].pct != null).sort((a,c) => ds[c].pct - ds[a].pct)[0];
+  const topDark = darkRank(ds)[0];
   if(topDark && darkBand(ds[topDark].pct).lv >= 3) traits.push(PROMPT_DARK[topDark]);
 
   const nPct = axisPct(st.N);
@@ -8456,7 +9048,7 @@ function buildSummary(){
 
   // Dark Triad — โชว์ครบสามด้าน เรียงจากด้านที่คะแนนสูงสุด
   const ds = darkScores();
-  const dsRank = FACETS.filter(f => ds[f].pct != null).sort((a,b) => ds[b].pct - ds[a].pct);
+  const dsRank = darkRank(ds);
   const dark = ds.total >= 3
     ? '<div class="hl"><p class="hl-label">Dark Triad · ทั้งสามด้าน</p>' +
       '<div class="hl-rows">' + dsRank.map((f,i) => {
@@ -8579,36 +9171,97 @@ function buildReport(reason){
   const ds = darkScores();
   // แสดง "ด้านเดียว" — ด้านที่ใกล้เคียงกับคุณที่สุด (คะแนนสูงสุดในสามด้าน)
   // เหมือนที่ทำกับสัตว์: โชว์สามด้านพร้อมกันแล้วผู้อ่านสรุปไม่ได้ว่าตกลงตัวเองเป็นแบบไหน
-  const dtRank = ["mach","narc","psyc"]
-    .filter(f => ds[f].pct != null)
-    .sort((a,b) => ds[b].pct - ds[a].pct);
+  const dtRank = darkRank(ds);
   const dtTop  = dtRank[0];
+  // แถบเรียงสามด้าน — ให้เห็นทีเดียวว่าห่างกันแค่ไหน ไม่ใช่แค่ว่าใครมาก่อน
+  const dtOrderHtml = (() => {
+    if(dtRank.length < 2) return "";
+    const rk  = dtRank.map(f => ds[f].rank);
+    const lo  = Math.min(...rk), hi = Math.max(...rk), span = (hi - lo) || 1;
+    const gap = rk[0] - rk[1];
+    return '<div class="dt-order"><p class="dt-order-title">ลำดับสามด้านของคุณ</p>' +
+      dtRank.map((f,i) => {
+        const w = 16 + ((ds[f].rank - lo) / span) * 84;
+        return '<div class="dt-ord"><span class="dt-ord-n">' + (i+1) + '</span>' +
+          '<span class="dt-ord-name">' + DARK[f].short + '</span>' +
+          '<span class="dt-ord-bar"><i style="width:' + w.toFixed(0) + '%"></i></span></div>';
+      }).join("") +
+      '<p class="dt-order-note">' + (gap >= .35
+        ? 'ด้านบนสุดทิ้งห่างอีกสองด้านชัดเจน — อ่านด้านบนสุดเป็นหลักได้เลย'
+        : gap >= .15
+          ? 'ด้านบนสุดนำอยู่พอสมควร แต่ยังไม่ถึงกับทิ้งขาด ด้านที่สองก็ยังอธิบายคุณได้'
+          : 'สามด้านของคุณเกาะกลุ่มกันมาก — แปลว่าไม่มีด้านไหนโดดจริง อ่านทั้งสามด้านรวมกันดีกว่าเลือกด้านเดียว') +
+      '</p></div>';
+  })();
+
+  // เอียงไปทางไหนตอนต้องเลือก — ผลดิบจากข้อคู่เทียบ ให้เห็นว่าเลขมาจากไหน
+  const dtPairHtml = (() => {
+    const rows = DPAIRS.map(([x,y]) => {
+      const hits = S.path.map(id => ({it:BY_ID[id], op:pickedOption(id)}))
+        .filter(o => o.op && o.op.dw && (x in o.op.dw) && (y in o.op.dw));
+      if(!hits.length) return "";
+      const nx = hits.filter(o => o.op.dw[x] > 0).length;
+      const win = nx * 2 === hits.length ? null : (nx * 2 > hits.length ? x : y);
+      return '<div class="dt-pair"><span class="dt-pair-q"><em>' +
+        DARK[x].short + '</em> ↔ <em>' + DARK[y].short + '</em></span><span class="dt-pair-a">' +
+        (win ? 'เลือกทาง ' + DARK[win].short + ' ' +
+               (win === x ? nx : hits.length - nx) + '/' + hits.length + ' ครั้ง'
+             : 'เลือกพอ ๆ กัน อย่างละ ' + nx + ' ครั้ง') + '</span></div>';
+    }).join("");
+    return rows
+      ? '<div class="dt-pairs"><p class="dt-sub-title">ตอนที่ต้องเลือกระหว่างสองด้าน คุณเลือกทางไหน</p>' +
+        rows + '<p class="tiny" style="margin:9px 0 0">ข้อพวกนี้ไม่มีตัวเลือกกลาง ๆ ให้หลบ ' +
+        'จึงบอกลำดับได้ตรงกว่าการถามทีละด้าน — เป็นตัวที่ทำให้ “ด้านไหนโดดกว่ากัน” แม่นขึ้น</p></div>'
+      : "";
+  })();
+
   const dtHtml = (() => {
     if(!dtTop) return "";
     const info = DARK[dtTop], sc = ds[dtTop], band = darkBand(sc.pct);
-    const flat = band.lv <= 2;   // ไม่ได้โดดจริง แค่โดดกว่าอีกสองด้าน
+    const flat = sc.pct != null && band.lv <= 2;   // ไม่ได้โดดจริง แค่โดดกว่าอีกสองด้าน
     return '<div class="dt">' +
       '<div class="dt-head"><div><div class="dt-name">' + info.th + '</div>' +
         '<div class="dt-en">' + info.en + '</div></div>' +
         '<span class="dt-band lv' + band.lv + '">' + band.t + '</span></div>' +
-      '<div class="dt-track"><i style="left:' + sc.pct + '%"></i></div>' +
+      '<div class="dt-track"><i style="left:' + (sc.pct == null ? 50 : sc.pct) + '%"></i></div>' +
       '<p class="dt-desc">' + info.desc + '</p>' +
+      '<p class="dt-core">' + info.core + '</p>' +
+      '<p class="dt-side"><b>ในชีวิตจริง</b><span>' + info.daily + '</span></p>' +
       '<p class="dt-side"><b>ข้อดี</b><span>' + info.up + '</span></p>' +
       '<p class="dt-side"><b>ข้อเสี่ยง</b><span>' + info.down + '</span></p>' +
-      '<p class="tiny" style="margin:10px 0 0">' +
-        'จาก 3 ด้าน นี่คือด้านที่คะแนนสูงสุดของคุณ · ประเมินจาก ' + sc.n + ' ข้อ' +
-        (flat ? ' · แต่ยังอยู่ในช่วงกลาง แปลว่าโดดกว่าอีกสองด้านเพียงเล็กน้อยเท่านั้น' : '') +
+      '<p class="dt-tip">' + info.tip + '</p>' +
+      '<p class="tiny" style="margin:12px 0 0">' +
+        'จาก 3 ด้าน นี่คือด้านที่โดดที่สุดของคุณ · วัดจาก' +
+        (sc.n ? 'ข้อถามตรง ' + sc.n + ' ข้อ' + (sc.cn ? ' และ' : '') : '') +
+        (sc.cn ? 'ข้อคู่เทียบ ' + sc.cn + ' ข้อ' : '') +
+        (sc.n ? '' : ' (ข้อถามตรงของด้านนี้ถูกข้ามไปหมด แถบด้านบนจึงยังไม่มีตัวเลข)') +
+        (!flat ? ''
+          : band.lv === 1
+            ? ' · แต่ตัวเลขของด้านนี้ยังต่ำกว่าค่ากลาง แปลว่าทั้งสามด้านของคุณอยู่ระดับต่ำ ด้านนี้เป็นด้านที่ต่ำน้อยที่สุดเท่านั้น'
+            : ' · แต่ตัวเลขยังอยู่ในช่วงกลาง แปลว่าโดดกว่าอีกสองด้านเพียงเล็กน้อยเท่านั้น') +
       '</p></div>';
   })();
 
-  // อีกสองด้านแสดงแบบย่อ — ไม่ซ่อน แต่ก็ไม่ให้แย่งความสนใจจากด้านหลัก
+  // อีกสองด้าน — ไม่ซ่อน และให้รายละเอียดพอที่จะอ่านรู้เรื่องด้วยตัวมันเอง
   const dtRest = dtRank.slice(1).map(f => {
     const info = DARK[f], sc = ds[f], band = darkBand(sc.pct);
+    const high = sc.pct != null && sc.pct > 50;
+    // ถ้าคะแนนยังอยู่ในช่วงกลาง จะบอกว่า "ฝั่งสูง" หรือ "ฝั่งต่ำ" ไม่ได้ เพราะมันขัดกับแถบที่เพิ่งขึ้นไป
+    // กรณีนั้นโชว์ทั้งสองฝั่งแล้วให้คนอ่านตัดสินเองว่าอันไหนเหมือนตัวเองกว่า
+    const rows = band.lv === 2
+      ? '<p class="dt-side"><b>ฝั่งสูง</b><span>' + info.hiLook + '</span></p>' +
+        '<p class="dt-side"><b>ฝั่งต่ำ</b><span>' + info.loLook + '</span></p>' +
+        '<p class="tiny" style="margin:8px 0 0">คุณอยู่ตรงกลางของด้านนี้ — สองฝั่งหน้าตาเป็นแบบนี้</p>'
+      : '<p class="dt-side"><b>' + (high ? "ฝั่งสูง" : "ฝั่งต่ำ") + '</b><span>' +
+          (high ? info.hiLook : info.loLook) + '</span></p>' +
+        '<p class="dt-side"><b>' + (high ? "ข้อเสี่ยง" : "ข้อดี") + '</b><span>' +
+          (high ? info.down : info.up) + '</span></p>';
     return '<div class="dt-mini">' +
-      '<div class="dt-mini-head"><span class="dt-mini-name">' + info.th + '</span>' +
+      '<div class="dt-mini-head"><span class="dt-mini-name">' + info.th +
+        ' <span class="dt-en">' + info.en + '</span></span>' +
         '<span class="dt-band lv' + band.lv + '" style="font-size:.8rem">' + band.t + '</span></div>' +
-      '<div class="dt-track"><i style="left:' + sc.pct + '%"></i></div>' +
-      '<p class="dt-mini-desc">' + info.desc + '</p></div>';
+      '<div class="dt-track"><i style="left:' + (sc.pct == null ? 50 : sc.pct) + '%"></i></div>' +
+      '<p class="dt-mini-desc">' + info.desc + '</p>' + rows + '</div>';
   }).join("");
   const dtRestHtml = dtRest
     ? '<div class="dt-sub"><p class="dt-sub-title">อีก ' + dtRank.slice(1).length +
@@ -8665,11 +9318,14 @@ function buildReport(reason){
     <div class="dark-lead">
       <b>Dark Triad</b> คือกลุ่มบุคลิกภาพ 3 ด้านที่นักจิตวิทยาศึกษามาตั้งแต่ปี 2002 (Paulhus &amp; Williams) —
       การวางกลยุทธ์กับคน การเห็นตัวเองสำคัญ และความเย็นชา/หุนหัน<br><br>
-      ทุกคนมีทั้งสามด้านในระดับหนึ่ง เราจึงขึ้น<b>ด้านที่ใกล้เคียงกับคุณที่สุดก่อน</b> แล้วตามด้วยอีกสองด้านแบบย่อ<br><br>
+      ทุกคนมีทั้งสามด้านในระดับหนึ่ง — คำถามจึงไม่ใช่ “มีหรือไม่มี” แต่คือ <b>“ด้านไหนของคุณโดดกว่ากัน”</b><br><br>
+      เราวัดสองแบบคู่กัน: <b>ข้อถามตรง</b> (ตอบทีละด้าน) ใช้บอกว่าแต่ละด้านสูงต่ำแค่ไหน
+      กับ <b>ข้อคู่เทียบ</b> ที่บังคับเลือกระหว่างสองด้าน ไม่มีตัวเลือกกลาง ๆ ให้หลบ ใช้บอกลำดับ —
+      วัดแล้วแบบผสมนี้ชี้ด้านที่โดดถูกขึ้นจาก 75% เป็น 86% เทียบกับใช้ข้อถามตรงอย่างเดียว<br><br>
       สิ่งสำคัญที่สุดที่ต้องเข้าใจ: นี่คือระดับที่พบใน<b>คนทั่วไป</b> คนละเรื่องกับการวินิจฉัยทางจิตเวช
       และ <b>คะแนนสูงไม่ได้แปลว่าเป็นคนไม่ดี</b> — แต่ละด้านมีทั้งข้อดีและข้อเสี่ยงตามสถานการณ์
     </div>
-    ${ds.total >= 3 ? dtHtml + dtRestHtml : '<p class="muted small">รอบนี้ตอบข้อกลุ่มนี้ไปแค่ ' + ds.total + ' ข้อ ยังน้อยเกินกว่าจะสรุปอะไรได้ — ทำใหม่แล้วตอบให้ครบขึ้นจะได้ผลที่มีความหมายกว่านี้</p>'}
+    ${ds.total >= 3 ? dtOrderHtml + dtHtml + dtPairHtml + dtRestHtml : '<p class="muted small">รอบนี้ตอบข้อกลุ่มนี้ไปแค่ ' + ds.total + ' ข้อ ยังน้อยเกินกว่าจะสรุปอะไรได้ — ทำใหม่แล้วตอบให้ครบขึ้นจะได้ผลที่มีความหมายกว่านี้</p>'}
     <div class="dt-guard">
       <b>อ่านผลนี้ยังไงให้ถูก</b><br>
       • เป็น<b>แนวโน้ม</b> ไม่ใช่การวินิจฉัย ไม่มีใครถูกตัดสินว่าเป็นอะไรจากแบบทดสอบออนไลน์<br>
