@@ -1,0 +1,842 @@
+{
+ "name": "TPT Drawing Pipeline - Trend > Analyze > Draw",
+ "nodes": [
+  {
+   "parameters": {
+    "public": true,
+    "options": {}
+   },
+   "id": "d1111111-1111-1111-1111-111111111111",
+   "name": "When chat message received",
+   "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+   "typeVersion": 1.1,
+   "position": [
+    -460,
+    420
+   ],
+   "webhookId": "d1111111-1111-1111-1111-111111111111"
+  },
+  {
+   "parameters": {
+    "rule": {
+     "interval": [
+      {
+       "field": "days",
+       "daysInterval": 1,
+       "triggerAtHour": 6,
+       "triggerAtMinute": 0
+      }
+     ]
+    }
+   },
+   "id": "d2222222-2222-2222-2222-222222222222",
+   "name": "Schedule Trigger (Daily 6:00)",
+   "type": "n8n-nodes-base.scheduleTrigger",
+   "typeVersion": 1.2,
+   "position": [
+    -680,
+    120
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst histObj = (staticData.historyBySubject && typeof staticData.historyBySubject === 'object') ? staticData.historyBySubject : {};\nstaticData.historyBySubject = histObj;\n\nconst subjects = ['Math', 'Reading & Phonics', 'Science', 'Writing & Grammar', 'Social Studies', 'Art & Coloring', 'Seasonal & Holiday Activities'];\nconst grades = ['PreK-Grade 1', 'Grade 2-3', 'Grade 4-5'];\n\n// 1 รอบรัน = 1 วิชา — เลื่อนวิชาทุกครั้งที่รัน วนไปเรื่อยๆ\n// ครบทั้ง 7 วิชาแล้วค่อยเลื่อนระดับชั้น (Math PreK -> ... -> Seasonal PreK -> Math Grade 2-3 -> ...)\nlet n = Number.isInteger(staticData.rotation) ? staticData.rotation : 0;\nconst subject = subjects[n % subjects.length];\nconst grade = grades[Math.floor(n / subjects.length) % grades.length];\nstaticData.rotation = n + 1;\n\nlet assignment = 'หาเทรนด์ \"ธีมภาพวาดการ์ตูน/coloring page\" ที่กำลังเป็นที่นิยมบน TPT, Etsy, Pinterest สำหรับใบงานเด็กวิชา ' + subject + ' ระดับ ' + grade + ' แล้วเลือกธีมภาพ + หัวข้อย่อยที่ demand สูงและคู่แข่งน้อยที่สุดตอนนี้ (วิชาและระดับชั้นถูกล็อกแล้ว ห้ามเปลี่ยน แต่ธีมภาพและหัวข้อย่อยให้เลือกเองจากผลการค้นหา)';\nconst hist = Array.isArray(histObj[subject]) ? histObj[subject] : [];\nif (hist.length > 0) {\n  assignment += '\\n\\n**สำคัญมาก - ห้ามทำซ้ำ**: วิชานี้เคยสร้างธีม/หัวข้อต่อไปนี้ไปแล้ว ห้ามเลือกที่เหมือนหรือใกล้เคียงเด็ดขาด:\\n- ' + hist.slice(-40).join('\\n- ');\n}\n\nreturn [{\n  json: {\n    chatInput: assignment,\n    sessionId: 'auto-' + new Date().toISOString().slice(0, 10) + '-' + n,\n    subject: subject,\n    grade: grade\n  }\n}];"
+   },
+   "id": "d3333333-3333-3333-3333-333333333333",
+   "name": "Daily Assignment",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    -460,
+    120
+   ]
+  },
+  {
+   "parameters": {
+    "promptType": "define",
+    "text": "={{ $json.chatInput }}",
+    "hasOutputParser": true,
+    "options": {
+     "systemMessage": "คุณคือ Trend Research Agent มีหน้าที่ค้นหาเทรนด์ \"ธีมภาพวาดการ์ตูน / ตัวการ์ตูน / สไตล์ coloring page\" ที่กำลังเป็นที่นิยมและขายดีบน TPT (Teachers Pay Teachers), Etsy, Pinterest สำหรับใบงานเด็ก ตามวิชา/ระดับชั้นที่ผู้ใช้กำหนด เช่น cute robots, ocean animals, space rockets, dinosaurs, seasonal characters ใช้เครื่องมือค้นหาที่มีเพื่อหาข้อมูลจริงก่อนสรุป ห้ามเดาเอง เน้นหาว่าธีมภาพแบบไหนครูอเมริกันกำลังค้นหา/ซื้อเยอะที่สุดตอนนี้\n\nสำคัญมาก: ห้ามถามคำถามกลับผู้ใช้เด็ดขาด เพราะ workflow นี้รันแบบอัตโนมัติไม่มีคนตอบกลับ ถ้าข้อมูลที่ได้รับไม่ครบ ให้ใช้ดุลยพินิจเลือกธีมที่มีโอกาสขายดีที่สุดเองจากการค้นหา แล้วตอบกลับเป็น JSON ตาม schema ที่กำหนดไว้เท่านั้นทุกครั้ง ไม่มีข้อยกเว้น"
+    }
+   },
+   "id": "d5555555-5555-5555-5555-555555555555",
+   "name": "1. Research Agent",
+   "type": "@n8n/n8n-nodes-langchain.agent",
+   "typeVersion": 1.7,
+   "position": [
+    -40,
+    300
+   ]
+  },
+  {
+   "parameters": {
+    "modelName": "models/gemini-2.5-flash",
+    "options": {}
+   },
+   "id": "d6666666-6666-6666-6666-666666666666",
+   "name": "Gemini Model (Research)",
+   "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+   "typeVersion": 1,
+   "position": [
+    -140,
+    540
+   ]
+  },
+  {
+   "parameters": {
+    "sessionIdType": "customKey",
+    "sessionKey": "={{ $json.sessionId || 'manual-run' }}",
+    "contextWindowLength": 10
+   },
+   "id": "d7777777-7777-7777-7777-777777777777",
+   "name": "Memory (Research)",
+   "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+   "typeVersion": 1.3,
+   "position": [
+    -40,
+    540
+   ]
+  },
+  {
+   "parameters": {
+    "toolDescription": "ใช้ค้นหาข้อมูล/เทรนด์จากอินเทอร์เน็ต ส่ง query เป็นคำค้นภาษาอังกฤษหรือไทยก็ได้",
+    "url": "https://api.tavily.com/search",
+    "method": "POST",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={\n  \"api_key\": \"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\",\n  \"query\": \"{{ $fromAI('query', 'คำค้นหาที่ต้องการ', 'string') }}\",\n  \"max_results\": 5\n}"
+   },
+   "id": "d8888888-8888-8888-8888-888888888888",
+   "name": "Web Search Tool (Tavily)",
+   "type": "n8n-nodes-base.httpRequestTool",
+   "typeVersion": 4.2,
+   "position": [
+    80,
+    540
+   ]
+  },
+  {
+   "parameters": {
+    "schemaType": "fromJson",
+    "jsonSchemaExample": "{\n  \"theme_ideas\": [\"string\"],\n  \"trending_keywords\": [\"string\"],\n  \"summary\": \"string\"\n}",
+    "autoFix": true
+   },
+   "id": "d9999999-9999-9999-9999-999999999999",
+   "name": "Output Parser (Research)",
+   "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+   "typeVersion": 1.2,
+   "position": [
+    200,
+    560
+   ]
+  },
+  {
+   "parameters": {
+    "promptType": "define",
+    "text": "={{ $json.output.summary }} \n\nTheme ideas: {{ $json.output.theme_ideas.join(', ') }}\nTrending keywords: {{ $json.output.trending_keywords.join(', ') }}",
+    "hasOutputParser": true,
+    "options": {
+     "systemMessage": "คุณคือ Analysis/Planning Agent รับข้อมูลเทรนด์ธีมภาพวาดที่ Research Agent ส่งมา แล้ววิเคราะห์เลือก 1 ธีมภาพ (art_theme เช่น \"cute ocean animals\", \"friendly robots\") + 1 หัวข้อการสอน (topic) ที่มีโอกาสขายดีที่สุดบน TPT สำหรับวิชา/ระดับที่กำหนด พร้อมกำหนดรูปแบบชุดใบงานแบบภาพวาด (product_format เช่น color-by-number pack, color mixing mystery pack, picture worksheet pack, coloring & activity pack) และ outline รายหน้าคร่าวๆ 4-6 หน้ากิจกรรม โดยทุกหน้าต้องเป็นกิจกรรมที่มีภาพวาดการ์ตูนเป็นแกนหลัก แนะนำให้ทุกชุดมีหน้า 'color mixing mystery character' 1 หน้า (ตัวการ์ตูนน่ารักใหญ่ 1 ตัวแบ่งช่อง ใส่รหัสผสมสีจากเลข 5,4,3,1 เด็กผสมสีในหัวแล้วระบาย — เป็นกิจกรรมขายดี) โดยเลือกตัวละครให้เข้ากับ art_theme\n\nสำคัญมาก: ห้ามถามคำถามกลับเด็ดขาด เพราะ workflow นี้รันแบบอัตโนมัติไม่มีคนตอบกลับ ให้ตัดสินใจเองจากข้อมูลที่ได้รับเสมอ แล้วตอบกลับเป็น JSON ตาม schema เท่านั้น"
+    }
+   },
+   "id": "daaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "name": "2. Analysis Agent",
+   "type": "@n8n/n8n-nodes-langchain.agent",
+   "typeVersion": 1.7,
+   "position": [
+    440,
+    300
+   ]
+  },
+  {
+   "parameters": {
+    "modelName": "models/gemini-2.5-flash",
+    "options": {}
+   },
+   "id": "dbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+   "name": "Gemini Model (Analysis)",
+   "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+   "typeVersion": 1,
+   "position": [
+    380,
+    540
+   ]
+  },
+  {
+   "parameters": {
+    "schemaType": "fromJson",
+    "jsonSchemaExample": "{\n  \"topic\": \"string\",\n  \"art_theme\": \"string\",\n  \"grade_level\": \"string\",\n  \"product_format\": \"string\",\n  \"outline\": [\"string\"]\n}",
+    "autoFix": true
+   },
+   "id": "dccccccc-cccc-cccc-cccc-cccccccccccc",
+   "name": "Output Parser (Analysis)",
+   "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+   "typeVersion": 1.2,
+   "position": [
+    500,
+    560
+   ]
+  },
+  {
+   "parameters": {
+    "promptType": "define",
+    "text": "=สร้างชุดใบงานแบบภาพวาดเต็มรูปแบบตามข้อมูลนี้:\nTopic: {{ $('2. Analysis Agent').first().json.output.topic }}\nArt theme: {{ $('2. Analysis Agent').first().json.output.art_theme }}\nGrade level: {{ $('2. Analysis Agent').first().json.output.grade_level }}\nFormat: {{ $('2. Analysis Agent').first().json.output.product_format }}\nOutline: {{ $('2. Analysis Agent').first().json.output.outline.join(', ') }}{{ $json.qa_notes ? ('\\n\\n===== REVISION REQUIRED (งานรอบก่อนไม่ผ่าน QA แก้ให้ครบทุกข้อ แล้วส่ง JSON ชุดใหม่ทั้งชุด) =====\\n' + $json.qa_notes) : '' }}",
+    "hasOutputParser": false,
+    "options": {
+     "systemMessage": "คุณคือ Content Creation Agent สร้าง \"ชุดใบงานแบบภาพวาด\" (drawing-based worksheet pack) สำหรับขายบน TPT ทุกหน้ากิจกรรมมีภาพวาดการ์ตูนลายเส้นเป็นแกนหลัก โดยภาพจะถูก AI เจนจาก scene_prompt ที่คุณเขียน (ภาพหน้าในเป็นขาวดำล้วนให้เด็กระบายสีได้ — มีสีเฉพาะหน้าปกซึ่งระบบสร้างให้เอง)\n\nตอบเป็น JSON ตาม schema: title, description, tags, tpt_subjects, tpt_tags, mascot_prompt, cover_hint, pages[]\nแต่ละ page ต้องมี: page_title, instructions (คำสั่งสั้นๆ ภาษาอังกฤษสำหรับเด็ก), activity_type, scene_prompt, color_key, items\n\nactivity_type ที่ใช้ได้ (ทุกหน้ากิจกรรมใช้ภาพ AI 1 รูป/หน้าเท่านั้น):\n- color_by_number_scene: ภาพลายเส้นเต็มหน้าที่มี \"โจทย์ฝังอยู่ในส่วนต่างๆ ของภาพ\" (แบบ Multiplication Color by Number) — scene_prompt ต้องบรรยายฉาก/ตัวละครละเอียด และสั่งชัดเจนให้เขียนโจทย์ลงในบริเวณต่างๆ ของภาพ พร้อมระบุรายการโจทย์ทั้งหมดตรงๆ ใน prompt เช่น 'write these math facts inside the sections: \"3+4\", \"5+2\", ...' / **facts** = รายการโจทย์ 4-8 ข้อเป็นสตริงตรงเป๊ะกับที่สั่งเขียนในภาพ เช่น [\"3+4\", \"5+2\"] — คำตอบของทุกข้อต้องมีอยู่ใน color_key, ห้ามซ้ำ, ทุกสีใน key ต้องมีโจทย์คู่อย่างน้อย 1 ข้อ และทุกสตริงต้องปรากฏใน scene_prompt (ระบบใช้ AI ตรวจภาพจริง ถ้าเลขในภาพไม่ตรงจะเจนใหม่) / color_key = 5-8 รายการ {\"answer\": \"12\", \"color\": \"green\"} โดย answer คือคำตอบของโจทย์ และ color เลือกจาก: red, blue, green, yellow, orange, purple, pink, brown เท่านั้น (ระบบวาดแถบ color key ไว้หัวกระดาษให้เอง) / items เว้นว่าง []\n- color_mixing_scene: \"Color Mixing Mystery Character\" — ใบงานผสมสี 1 หน้าเต็ม: บนหัวภาพมีชาร์ตสี 4 ช่อง (5=RED, 4=BLUE, 3=YELLOW, 1=WHITE — จานสีนี้ล็อกตายตัว ระบบจัดการเองทั้งหมด) ใต้ชาร์ตเป็นตัวการ์ตูนน่ารัก 1 ตัวใหญ่เต็มหน้าแบ่งเป็นช่องๆ 25-40 ช่อง แต่ละช่องมีนิพจน์บวกจากเลข 5,4,3,1 (เช่น \"5+4\") เด็กถอดรหัส: 5=แดง 4=น้ำเงิน → แดงผสมน้ำเงิน = ม่วง → ระบายม่วง (+ คือผสมสี ไม่ใช่บวกเลข)\n  * **สิ่งเดียวที่ต้องส่ง: scene_prompt = คำบรรยายตัวการ์ตูนน่ารัก 1 ตัวสั้นๆ ภาษาอังกฤษ ให้เข้ากับ art_theme** เช่น \"a cute baby dragon sitting and smiling\" หรือ \"an adorable baby owl with big eyes\" — ห้ามใส่ตัวเลข/โจทย์/สีใดๆ ใน scene_prompt (ระบบมี template สั่งวาดชาร์ต+แบ่งช่อง+ใส่นิพจน์เองทั้งหมด)\n  * ไม่ต้องส่ง color_key / mix_key / facts สำหรับหน้านี้ — เว้นว่างหรือไม่ใส่มาเลย\n  * instructions ต้องบอกเด็กชัดว่า + คือผสมสี ไม่ใช่บวกเลข เช่น \"The numbers are PAINT COLORS, not amounts! 5+4 means: mix color 5 and color 4 in your head, then color that part with the NEW color you made. Do NOT write the answer.\"\n  * เฉลยใน answer_key ของหน้านี้ = ตารางผสมมาตรฐานเป๊ะๆ: \"5+4=purple, 5+3=orange, 4+3=green, 5+1=pink, 4+1=light blue, 3+1=light yellow, 1+1=white, 5+5=red, 4+4=blue, 3+3=yellow\"\n  * items เว้นว่าง []\n- picture_grid: ภาพเดียวเป็นตาราง 4-6 ช่อง แต่ละช่องเป็นรูปการ์ตูน 1 อย่างพร้อมตัวเลขกำกับช่อง (แบบใบงาน Weather) — scene_prompt ต้องสั่งรูปแบบ 'a worksheet illustration divided into N numbered panels in a grid, panel 1: ..., panel 2: ..., each panel clearly numbered' / **สำคัญ: ในภาพห้ามมีตัวเลข/ข้อความอื่นใดนอกจากเลขกำกับช่อง 1-N** เพราะภาพเจนตัวเลขไม่แม่น — ตัวเลขโจทย์ทั้งหมดต้องอยู่ใน items (ระบบพิมพ์เป็นตัวอักษรจริงใต้ภาพ แม่นยำ 100%) และแต่ละ item ต้องมีข้อมูลครบจบในตัวเอง อ่านแล้วทำได้โดยไม่ต้องพึ่งตัวเลขในภาพ เช่น \"1. Fill in: 5, __, __, 8\" หรือ \"2. This animal is a ________.\"\n- count_and_write: เหมือน picture_grid แต่แต่ละช่องเป็นกลุ่มสิ่งของจำนวนไม่เท่ากันให้เด็กนับ / scene_prompt ต้องระบุจำนวนชิ้นที่แน่นอนต่อช่อง (เช่น 'panel 1: exactly 3 stars, panel 2: exactly 5 stars') ไม่เกิน 8 ชิ้น/ช่อง และเฉลยใน answer_key ต้องตรงตามจำนวนที่สั่ง / items เช่น \"1. How many stars? ______\"\n- board_game: ภาพเกมกระดานเต็มหน้า (แบบ Bug Race) เส้นทางช่องเดินมีตัวเลขเรียงจาก START ถึง FINISH ล้อมรอบด้วยตัวการ์ตูน/ฉากตามธีม — กติกาสั้นๆ ใส่ใน instructions / items เว้นว่าง []\n- coloring_scene: ภาพระบายสีเต็มหน้า ฉากน่ารักเข้ากับธีม/บทเรียน / items เว้นว่าง []\n- answer_key: หน้าเฉลย (บังคับหน้าสุดท้ายเสมอ) ไม่ใช้ภาพ / **items ต้องมี 1 บรรทัดต่อหน้ากิจกรรม ครบทุกหน้า ห้ามขาดแม้แต่หน้าเดียว** ขึ้นต้นแต่ละบรรทัดว่า \"Page N (ชื่อหน้า): ...\" เรียงตั้งแต่ Page 1 ถึงหน้ากิจกรรมสุดท้าย เช่น \"Page 1 (Rocket Launch): 1+2=3 (yellow), ...\" / หน้า color_mixing_scene ให้ใส่ตารางผสมมาตรฐาน: \"Page N (Title): 5+4=purple, 5+3=orange, 4+3=green, 5+1=pink, 4+1=light blue, 3+1=light yellow, 1+1=white, 5+5=red, 4+4=blue, 3+3=yellow\" / หน้า coloring/เกมที่ไม่มีคำตอบตายตัว ให้เขียน \"Page N (Title): open-ended — any coloring is correct.\" / scene_prompt เว้นว่าง \"\"\n\nกติกา:\n1. เนื้อหาที่พิมพ์ทั้งหมด (title, description, instructions, items) เป็นภาษาอังกฤษ 100% เพราะลูกค้า TPT เป็นครูอเมริกัน\n2. สร้าง 8 หน้ารวม answer_key (= หน้ากิจกรรมมีภาพ 7 หน้า) — งบภาพทั้งชุดรวมปก+mascot = 9 รูป (PDF สุดท้ายรวมปกจะได้ 9 หน้า)\n3. scene_prompt เขียนเป็นภาษาอังกฤษ บรรยายละเอียดอย่างน้อย 2-3 ประโยค (ตัวละคร ฉาก องค์ประกอบ การจัดวาง) — ห้ามใส่คำสั่งเรื่องสีเด็ดขาด และไม่ต้องใส่คำว่า black and white line art (ระบบเติมท้ายให้อัตโนมัติทุกภาพ)\n4. หน้า picture_grid / count_and_write: จำนวน items ต้องเท่ากับจำนวนช่องในภาพ (4-8 ข้อ) แต่ละ item ยาวไม่เกิน 90 ตัวอักษร และเรียงเลขตรงกับหมายเลขช่อง\n4.5 **ห้าม items แบบ filler**: ห้ามเขียนโจทย์ประโยคเดิมซ้ำทุกข้อโดยเปลี่ยนแค่เลขข้อ (เช่น \"Color the larger planet in panel 1/2/3/4\") — ทุก item ต้องบรรจุเนื้อหาจริงของข้อนั้น เช่น \"1. 9−2 = __  vs  7−1 = __  → circle the greater answer\" และ instructions ของหน้าต้องตรงกับเนื้อหาที่มีจริง (ห้ามพูดถึงสิ่งที่ไม่ได้อยู่ในหน้า เช่นอ้าง tens and ones ทั้งที่ของมีไม่ถึงสิบ)\n5. คละประเภทกิจกรรมในชุดอย่างน้อย 3 ประเภท เลือกให้เหมาะกับวิชาและระดับชั้น (เด็กเล็กเน้น coloring/counting, เด็กโตเน้น color-by-number โจทย์ยากขึ้น/picture_grid คำถามเนื้อหา)\n6. เลือกธีมภาพตาม art_theme ที่ได้รับมา ใช้ตัวละคร/ฉากธีมเดียวกันทั้งชุดให้ดูเป็นเซ็ตเดียวกัน\n7. ห้ามถามคำถามกลับ ห้ามส่ง object ว่าง {} ต้องกรอกครบทุก field ทุกครั้ง\n8. **ถ้าได้รับข้อความ \"REVISION REQUIRED\" มาในคำสั่ง** แปลว่างานรอบก่อนไม่ผ่าน QA ให้อ่านรายการปัญหาแล้วแก้ให้ครบทุกข้อ แล้วสร้าง JSON ชุดใหม่ทั้งชุดที่แก้แล้ว\n9. cover_hint: บรรยายสั้นๆ (ภาษาอังกฤษ) ฉากหน้าปกที่เข้ากับธีมชุดนี้ / mascot_prompt: ตัวมาสคอตเดี่ยวเรียบง่ายเข้ากับธีม เช่น \"a smiling octopus holding a pencil\" (ห้ามมีตัวอักษรในตัวมาสคอต)\n10. ตอบกลับเป็น JSON ตาม schema เท่านั้น\n\n=== TPT CATEGORY PICKER (สำคัญ) ===\nเลือกหมวดหมู่ TPT ที่ตรงกับชุดนี้มากที่สุด กรอกใน 2 field นี้ (เลือกจากรายการทางการด้านล่างเท่านั้น ห้ามคิดขึ้นเอง):\n\ntpt_subjects (เลือก 1-3 ข้อ ที่ตรงเนื้อหาสุด) — เลือกจาก:\nELA: Reading, Phonics, Writing, Grammar, Vocabulary, Spelling, Balanced Literacy, Literature, Reading Strategies, Short Stories, Poetry, Informational Text, Sight Words, Reading Fluency, Handwriting, Close Reading\nMath: Arithmetic, Basic Operations, Numbers, Fractions, Geometry, Measurement, Algebra, Place Value, Mental Math, Word Problems, Decimals, Money Math, Graphing, Order of Operations, Statistics\nScience: General Science, Physical Science, Earth Sciences, Biology, Chemistry, Astronomy, Environment, Physics, Anatomy\nSocial Studies: World History, U.S. History, Geography, Government, Economics, Ancient History, Civics\nSpecialty: Holidays/Seasonal, Back to School, Halloween, Christmas/ Chanukah/ Kwanzaa, Thanksgiving, Valentine's Day, Classroom Management, Life Skills, Critical Thinking, For All Subjects, Arts & Music, Visual Arts, Occupational Therapy, Special Education, Early Intervention, Speech Therapy, Coloring, Character Education, Fine Motor, Autism, School Counseling, Study Skills\n\ntpt_tags (เลือก 3-6 ข้อ — เน้น Resource Type + Audience ที่เหมาะ) — เลือกจาก:\nResource Type: Worksheets, Activities, Printables, Task Cards, Centers, Games, Assessment, Homework, Lesson Plans, Flash Cards, Interactive Notebooks, Independent Work Packet, Google Apps, Posters, Graphic Organizers, Handouts, Projects, Fun Stuff, Bulletin Board Ideas, Clip Art, Word Walls, Activboard Activities\nAudience/Program: Homeschool, Parents, TPT Sellers, Montessori, Early Intervention\nเลือกให้เหมาะกับรูปแบบสินค้าจริง เช่น ชุดระบายสี/เกมเลือก Fun Stuff/Coloring/Games, ชุดฝึกเลือก Worksheets/Printables\n\n=== OUTPUT FORMAT (สำคัญที่สุด) ===\nตอบกลับเป็น JSON object ดิบเพียงอย่างเดียวตาม skeleton ด้านล่างนี้ ห้ามใส่ ```json ห้ามมี markdown ห้ามมีข้อความอธิบายใดๆ ก่อนหรือหลัง JSON:\n{\n  \"title\": \"string\",\n  \"description\": \"string\",\n  \"tags\": [\n    \"string\"\n  ],\n  \"tpt_subjects\": [\n    \"string\"\n  ],\n  \"tpt_tags\": [\n    \"string\"\n  ],\n  \"mascot_prompt\": \"string\",\n  \"cover_hint\": \"string\",\n  \"pages\": [\n    {\n      \"page_title\": \"string\",\n      \"instructions\": \"string\",\n      \"activity_type\": \"color_by_number_scene\",\n      \"scene_prompt\": \"string\",\n      \"facts\": [\n        \"3+4\"\n      ],\n      \"color_key\": [\n        {\n          \"answer\": \"12\",\n          \"color\": \"green\"\n        }\n      ],\n      \"items\": [\n        \"string\"\n      ]\n    }\n  ]\n}"
+    }
+   },
+   "id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+   "name": "3. Content Creation Agent",
+   "type": "@n8n/n8n-nodes-langchain.agent",
+   "typeVersion": 1.7,
+   "position": [
+    820,
+    300
+   ]
+  },
+  {
+   "parameters": {
+    "modelName": "models/gemini-2.5-flash",
+    "options": {
+     "maxOutputTokens": 8192
+    }
+   },
+   "id": "deeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+   "name": "Gemini Model (Content)",
+   "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+   "typeVersion": 1,
+   "position": [
+    760,
+    540
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "// QA Gate (Drawing Edition) — ตรวจโครงชุดใบงานแบบภาพวาดก่อนเสียเงินเจนภาพ\n// ไม่ผ่าน -> ส่ง qa_notes กลับ Agent 3 แก้ 1 รอบ แล้ว force-pass กัน pipeline ค้าง\nconst MAX_RETRIES = 1;\nconst attempt = (typeof $runIndex !== 'undefined' && $runIndex != null) ? $runIndex : 0;\n\n// parse JSON ดิบจาก agent เอง (ไม่ใช้ Structured Output Parser — เลี่ยงบั๊ก n8n+Gemini function declaration)\nlet data = null;\ntry {\n  let raw = $('3. Content Creation Agent').last().json.output;\n  if (raw && typeof raw === 'object') {\n    data = raw;\n  } else {\n    let s = String(raw || '').trim();\n    s = s.replace(/^```(?:json)?\\s*/i, '').replace(/```\\s*$/, '');\n    const a = s.indexOf('{');\n    const b = s.lastIndexOf('}');\n    if (a >= 0 && b > a) s = s.slice(a, b + 1);\n    data = JSON.parse(s);\n  }\n} catch (e) { data = null; }\n\nconst problems = [];\nconst FULL = ['color_by_number_scene', 'color_mixing_scene', 'board_game', 'coloring_scene'];\nconst GRID = ['picture_grid', 'count_and_write'];\nconst KEYED = ['color_by_number_scene', 'color_mixing_scene'];\n\nif (!data || !data.title || !Array.isArray(data.pages) || data.pages.length === 0) {\n  problems.push('No valid title/pages returned — regenerate the full worksheet JSON.');\n} else {\n  const pages = data.pages;\n  if (pages.length < 7 || pages.length > 8) problems.push('Pack has ' + pages.length + ' pages; make 8 pages total (7 activity pages + the final answer_key).');\n  const lastType = String((pages[pages.length - 1] || {}).activity_type || '').toLowerCase();\n  if (lastType !== 'answer_key') problems.push('The LAST page must be activity_type \"answer_key\".');\n  if (!data.mascot_prompt) problems.push('mascot_prompt is missing.');\n  if (!data.cover_hint) problems.push('cover_hint is missing.');\n\n  let imageJobs = 2; // cover + mascot\n  pages.forEach((p, idx) => {\n    const t = String(p.activity_type || '').toLowerCase();\n    const items = Array.isArray(p.items) ? p.items : [];\n    const label = 'Page ' + (idx + 1) + ' (\"' + (p.page_title || '') + '\", ' + t + ')';\n\n    if (t === 'answer_key') {\n      if (items.length === 0) problems.push(label + ' must list the answers for every page.');\n      // เฉลยต้องครบทุกหน้ากิจกรรม (Page 1 .. Page N-1)\n      for (let pi = 1; pi < pages.length; pi++) {\n        if (!items.some(it => String(it).includes('Page ' + pi))) {\n          problems.push('Answer key is MISSING the answers for Page ' + pi + ' — include one line per activity page, each starting with \"Page ' + pi + ' (title): ...\". Open-ended pages still need a line saying \"open-ended\".');\n        }\n      }\n      return;\n    }\n    if (!FULL.includes(t) && !GRID.includes(t)) problems.push(label + ': unknown activity_type — use only color_by_number_scene, color_mixing_scene, picture_grid, board_game, coloring_scene, count_and_write, answer_key.');\n    if (t !== 'color_mixing_scene' && (!p.scene_prompt || String(p.scene_prompt).length < 40)) problems.push(label + ': scene_prompt is missing or too short — write a detailed English image prompt (2-3 sentences).');\n    imageJobs += 1;\n\n    if (/\\b(colorful|vibrant|red|blue|green|yellow|orange|purple|pink)\\b/i.test(String(p.scene_prompt || '')) && !KEYED.includes(t)) {\n      problems.push(label + ': scene_prompt mentions colors — inside pages must be pure black-and-white line art, remove color words.');\n    }\n    // กันหน้าประเภทอื่นแอบฝังโจทย์ลงภาพ (จะหลุดการตรวจ facts) — และหน้า mixing ใหม่ห้ามมีเลขใน scene_prompt (template ระบบจัดการเลขเอง)\n    if (!KEYED.includes(t) && /\\d\\s*[+xX×*]\\s*\\d/.test(String(p.scene_prompt || '') + ' ' + String(p.instructions || ''))) {\n      problems.push(label + ': this page embeds math facts but is not color_by_number_scene/color_mixing_scene — change the activity_type to one of those or remove the facts.');\n    }\n    if (t === 'color_mixing_scene' && /\\d/.test(String(p.scene_prompt || ''))) {\n      problems.push(label + ': scene_prompt for color_mixing_scene must be ONLY a short character description with no digits — the system template adds the chart and expressions itself.');\n    }\n    if (t === 'color_by_number_scene') {\n      const key = Array.isArray(p.color_key) ? p.color_key : [];\n      if (key.length < 5 || key.length > 8) problems.push(label + ': color_key must have 5-8 entries of {answer, color}.');\n      // facts ต้องมีโครงสร้าง + คำนวณแล้วคำตอบอยู่ใน key จริง + ถูกสั่งฝังใน scene_prompt\n      const facts = Array.isArray(p.facts) ? p.facts : [];\n      if (facts.length < 4 || facts.length > 8) problems.push(label + ': provide 4-8 exact fact strings in the \"facts\" array — the same strings written inside the picture.');\n      if (new Set(facts.map(f => String(f).replace(/\\s+/g, ''))).size !== facts.length) problems.push(label + ': facts contains duplicates — every fact must be unique.');\n      const answers = key.map(k => String(k.answer).trim());\n      // ทุกสีใน key ต้องมีโจทย์อย่างน้อย 1 ข้อที่ให้คำตอบนั้น (กันสีเกินค้างเติ่งแบบ 9=yellow ที่ไม่มีโจทย์)\n      const factVals = facts.map(f => {\n        const m = String(f).replace(/\\s+/g, '').match(/^(\\d+)([+\\-xX×*])(\\d+)$/);\n        if (!m) return null;\n        const a = +m[1], b = +m[3], op = m[2].toLowerCase();\n        return String(op === '+' ? a + b : (op === '-' ? a - b : a * b));\n      });\n      answers.forEach(ans => {\n        if (!factVals.includes(ans)) problems.push(label + ': color_key answer ' + ans + ' has NO fact producing it — every key color must be used by at least one fact (or remove it from the key).');\n      });\n      facts.forEach(f => {\n        const m = String(f).replace(/\\s+/g, '').match(/^(\\d+)([+\\-xX×*])(\\d+)$/);\n        if (!m) { problems.push(label + ': fact \"' + f + '\" must look like \"3+4\", \"9-2\" or \"3x4\".'); return; }\n        const a = +m[1], b = +m[3], op = m[2].toLowerCase();\n        const val = op === '+' ? a + b : (op === '-' ? a - b : a * b);\n        if (!answers.includes(String(val))) problems.push(label + ': fact \"' + f + '\" = ' + val + ' but ' + val + ' is not among the color_key answers (' + answers.join(', ') + ') — every fact answer must exist in the key so kids can color it.');\n        if (!String(p.scene_prompt || '').includes(String(f).trim())) problems.push(label + ': fact \"' + f + '\" is not mentioned in scene_prompt — the prompt must instruct exactly which facts to write in the picture.');\n      });\n    }\n    if (t === 'color_mixing_scene') {\n      // Mystery Character: scene_prompt = คำบรรยายตัวละครล้วนๆ (template ระบบเติมชาร์ต/ช่อง/นิพจน์เอง)\n      const sp = String(p.scene_prompt || '').trim();\n      if (sp.length < 20) problems.push(label + ': scene_prompt must be a short English description of ONE cute character (at least 20 chars), e.g. \"a cute baby dragon sitting and smiling\".');\n      if (items.length > 0) problems.push(label + ': items must be empty for color_mixing_scene.');\n    }\n    if (GRID.includes(t)) {\n      if (items.length < 4 || items.length > 8) problems.push(label + ': grid pages need 4-8 numbered items (one per panel in the picture).');\n      // จับ filler: ทุกข้อเป็นประโยคเดิมเป๊ะ ต่างแค่เลขข้อ และไม่มีข้อมูลโจทย์จริง (ตัวเลข >= 2 กลุ่ม หรือช่องเติม __ ถือว่ามีเนื้อหา)\n      if (items.length >= 3) {\n        const norm = items.map(it => String(it).toLowerCase().replace(/\\d+/g, '#').replace(/\\s+/g, ' ').trim());\n        const hasRealContent = items.every(it => (String(it).match(/\\d+/g) || []).length >= 2 || String(it).includes('__'));\n        if (new Set(norm).size === 1 && !hasRealContent) problems.push(label + ': items are repetitive filler — every item is the same sentence with only the panel number changed and carries no real problem data. Each item must contain the REAL problem content so it can be solved from the text alone, e.g. \"1. Fill in: 5, __, __, 8\" or \"1. 9-2 = __ vs 7-1 = __ — circle the greater answer\".');\n      }\n    }\n    items.forEach(it => { if (String(it).length > 90) problems.push(label + ': an item is ' + String(it).length + ' chars — keep every item under 90 chars.'); });\n  });\n\n  if (imageJobs < 8 || imageJobs > 9) problems.push('Total images would be ' + imageJobs + ' (cover + mascot + 1 per activity page). The target is 9 (i.e. 7 activity pages with one image each).');\n}\n\nlet pass = problems.length === 0;\nlet forced = false;\nif (!pass && attempt >= MAX_RETRIES) { pass = true; forced = true; }\n\nreturn [{ json: {\n  qa_pass: pass,\n  qa_forced: forced,\n  qa_attempt: attempt,\n  qa_notes: problems.length ? ('- ' + problems.join('\\n- ')) : '',\n  content: data\n} }];"
+   },
+   "id": "e1111111-1111-1111-1111-111111111111",
+   "name": "QA Gate",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1060,
+    120
+   ]
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "loose",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "id": "qa-cond-1",
+       "leftValue": "={{ $json.qa_pass }}",
+       "rightValue": "",
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   },
+   "id": "e2222222-2222-2222-2222-222222222222",
+   "name": "QA Pass?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.2,
+   "position": [
+    1240,
+    120
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const data = ($('QA Gate').last().json || {}).content;\nif (!data || !data.title || !Array.isArray(data.pages) || data.pages.length === 0) {\n  throw new Error('Content Agent ไม่ได้ส่ง title/pages ที่ถูกต้อง ข้อมูลที่ได้: ' + JSON.stringify($json).slice(0, 300));\n}\n\n// สไตล์บังคับสำหรับภาพหน้าใน (ขาวดำล้วน) — เติมท้ายทุก prompt อัตโนมัติ\nconst BW_STYLE = '. Black and white line art ONLY, thick bold clean outlines, cute kawaii cartoon style for kids, pure white background, no shading, no gray tones, absolutely no color. The artwork should fill most of the canvas, but keep every important element fully inside the frame with a small safe margin from all four edges — nothing may be cut off at the canvas borders.';\nconst GRID = ['picture_grid', 'count_and_write'];\nconst KEYED = ['color_by_number_scene', 'color_mixing_scene'];\n\nconst jobs = [];\n\n// 1 รูปสี: หน้าปก\njobs.push({\n  job_id: 'cover',\n  prompt: 'Colorful cover art for a children\\'s educational worksheet pack titled \"' + data.title + '\". ' + (data.cover_hint || '') + ' Cute flat vector clipart style for teachers, bright cheerful colors, clean uncluttered composition, artwork filling the whole canvas, and large clear bold title text near the top that reads exactly: ' + data.title + '. Keep the title text and main characters comfortably away from the outer edges of the image.',\n  size: '1024x1536',\n  quality: 'medium'\n});\n\n// mascot ขาวดำ ติดมุมทุกหน้า\njobs.push({\n  job_id: 'mascot',\n  prompt: 'A single cute cartoon mascot for a kids worksheet, one simple character centered, no text or letters anywhere' + BW_STYLE + ' The mascot is: ' + (data.mascot_prompt || 'a happy pencil holding a book'),\n  size: '1024x1024',\n  quality: 'low'\n});\n\n// 1 รูปขาวดำต่อหน้ากิจกรรม — สัดส่วนภาพจับคู่กับพื้นที่จริงบนหน้ากระดาษ\ndata.pages.forEach((p, idx) => {\n  const t = String(p.activity_type || '').toLowerCase();\n  if (t === 'answer_key' || !p.scene_prompt) return;\n\n  // หน้า Color Mixing Mystery: template ตายตัว (ดีไซน์ที่พิสูจน์แล้ว) — AI เติมแค่ตัวละคร\n  if (t === 'color_mixing_scene') {\n    const character = String(p.scene_prompt).trim() || 'a cute baby dragon sitting and smiling';\n    jobs.push({\n      job_id: 'page_' + idx,\n      prompt: 'Create a premium printable educational coloring worksheet page, portrait orientation, plain white background. At the very top: a clean reference chart of exactly four rounded squares in a row with large bold easy-to-read numbers, labeled underneath: a RED square with the number 5 labeled RED, a BLUE square with the number 4 labeled BLUE, a YELLOW square with the number 3 labeled YELLOW, and a WHITE square with a black outline with the number 1 labeled WHITE. These four chart squares are the ONLY colored elements on the page. Below the chart: ONE large adorable ' + character + ' drawn as clean commercial-quality coloring-book line art occupying most of the page — black outlines only, thick bold smooth strokes, no shading, no gray, no gradients, no background scenery, large fully-enclosed coloring regions perfect for crayons. Divide the character into 25-40 large regions and write ONE addition expression centered inside each region in large bold black text. Use ONLY the numbers 5, 4, 3 and 1 in the expressions (for example \"5+4\", \"3+1\", \"1+1\", \"4+4\", \"5+3\", \"4+3\"). Balance the different pairs evenly across the regions, never upside down, no tiny regions, and NO other text anywhere on the page.',\n      size: '1024x1536',\n      quality: 'high',\n      qa_mode: 'mixing'\n    });\n    return;\n  }\n\n  // คุมข้อความในภาพตามประเภท — กันเลขมั่ว/ข้อความหลง\n  let textRule;\n  if (GRID.includes(t)) {\n    textRule = ' The ONLY text allowed in the image is one big panel number label (1, 2, 3, ...) in the corner of each panel — absolutely NO other numbers, letters, words or math facts anywhere in the image.';\n  } else if (t === 'coloring_scene') {\n    textRule = ' Absolutely NO text, numbers or letters anywhere in the image.';\n  } else {\n    textRule = ' Do NOT write any numbers, letters, words or symbols in the image other than the exact facts/labels explicitly requested above.';\n  }\n\n  const expectedFacts = t === 'color_by_number_scene' && Array.isArray(p.facts) ? p.facts : [];\n\n  jobs.push({\n    job_id: 'page_' + idx,\n    prompt: String(p.scene_prompt) + BW_STYLE + textRule,\n    size: GRID.includes(t) ? '1536x1024' : '1024x1024',\n    quality: t === 'color_by_number_scene' ? 'high' : 'medium',\n    expected_facts: expectedFacts,\n    qa_mode: expectedFacts.length ? 'facts' : ''\n  });\n});\n\nreturn jobs.map(j => ({ json: j }));"
+   },
+   "id": "e3333333-3333-3333-3333-333333333333",
+   "name": "Extract Image Jobs",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1440,
+    300
+   ]
+  },
+  {
+   "parameters": {
+    "url": "https://api.openai.com/v1/images/generations",
+    "method": "POST",
+    "sendHeaders": true,
+    "specifyHeaders": "keypair",
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Authorization",
+       "value": "Bearer YOUR_OPENAI_API_KEY"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ model: 'gpt-image-1', prompt: $json.prompt, size: $json.size, quality: $json.quality, output_format: 'jpeg', output_compression: 85 }) }}",
+    "options": {
+     "timeout": 180000
+    }
+   },
+   "id": "e4444444-4444-4444-4444-444444444444",
+   "name": "Gen Image (OpenAI)",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    1620,
+    300
+   ],
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000
+  },
+  {
+   "parameters": {
+    "jsCode": "// จับคู่ผลลัพธ์ภาพกลับเข้า job_id (ลำดับ item ตรงกับ Extract Image Jobs เพราะ HTTP node รันทีละ item)\nconst jobs = $('Extract Image Jobs').all().map(i => i.json);\nconst responses = $input.all().map(i => i.json);\n\nconst images = {};\nlet firstError = '';\njobs.forEach((job, i) => {\n  const r = responses[i] || {};\n  const b64 = (r.data && r.data[0] && r.data[0].b64_json) || '';\n  images[job.job_id] = b64;\n  if (!b64 && !firstError) {\n    // เก็บข้อความ error จริงจาก OpenAI ไว้รายงานในอีเมล (เช่น insufficient_quota = เงินหมด)\n    firstError = (r.error && (r.error.message || r.error.description || r.error.code)) || r.message ||\n      (typeof r === 'string' ? r : JSON.stringify(r).slice(0, 300));\n  }\n});\n\nconst ok = Object.values(images).filter(Boolean).length;\nreturn [{ json: { images: images, attempt: 0, images_ok: ok, images_total: jobs.length, first_error: firstError } }];"
+   },
+   "id": "e5555555-5555-5555-5555-555555555555",
+   "name": "Collect Images",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1800,
+    300
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "// Image QA 2 ชั้น — (1) ภาพครบทุก job ไหม (2) Vision อ่านตัวเลขโจทย์ในภาพจริง เทียบกับที่สั่ง\n// ภาพที่หาย/ตัวเลขเพี้ยน จะถูกส่งไปเจนใหม่ (วนซ้ำ 1 รอบ) — ไม่แบก images map ใน output เพื่อประหยัดแรม\nconst MAX_IMG_RETRIES = 2;\nconst jobs = $('Extract Image Jobs').all().map(i => i.json);\nconst images = $json.images || {};\nconst attempt = Number.isInteger($json.attempt) ? $json.attempt : 0;\n\nconst missing = jobs.filter(j => !images[j.job_id]);\n\n// ---- ชั้น Vision: ตรวจภาพหน้าโจทย์ 2 โหมด ----\n// 'facts'  = CBN: ถอดข้อความ 2 ทาง (โจทย์ที่สั่งครบ + ห้ามมีข้อความเกิน/เพี้ยน)\n// 'mixing' = Mystery Character: ทุกนิพจน์ต้องใช้เลข 5,4,3,1 เท่านั้น + ชาร์ตถูก + ไม่มีข้อความอื่น\nconst norm = s => String(s).toLowerCase().replace(/[×*]/g, 'x').replace(/[^0-9+\\-x=]/g, '');\nconst visionFailed = [];\nfor (const j of jobs) {\n  const mode = j.qa_mode || '';\n  if (!mode) continue;\n  const b64 = images[j.job_id];\n  if (!b64) continue;\n  try {\n    if (mode === 'facts') {\n      const resp = await this.helpers.httpRequest({\n        url: 'https://api.openai.com/v1/chat/completions',\n        method: 'POST',\n        headers: { 'Authorization': 'Bearer YOUR_OPENAI_API_KEY', 'Content-Type': 'application/json' },\n        body: {\n          model: 'gpt-5-mini',\n          messages: [{ role: 'user', content: [\n            { type: 'text', text: 'This is a children\\'s worksheet image. Transcribe EVERY math fact, number expression, or number-plus-text label written inside the picture, exactly as written — INCLUDING garbled, partial or misspelled ones (e.g. \"1+wh\"). Reply ONLY with JSON in this shape: {\"facts\": [\"3+4\", \"5-2\", \"1+wh\"]}. No spaces inside each item.' },\n            { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + b64, detail: 'high' } }\n          ] }],\n          response_format: { type: 'json_object' },\n          max_completion_tokens: 500\n        },\n        json: true,\n        timeout: 90000\n      });\n      const found = ((JSON.parse(resp.choices[0].message.content).facts) || []).map(norm).filter(Boolean);\n      const expectedN = (Array.isArray(j.expected_facts) ? j.expected_facts : []).map(norm);\n      const missFacts = expectedN.filter(f => !found.includes(f));\n      const extras = found.filter(f => !expectedN.includes(f));\n      if (missFacts.length > 0 || extras.length > 0) visionFailed.push(j.job_id);\n    } else if (mode === 'mixing') {\n      const resp = await this.helpers.httpRequest({\n        url: 'https://api.openai.com/v1/chat/completions',\n        method: 'POST',\n        headers: { 'Authorization': 'Bearer YOUR_OPENAI_API_KEY', 'Content-Type': 'application/json' },\n        body: {\n          model: 'gpt-5-mini',\n          messages: [{ role: 'user', content: [\n            { type: 'text', text: 'This worksheet image should have: (a) a top reference chart of four squares — a red square numbered 5 labeled RED, a blue square numbered 4 labeled BLUE, a yellow square numbered 3 labeled YELLOW, a white square numbered 1 labeled WHITE — and (b) ONE large line-art character divided into regions, each region containing one addition expression. Reply ONLY with JSON: {\"expressions\": [\"<every expression written inside the character regions, exactly as written, including garbled ones>\"], \"chart_ok\": <true if the chart is exactly 5=RED red, 4=BLUE blue, 3=YELLOW yellow, 1=WHITE white>, \"other_text\": [\"<any text visible that is NOT the chart numbers/labels and NOT the region expressions>\"]}' },\n            { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + b64, detail: 'high' } }\n          ] }],\n          response_format: { type: 'json_object' },\n          max_completion_tokens: 900\n        },\n        json: true,\n        timeout: 120000\n      });\n      const parsed = JSON.parse(resp.choices[0].message.content);\n      const exprs = (Array.isArray(parsed.expressions) ? parsed.expressions : []).map(norm).filter(Boolean);\n      const other = Array.isArray(parsed.other_text) ? parsed.other_text.filter(s => String(s).trim()) : [];\n      const allValid = exprs.length >= 10 && exprs.every(e => /^[1345]\\+[1345]$/.test(e));\n      if (!allValid || parsed.chart_ok !== true || other.length > 0) visionFailed.push(j.job_id);\n    }\n  } catch (e) { /* vision เรียกไม่สำเร็จ = ไม่บล็อกงาน ปล่อยผ่าน */ }\n}\n\nconst retryIds = new Set(missing.map(j => j.job_id));\nvisionFailed.forEach(id => retryIds.add(id));\nconst toRetry = jobs.filter(j => retryIds.has(j.job_id));\n\nif (toRetry.length === 0 || attempt >= MAX_IMG_RETRIES) {\n  return [{ json: {\n    qa_images_done: true,\n    attempt: attempt,\n    missing_ids: missing.map(j => j.job_id),\n    vision_failed_ids: visionFailed\n  } }];\n}\n\n// ส่ง 1 item ต่อรูปที่ต้องเจนใหม่ (map ไปอ่านที่ Collect Images ตอน merge)\nreturn toRetry.map(j => ({ json: {\n  job_id: j.job_id,\n  prompt: j.prompt,\n  size: j.size,\n  quality: j.quality,\n  qa_images_done: false,\n  attempt: attempt + 1\n} }));"
+   },
+   "id": "f1111111-1111-1111-1111-111111111111",
+   "name": "Image QA",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1900,
+    120
+   ]
+  },
+  {
+   "parameters": {
+    "conditions": {
+     "options": {
+      "caseSensitive": true,
+      "leftValue": "",
+      "typeValidation": "loose",
+      "version": 2
+     },
+     "conditions": [
+      {
+       "id": "imgqa-cond-1",
+       "leftValue": "={{ $json.qa_images_done }}",
+       "rightValue": "",
+       "operator": {
+        "type": "boolean",
+        "operation": "true",
+        "singleValue": true
+       }
+      }
+     ],
+     "combinator": "and"
+    },
+    "options": {}
+   },
+   "id": "f2222222-2222-2222-2222-222222222222",
+   "name": "Images Complete?",
+   "type": "n8n-nodes-base.if",
+   "typeVersion": 2.2,
+   "position": [
+    2060,
+    120
+   ]
+  },
+  {
+   "parameters": {
+    "url": "https://api.openai.com/v1/images/generations",
+    "method": "POST",
+    "sendHeaders": true,
+    "specifyHeaders": "keypair",
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "Authorization",
+       "value": "Bearer YOUR_OPENAI_API_KEY"
+      },
+      {
+       "name": "Content-Type",
+       "value": "application/json"
+      }
+     ]
+    },
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ JSON.stringify({ model: 'gpt-image-1', prompt: $json.prompt, size: $json.size, quality: $json.quality, output_format: 'jpeg', output_compression: 85 }) }}",
+    "options": {
+     "timeout": 180000
+    }
+   },
+   "id": "f3333333-3333-3333-3333-333333333333",
+   "name": "Gen Image Retry",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    2060,
+    -40
+   ],
+   "onError": "continueRegularOutput",
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 5000
+  },
+  {
+   "parameters": {
+    "jsCode": "// รวมภาพที่ยิงซ้ำสำเร็จเข้ากับ map จาก Collect Images แล้ววนกลับไปตรวจอีกรอบ\nconst retriedJobs = $('Image QA').all().map(i => i.json);\nconst responses = $input.all().map(i => i.json);\n\nlet base = {};\ntry { base = $('Collect Images').first().json.images || {}; } catch (e) {}\nconst images = { ...base };\nretriedJobs.forEach((job, i) => {\n  const r = responses[i] || {};\n  const b64 = (r.data && r.data[0] && r.data[0].b64_json) || '';\n  if (b64) images[job.job_id] = b64;\n});\n\nconst attempt = (retriedJobs[0] && retriedJobs[0].attempt) || 1;\nreturn [{ json: { images: images, attempt: attempt } }];"
+   },
+   "id": "f4444444-4444-4444-4444-444444444444",
+   "name": "Merge Retried Images",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1900,
+    -40
+   ]
+  },
+  {
+   "parameters": {
+    "jsCode": "const data = ($('QA Gate').last().json || {}).content;\n// map ภาพสุดท้าย: ถ้ามีการ retry จะอยู่ที่ Merge Retried Images ไม่งั้นอยู่ที่ Collect Images\nlet images = {};\ntry { images = $('Merge Retried Images').first().json.images || {}; } catch (e) {}\nif (!Object.keys(images).length) { try { images = $('Collect Images').first().json.images || {}; } catch (e) {} }\n\nif (!data || !data.title || !Array.isArray(data.pages) || data.pages.length === 0) {\n  throw new Error('Content Agent ไม่ได้ส่ง title/pages ที่ถูกต้อง');\n}\n\nconst esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst blankify = s => esc(s).replace(/_{3,}/g, `<span class='blank'></span>`);\n\nconst CSS_COLORS = { red: '#e53935', blue: '#1e88e5', green: '#43a047', yellow: '#fdd835', orange: '#fb8c00', purple: '#8e24aa', pink: '#f48fb1', brown: '#6d4c41', black: '#212121', gray: '#9e9e9e', grey: '#9e9e9e', white: '#ffffff', lightblue: '#81d4fa', 'light blue': '#81d4fa', lightgreen: '#aed581', 'light green': '#aed581', darkred: '#8e2424', 'dark red': '#8e2424', 'dark blue': '#1a3e8c', darkblue: '#1a3e8c' };\nconst swatch = c => CSS_COLORS[String(c || '').toLowerCase().trim()] || '#cccccc';\n\nconst img = (id, cls) => images[id]\n  ? `<img class='${cls}' src='data:image/jpeg;base64,${images[id]}'/>`\n  : `<div class='img-missing'>(image was not generated)</div>`;\n\nconst mascotImg = images.mascot ? `<img class='mascot' src='data:image/jpeg;base64,${images.mascot}'/>` : '';\nconst coverHtml = images.cover ? `<div class='page cover'><img class='cover-img' src='data:image/jpeg;base64,${images.cover}'/></div>` : '';\n\nconst colorKeyHtml = key => `<div class='key'>` + key.map(k =>\n  `<div class='key-cell'><div class='key-num'>${esc(k.answer)}</div><div class='key-swatch' style='background:${swatch(k.color)}'></div><div class='key-name'>${esc(k.color)}</div></div>`\n).join('') + `</div>`;\n\nconst GRID = ['picture_grid', 'count_and_write'];\nconst KEYED = ['color_by_number_scene', 'color_mixing_scene'];\n\nconst pagesHtml = coverHtml + data.pages.map((p, i) => {\n  const t = String(p.activity_type || '').toLowerCase();\n  const items = Array.isArray(p.items) ? p.items : [];\n  const hasKey = t === 'color_by_number_scene' && Array.isArray(p.color_key) && p.color_key.length > 0;\n\n  let body = '';\n  if (t === 'answer_key') {\n    body = items.map(w => `<div class='info-box'>${blankify(w)}</div>`).join('');\n  } else if (GRID.includes(t)) {\n    // ตัดเลขข้อที่โมเดลใส่มาเองออกก่อน (กัน \"1. 1. ...\" ซ้ำ)\n    const clean = w => String(w).replace(/^\\s*\\d+\\s*[\\.\\)]\\s*/, '');\n    body = `<div class='scene-wrap'>${img('page_' + i, 'scene-grid')}</div>` +\n      `<div class='q-list'>` + items.map((w, qi) => `<div class='q-row'>${qi + 1}. ${blankify(clean(w))}</div>`).join('') + `</div>`;\n  } else {\n    const cls = t === 'color_mixing_scene' ? 'scene-tall' : (hasKey ? 'scene-full with-key' : 'scene-full');\n    body = `<div class='scene-wrap fill'>${img('page_' + i, cls)}</div>`;\n  }\n\n  return `\n<div class='page'>\n  <div class='frame'></div>\n  <div class='meta-row'><span>Name: ____________________</span><span>Date: __________</span></div>\n  <div class='head-row'><h2 class='page-title'>${esc(p.page_title || 'Page ' + (i + 1))}</h2>${mascotImg}</div>\n  ${p.instructions ? `<p class='inst'>✏️ ${esc(p.instructions)}</p>` : ''}\n  ${hasKey ? colorKeyHtml(p.color_key) : ''}\n  <div class='body'>${body}</div>\n  <div class='foot'><div class='footer'>${esc(data.title)} • Page ${i + 1} of ${data.pages.length}</div></div>\n</div>`;\n}).join('');\n\nconst html = `<!DOCTYPE html>\n<html>\n<head>\n<meta charset='utf-8'>\n<link href='https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;800&family=Schoolbell&display=swap' rel='stylesheet'>\n<style>\n  @page { size: Letter; margin: 0; }\n  body { margin: 0; font-family: 'Baloo 2', Arial, sans-serif; color: #222; }\n  .page { width: 8.5in; height: 10.95in; box-sizing: border-box; padding: 0.45in 0.6in 0.85in 0.6in; page-break-after: always; page-break-inside: avoid; position: relative; display: flex; flex-direction: column; overflow: hidden; }\n  .frame { position: absolute; top: 0.22in; left: 0.22in; right: 0.22in; bottom: 0.22in; border: 2px dashed #c9d6f0; border-radius: 16px; pointer-events: none; }\n  .meta-row { display: flex; justify-content: space-between; margin: 4px 2px 2px; font-size: 14px; }\n  .head-row { display: flex; align-items: center; gap: 12px; justify-content: center; }\n  .page-title { text-align: center; font-size: 28px; margin: 6px 0 2px; flex: 1; }\n  .mascot { flex: none; width: 0.85in; height: 0.85in; object-fit: contain; }\n  .inst { background: #f7f7f7; border: 2px dashed #999; border-radius: 10px; padding: 7px 12px; font-size: 15px; margin: 6px 0; }\n  .key { display: flex; gap: 6px; justify-content: center; margin: 5px 0; flex-wrap: nowrap; }\n  .key-cell { border: 2px solid #333; border-radius: 8px; padding: 3px 6px 4px; text-align: center; min-width: 0.58in; }\n  .key-num { font-weight: 800; font-size: 15px; line-height: 1.1; }\n  .key-swatch { height: 10px; border-radius: 5px; margin: 2px 0; border: 1px solid #999; }\n  .key-name { font-size: 9px; }\n  .body { flex: 1 1 auto; display: flex; flex-direction: column; }\n  .scene-wrap { text-align: center; }\n  .scene-wrap.fill { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; }\n  .scene-full, .scene-grid, .scene-tall { border: 3.5px solid #2b2b2b; border-radius: 14px; background: #fff; padding: 6px; box-sizing: border-box; }\n  .scene-full { width: 100%; max-height: 7.2in; object-fit: contain; }\n  .scene-full.with-key { max-height: 6.4in; }\n  .scene-tall { max-width: 100%; max-height: 7.5in; object-fit: contain; display: block; margin: 0 auto; }\n  .scene-grid { width: 100%; max-height: 5.0in; object-fit: contain; }\n  .q-list { margin-top: 10px; }\n  .q-row { font-size: 18px; line-height: 2.15; }\n  .blank { display: inline-block; min-width: 2.0in; border-bottom: 2px solid #444; height: 0.95em; }\n  .info-box { border: 2px solid #444; border-radius: 12px; padding: 9px 14px; margin: 9px 0; font-size: 15px; line-height: 1.5; }\n  .img-missing { border: 3px dashed #cc3333; color: #cc3333; border-radius: 12px; padding: 50px 20px; text-align: center; font-size: 16px; margin: 20px auto; width: 70%; }\n  .foot { position: absolute; bottom: 0.28in; left: 0.6in; right: 0.6in; }\n  .footer { text-align: center; color: #999; font-size: 11px; }\n  .page.cover { padding: 0; }\n  .cover-img { width: 8.5in; height: 11in; object-fit: cover; object-position: center top; display: block; background: #fdf3e3; }\n</style>\n</head>\n<body>${pagesHtml}</body>\n</html>`;\n\nreturn [{ json: { title: data.title, description: data.description, tags: data.tags, html: html } }];"
+   },
+   "id": "e6666666-6666-6666-6666-666666666666",
+   "name": "4. Build HTML",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    1980,
+    300
+   ]
+  },
+  {
+   "parameters": {
+    "url": "https://api.pdfshift.io/v3/convert/pdf",
+    "method": "POST",
+    "sendHeaders": true,
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "={{ { \"source\": $json.html, \"landscape\": false, \"format\": \"Letter\", \"filename\": \"worksheet.pdf\" } }}",
+    "options": {
+     "timeout": 120000
+    },
+    "specifyHeaders": "keypair",
+    "headerParameters": {
+     "parameters": [
+      {
+       "name": "X-API-Key",
+       "value": "sk_cf9b5828d7de5b021ee9b8ee4b3f5738fbaa9938"
+      }
+     ]
+    }
+   },
+   "id": "e7777777-7777-7777-7777-777777777777",
+   "name": "5. HTML to PDF (PDFShift)",
+   "type": "n8n-nodes-base.httpRequest",
+   "typeVersion": 4.2,
+   "position": [
+    2160,
+    300
+   ],
+   "retryOnFail": true,
+   "maxTries": 2,
+   "waitBetweenTries": 5000
+  },
+  {
+   "parameters": {
+    "jsCode": "// ---- 1) ดาวน์โหลด PDF จาก URL ที่ PDFShift ฝากไฟล์ไว้ + แนบปก (binary มีสำเนาเดียวตรงนี้) ----\nconst title0 = $('4. Build HTML').first().json.title || 'worksheet';\nconst safe = title0.replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\\s+/g, '_').slice(0, 70) || 'worksheet';\nconst fname = safe + '.pdf';\n\nconst out = { json: { pdf_file_name: fname, subject_title: title0 }, binary: {} };\nconst pdfUrl = ($('5. HTML to PDF (PDFShift)').first().json || {}).url || '';\nif (pdfUrl) {\n  const pdfBuf = await this.helpers.httpRequest({ url: pdfUrl, method: 'GET', encoding: 'arraybuffer', json: false, timeout: 120000 });\n  out.binary.data = await this.helpers.prepareBinaryData(Buffer.from(pdfBuf), fname, 'application/pdf');\n}\n\n// ---- 2) ภาพปกแนบเมล (fallback: cover -> mascot -> ภาพไหนก็ได้ -> 1x1 กันอีเมลล้ม) ----\nlet images = {};\ntry { images = $('Merge Retried Images').first().json.images || {}; } catch (e) {}\nif (!Object.keys(images).length) { try { images = $('Collect Images').first().json.images || {}; } catch (e) {} }\nlet previewB64 = images.cover || images.mascot || '';\nif (!previewB64) {\n  const k = Object.keys(images).find(key => images[key]);\n  previewB64 = k ? images[k] : '';\n}\nconst coverName = fname.replace(/\\.pdf$/i, '') + '_COVER.jpg';\nconst onePx = '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';\nout.binary.cover = await this.helpers.prepareBinaryData(Buffer.from(previewB64 || onePx, 'base64'), coverName, 'image/jpeg');\n\n// ---- 3) Grade level -> เด็กเล็ก/โต + TPT grade tags ----\nlet grade = '';\ntry { grade = $('2. Analysis Agent').first().json.output.grade_level || ''; } catch (e) {}\nif (!grade) { try { grade = $('Daily Assignment').first().json.grade || ''; } catch (e) {} }\nif (!grade) grade = 'ไม่ระบุ';\n\nconst nums = (grade.match(/\\d+/g) || []).map(Number);\nconst maxGrade = nums.length ? Math.max(...nums) : 0;\nconst lower = grade.toLowerCase();\nconst hasEarly = lower.includes('prek') || lower.includes('pre-k') || lower.includes('kindergarten') || lower.startsWith('k');\n\nlet ageGroup;\nif (maxGrade >= 3) ageGroup = 'เด็กโต (ป.3 ขึ้นไป)';\nelse if (maxGrade > 0 || hasEarly) ageGroup = 'เด็กเล็ก (อนุบาล - ป.2)';\nelse ageGroup = 'ทุกช่วงวัย';\n\nconst map = { 0: 'PreK', 1: '1st', 2: '2nd', 3: '3rd', 4: '4th', 5: '5th', 6: '6th' };\nlet tptGrades = grade;\nif (hasEarly && nums.length) tptGrades = 'PreK, K, ' + nums.map(n => map[n] || (n + 'th')).join(', ');\nelse if (hasEarly) tptGrades = 'PreK, K';\n\nconst title = $('4. Build HTML').first().json.title || '';\nconst desc = $('4. Build HTML').first().json.description || '';\nconst tags = ($('4. Build HTML').first().json.tags || []).join(', ');\n\nlet artTheme = '';\ntry { artTheme = $('2. Analysis Agent').first().json.output.art_theme || ''; } catch (e) {}\n\nout.json.age_group = ageGroup;\nout.json.grade_level = grade;\nout.json.tpt_grades = tptGrades;\n\n// ---- read TPT category recommendations from Content Agent ----\nlet tptSubjects = [], tptTags = [];\ntry {\n  const co = ($('QA Gate').last().json || {}).content || {};\n  tptSubjects = Array.isArray(co.tpt_subjects) ? co.tpt_subjects : [];\n  tptTags = Array.isArray(co.tpt_tags) ? co.tpt_tags : [];\n} catch (e) {}\nconst subjectsLine = tptSubjects.length ? tptSubjects.join(', ') : '(เลือกเองตามวิชา)';\nconst resourceLine = tptTags.length ? tptTags.join(', ') : 'Worksheets, Printables, Activities';\n\n// ---- 3.5) เช็คภาพขาด + ภาพที่ตัวเลขไม่ผ่าน Vision QA ----\nlet missingIds = [], visionIds = [];\ntry {\n  const q = $('Image QA').first().json;\n  missingIds = q.missing_ids || [];\n  visionIds = q.vision_failed_ids || [];\n} catch (e) {}\nconst badPages = missingIds.concat(visionIds).filter(id => String(id).startsWith('page_'));\nout.json.missing_images = missingIds.length;\nout.json.missing_pages = badPages.length;\nlet warnBlock = '';\nif (missingIds.length) {\n  warnBlock += '\\n⚠️ ภาพเจนไม่สำเร็จ ' + missingIds.length + ' รูป (' + missingIds.join(', ') + ')';\n  let fe = '';\n  try { fe = $('Collect Images').first().json.first_error || ''; } catch (e) {}\n  if (fe) {\n    warnBlock += '\\nสาเหตุจาก OpenAI: ' + fe;\n    if (/quota|billing|insufficient/i.test(fe)) warnBlock += '\\n→ เครดิต OpenAI หมด! เติมเงินที่ platform.openai.com → Billing แล้วรันใหม่';\n  }\n}\nif (visionIds.length) warnBlock += '\\n⚠️ Vision QA: ป้ายวงกลม/ข้อความในภาพไม่ผ่านการตรวจ: ' + visionIds.join(', ');\nif (warnBlock) warnBlock += (badPages.length ? '\\n→ มีหน้ากิจกรรมมีปัญหา ควรรันชุดนี้ใหม่/ตรวจก่อนอัปโหลดขาย!\\n' : '\\n→ เฉพาะภาพประกอบ ไม่กระทบหน้ากิจกรรม\\n');\n\n// ---- 4) Build a ready-to-paste TPT listing block ----\nout.json.tpt_kit =\n`====== TPT UPLOAD KIT (คัดลอกวางในฟอร์ม TPT) ======\n${warnBlock}\n\n[TITLE]\n${title}\n\n[DESCRIPTION]\n${desc}\n\n[ART THEME]  ${artTheme}\n[GRADE LEVELS]  ${tptGrades}\n[SUBJECT AREA — เลือกใน TPT]  ${subjectsLine}\n[RESOURCE TYPE / TAGS — เลือกใน TPT]  ${resourceLine}\n[PRICE]  $4.50\n[SEARCH KEYWORDS]  ${tags}\n\n[FILE]  แนบไฟล์ PDF ในอีเมลนี้\n[PREVIEW/COVER]  ใช้ไฟล์ *_COVER.jpg ในอีเมลนี้เป็นภาพปก\n\nเหมาะสำหรับ: ${ageGroup}\n===============================================`;\n\nreturn [out];"
+   },
+   "id": "e9999999-9999-9999-9999-999999999999",
+   "name": "Prep Email",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2520,
+    300
+   ]
+  },
+  {
+   "parameters": {
+    "sendTo": "metasitwute021@gmail.com",
+    "subject": "={{ ($json.missing_pages ? '⚠️ ' : '') + '🎨 TPT Drawing Kit: ' + $json.subject_title + ' (' + $json.age_group + ')' }}",
+    "emailType": "text",
+    "message": "={{ $json.tpt_kit }}",
+    "options": {
+     "attachmentsUi": {
+      "attachmentsBinary": [
+       {
+        "property": "data"
+       },
+       {
+        "property": "cover"
+       }
+      ]
+     }
+    }
+   },
+   "id": "eaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+   "name": "7. Email PDF (Gmail)",
+   "type": "n8n-nodes-base.gmail",
+   "typeVersion": 2.1,
+   "position": [
+    2700,
+    300
+   ],
+   "onError": "continueRegularOutput"
+  },
+  {
+   "parameters": {
+    "jsCode": "const staticData = $getWorkflowStaticData('global');\nconst histObj = (staticData.historyBySubject && typeof staticData.historyBySubject === 'object') ? staticData.historyBySubject : {};\nstaticData.historyBySubject = histObj;\n\n// วิชาปัจจุบัน (รอบอัตโนมัติมาจาก Daily Assignment / เส้นทาง chat จะไม่มี node นี้)\nlet subject = '';\ntry { subject = $('Daily Assignment').first().json.subject || ''; } catch (e) {}\n\nlet topic = '';\nlet theme = '';\ntry {\n  const a = $('2. Analysis Agent').first().json.output;\n  topic = a.topic || '';\n  theme = a.art_theme || '';\n} catch (e) {}\nif (!topic) { try { topic = $('4. Build HTML').first().json.title || ''; } catch (e) {} }\n\nconst key = subject || 'chat';\nconst arr = Array.isArray(histObj[key]) ? histObj[key] : [];\nconst entry = (topic + (theme ? ' [' + theme + ']' : '')).trim();\nif (entry && !arr.includes(entry)) {\n  arr.push(entry);\n}\nhistObj[key] = arr.slice(-40);\n\nreturn [{ json: { subject: key, saved_entry: entry } }];"
+   },
+   "id": "ebbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+   "name": "Save History",
+   "type": "n8n-nodes-base.code",
+   "typeVersion": 2,
+   "position": [
+    2880,
+    300
+   ]
+  }
+ ],
+ "connections": {
+  "When chat message received": {
+   "main": [
+    [
+     {
+      "node": "1. Research Agent",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Schedule Trigger (Daily 6:00)": {
+   "main": [
+    [
+     {
+      "node": "Daily Assignment",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Daily Assignment": {
+   "main": [
+    [
+     {
+      "node": "1. Research Agent",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "1. Research Agent": {
+   "main": [
+    [
+     {
+      "node": "2. Analysis Agent",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "2. Analysis Agent": {
+   "main": [
+    [
+     {
+      "node": "3. Content Creation Agent",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "3. Content Creation Agent": {
+   "main": [
+    [
+     {
+      "node": "QA Gate",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "QA Gate": {
+   "main": [
+    [
+     {
+      "node": "QA Pass?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "QA Pass?": {
+   "main": [
+    [
+     {
+      "node": "Extract Image Jobs",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "3. Content Creation Agent",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Extract Image Jobs": {
+   "main": [
+    [
+     {
+      "node": "Gen Image (OpenAI)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Gen Image (OpenAI)": {
+   "main": [
+    [
+     {
+      "node": "Collect Images",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Collect Images": {
+   "main": [
+    [
+     {
+      "node": "Image QA",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Image QA": {
+   "main": [
+    [
+     {
+      "node": "Images Complete?",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Images Complete?": {
+   "main": [
+    [
+     {
+      "node": "4. Build HTML",
+      "type": "main",
+      "index": 0
+     }
+    ],
+    [
+     {
+      "node": "Gen Image Retry",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Gen Image Retry": {
+   "main": [
+    [
+     {
+      "node": "Merge Retried Images",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Merge Retried Images": {
+   "main": [
+    [
+     {
+      "node": "Image QA",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "4. Build HTML": {
+   "main": [
+    [
+     {
+      "node": "5. HTML to PDF (PDFShift)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "5. HTML to PDF (PDFShift)": {
+   "main": [
+    [
+     {
+      "node": "Prep Email",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Prep Email": {
+   "main": [
+    [
+     {
+      "node": "7. Email PDF (Gmail)",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "7. Email PDF (Gmail)": {
+   "main": [
+    [
+     {
+      "node": "Save History",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Gemini Model (Research)": {
+   "ai_languageModel": [
+    [
+     {
+      "node": "1. Research Agent",
+      "type": "ai_languageModel",
+      "index": 0
+     },
+     {
+      "node": "Output Parser (Research)",
+      "type": "ai_languageModel",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Memory (Research)": {
+   "ai_memory": [
+    [
+     {
+      "node": "1. Research Agent",
+      "type": "ai_memory",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Web Search Tool (Tavily)": {
+   "ai_tool": [
+    [
+     {
+      "node": "1. Research Agent",
+      "type": "ai_tool",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Output Parser (Research)": {
+   "ai_outputParser": [
+    [
+     {
+      "node": "1. Research Agent",
+      "type": "ai_outputParser",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Gemini Model (Analysis)": {
+   "ai_languageModel": [
+    [
+     {
+      "node": "2. Analysis Agent",
+      "type": "ai_languageModel",
+      "index": 0
+     },
+     {
+      "node": "Output Parser (Analysis)",
+      "type": "ai_languageModel",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Output Parser (Analysis)": {
+   "ai_outputParser": [
+    [
+     {
+      "node": "2. Analysis Agent",
+      "type": "ai_outputParser",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Gemini Model (Content)": {
+   "ai_languageModel": [
+    [
+     {
+      "node": "3. Content Creation Agent",
+      "type": "ai_languageModel",
+      "index": 0
+     }
+    ]
+   ]
+  }
+ },
+ "pinData": {},
+ "meta": {
+  "instanceId": "tpt-drawing-pipeline-draft"
+ }
+}
