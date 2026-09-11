@@ -35,6 +35,7 @@
 //|  *** v2.07 : live-ready - Weekend Guard ON, conf OFF, Partial 2R ***|
 //|  *** v2.08 : KRV V19 Momentum Candle Filter (close near extreme) ***|
 //|  *** v2.21 : DAILY SESSION GATE - no entries before 08:00 Thai ***|
+//|  *** v2.22 : weekend holding ALLOWED (InpNoWeekendHold now OFF) ***|
 //|      (daily open ~05:00 TH re-opened the bar and fired the EA on  |
 //|       the previous session's stale bar, straight into the gap)    |
 //|      (drop X% from PEAK equity -> close all + stop; protects gains)|
@@ -59,10 +60,10 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "Metasit XAUUSD Donchian EA - prop-safe build"
-#property version   "2.21"
+#property version   "2.22"
 #property strict
 
-#define EA_VERSION "2.21"
+#define EA_VERSION "2.22"
 
 #include <Trade\Trade.mqh>
 
@@ -184,7 +185,7 @@ input int      InpTradeStartHourTH   = 8;          // ↳ Entries allowed only f
 input int      InpThaiGMTOffset      = 7;          // ↳ Thailand offset from GMT (normally 7)
 
 input group "📅  WEEKEND GUARD"
-input bool     InpNoWeekendHold      = true;       // ✅ Close + block before weekend (avoid Mon gap)
+input bool     InpNoWeekendHold      = false;      // OFF = hold positions through the weekend (ON = close + block Friday late)
 input int      InpWeekendCloseHour   = 20;         // ↳ Friday server hour to close (0-23)
 
 input group "📰  NEWS FILTER"
