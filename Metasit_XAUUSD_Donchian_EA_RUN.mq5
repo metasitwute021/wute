@@ -34,6 +34,9 @@
 //|  *** v2.06 : KRV confidence gate (no scale-up on weak streak) ***  |
 //|  *** v2.07 : live-ready - Weekend Guard ON, conf OFF, Partial 2R ***|
 //|  *** v2.08 : KRV V19 Momentum Candle Filter (close near extreme) ***|
+//|  *** v2.21 : DAILY SESSION GATE - no entries before 08:00 Thai ***|
+//|      (daily open ~05:00 TH re-opened the bar and fired the EA on  |
+//|       the previous session's stale bar, straight into the gap)    |
 //|      (drop X% from PEAK equity -> close all + stop; protects gains)|
 //|                                                                  |
 //|  Strategy summary                                                |
@@ -56,10 +59,10 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "Metasit XAUUSD Donchian EA - prop-safe build"
-#property version   "2.20"
+#property version   "2.21"
 #property strict
 
-#define EA_VERSION "2.20"
+#define EA_VERSION "2.21"
 
 #include <Trade\Trade.mqh>
 
@@ -174,6 +177,11 @@ input double   InpDailyDD_Percent    = 1.5;        // Daily DD -> stop for the d
 input double   InpProfitTargetPercent = 6.0;       // 🎯 +this % profit -> close all + STOP (0 = off)
 input double   InpMaxTotalLossPercent = 3.5;       // 🚨 EMERGENCY BRAKE: -this % -> close all + STOP (0 = off)
 input double   InpPeakDDStopPercent  = 0.0;        // DD LOCK from peak equity (0 = off)
+
+input group "🕗  DAILY SESSION GATE (no market-open entries)"
+input bool     InpBlockMarketOpen    = true;       // ✅ Block new entries around the daily market open
+input int      InpTradeStartHourTH   = 8;          // ↳ Entries allowed only from this hour (Thailand, GMT+7)
+input int      InpThaiGMTOffset      = 7;          // ↳ Thailand offset from GMT (normally 7)
 
 input group "📅  WEEKEND GUARD"
 input bool     InpNoWeekendHold      = true;       // ✅ Close + block before weekend (avoid Mon gap)
@@ -734,6 +742,34 @@ void CheckPeakDDStop()
 }
 
 //==================================================================
+//  DAILY SESSION GATE
+//  The daily market open (roughly 05:00 Thai time) reopens the chart
+//  with a fresh entry-TF bar, so the EA would fire instantly on the
+//  LAST closed bar of the previous session - a stale signal, priced
+//  through the open gap. Blocking every entry until InpTradeStartHourTH
+//  Thailand time kills that case on Monday and on every other day.
+//  Only NEW ENTRIES are blocked; trailing / BE / partial keep running,
+//  so an open trade is still managed through the open.
+//==================================================================
+int ThaiHourNow()
+{
+   datetime gmt = TimeGMT();
+   if(gmt <= 0) gmt = TimeCurrent();          // fallback if GMT is unavailable
+   MqlDateTime dt;
+   TimeToStruct((datetime)((long)gmt + (long)InpThaiGMTOffset * 3600), dt);
+   return dt.hour;
+}
+
+// True while new entries are blocked by the daily session gate.
+bool IsBeforeSessionStart()
+{
+   if(!InpBlockMarketOpen) return false;
+   int h = InpTradeStartHourTH;
+   if(h <= 0 || h > 23) return false;         // 0 or out of range = gate off
+   return (ThaiHourNow() < h);
+}
+
+//==================================================================
 //  Trading gate
 //==================================================================
 bool TradingAllowed()
@@ -745,6 +781,7 @@ bool TradingAllowed()
    if(gDailyStopped) return false;
    if(gInNews)       return false;
    if(IsWeekendBlockTime()) return false;   // WEEKEND GUARD: no new entries Friday-late
+   if(IsBeforeSessionStart()) return false;  // SESSION GATE: no entries before start hour
    if(CountMyPositions() >= InpMaxPositions) return false;
    if(!MQLInfoInteger(MQL_TRADE_ALLOWED)) return false;
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED)) return false;
@@ -797,6 +834,7 @@ void SendSignalStatus()
    string block = "";
    if(gCooldownBarsLeft > 0)                        block += "cooldown ";
    if(IsWeekendBlockTime())                         block += "weekend ";
+   if(IsBeforeSessionStart())                        block += "premarket ";
    if(gInNews)                                      block += "news ";
    if(CountMyPositions() >= InpMaxPositions)        block += "maxpos ";
    bool pathOpen = (block == "");
