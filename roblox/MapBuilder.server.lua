@@ -12,8 +12,10 @@
 	  🌊 ทะเลล้อมรอบเกาะ
 
 	ระบบเกม:
-	  - มอนสเตอร์ 3 ชนิด: สไลม์ (ป่า), โครงกระดูก (ซากปรักหักพัง), โกเลม (ภูเขา)
-	  - ดาบให้ทุกคน, ฆ่ามอนสเตอร์ได้เหรียญ, ซื้อดาบทองคำที่ร้านอาวุธ
+	  - มอนสเตอร์ 5 ชนิด มีท่าเดิน/ท่าโจมตี: สไลม์ + หมาป่า (ป่า),
+	    โครงกระดูก + วิญญาณ (ซากปรักหักพัง), โกเลมหิน (ภูเขา)
+	  - อาวุธ 5 แบบ: ดาบเหล็ก (ฟรี), ขวานนักรบ, ดาบทองคำ, ค้อนยักษ์, เคียวยมทูต
+	  - ฆ่ามอนสเตอร์ได้เหรียญ เอาไปซื้ออาวุธที่ร้านอาวุธ
 	  - หีบสมบัติ 3 จุด, โรงพยาบาลฟื้นเลือด
 	  - เลือกอาชีพ (ทีม) ที่ลานกลางเมือง
 	  - กลางวัน/กลางคืน ไฟถนนเปิดเองตอนกลางคืน
@@ -44,6 +46,7 @@ local Lighting = game:GetService("Lighting")
 local RunService = game:GetService("RunService")
 local Teams = game:GetService("Teams")
 local Debris = game:GetService("Debris")
+local TweenService = game:GetService("TweenService")
 
 local terrain = workspace.Terrain
 local rng = Random.new(CONFIG.Seed)
@@ -129,9 +132,9 @@ local function model(name, parent)
 	return m
 end
 
-local function billboardText(adornee, text, color, offsetY)
+local function billboardText(adornee, text, color, offsetY, width)
 	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromScale(14, 3)
+	gui.Size = UDim2.fromScale(width or 14, 3)
 	gui.StudsOffset = Vector3.new(0, offsetY or 5, 0)
 	gui.MaxDistance = 180
 	gui.Adornee = adornee
@@ -234,6 +237,167 @@ end
 
 local function groundPos(x, z, extraY)
 	return Vector3.new(x, heightAt(x, z) + (extraY or 0), z)
+end
+
+-------------------------------------------------------------------------------
+-- ⚔️ อาวุธ: รูปร่างและค่าพลัง
+--   ทุกชิ้นส่วนวางในพื้นที่ของด้ามจับ (Handle): แกน +Z = ปลายอาวุธ, แกน -X = ด้านหน้า
+-------------------------------------------------------------------------------
+local STEEL = Color3.fromRGB(200, 205, 215)
+local DARK_STEEL = Color3.fromRGB(85, 90, 100)
+local LEATHER = Color3.fromRGB(90, 55, 35)
+local WOOD = Color3.fromRGB(120, 80, 45)
+local GOLD = Color3.fromRGB(255, 200, 40)
+
+local function at(x, y, z, ry)
+	return CFrame.new(x, y, z) * CFrame.Angles(0, math.rad(ry or 0), 0)
+end
+
+local function swordParts(bladeColor, bladeMat, fullerColor, gemColor)
+	return {
+		{ name = "Handle", size = Vector3.new(0.35, 0.35, 1.6), cf = at(0, 0, 0), color = LEATHER, mat = MAT.Fabric },
+		{ name = "Pommel", shape = Enum.PartType.Ball, size = Vector3.new(0.6, 0.6, 0.6), cf = at(0, 0, -1), color = DARK_STEEL, mat = MAT.Metal },
+		{ name = "Guard", size = Vector3.new(2, 0.4, 0.35), cf = at(0, 0, 0.95), color = DARK_STEEL, mat = MAT.Metal },
+		{ name = "Gem", shape = Enum.PartType.Ball, size = Vector3.new(0.5, 0.5, 0.5), cf = at(0, 0, 0.95), color = gemColor, mat = MAT.Neon, light = gemColor },
+		{ name = "Blade", size = Vector3.new(0.7, 0.15, 4.2), cf = at(0, 0, 3.2), color = bladeColor, mat = bladeMat, trail = { -1.8, 2.1 } },
+		{ name = "Fuller", size = Vector3.new(0.15, 0.2, 3.4), cf = at(0, 0, 3), color = fullerColor, mat = MAT.Neon },
+		{ name = "Tip", size = Vector3.new(0.4, 0.15, 0.5), cf = at(0, 0, 5.5), color = bladeColor, mat = bladeMat },
+	}
+end
+
+local function axeParts()
+	return {
+		{ name = "Handle", size = Vector3.new(0.4, 0.4, 1.6), cf = at(0, 0, 0), color = LEATHER, mat = MAT.Fabric },
+		{ name = "Shaft", size = Vector3.new(0.4, 0.4, 3.2), cf = at(0, 0, 2.4), color = WOOD, mat = MAT.Wood },
+		{ name = "Band1", size = Vector3.new(0.5, 0.5, 0.25), cf = at(0, 0, 0.9), color = DARK_STEEL, mat = MAT.Metal },
+		{ name = "Band2", size = Vector3.new(0.5, 0.5, 0.25), cf = at(0, 0, 3), color = DARK_STEEL, mat = MAT.Metal },
+		{ name = "AxeHead", size = Vector3.new(0.9, 0.5, 1.2), cf = at(0, 0, 3.6), color = DARK_STEEL, mat = MAT.Metal },
+		{ name = "AxeBlade", size = Vector3.new(1.8, 0.2, 1.8), cf = at(-1.3, 0, 3.6), color = STEEL, mat = MAT.Metal },
+		{ name = "AxeEdge", size = Vector3.new(0.3, 0.25, 2.6), cf = at(-2.3, 0, 3.6), color = Color3.fromRGB(235, 240, 245), mat = MAT.Metal, trail = { -1.2, 1.2 } },
+		{ name = "BackSpike", size = Vector3.new(0.9, 0.2, 0.5), cf = at(0.85, 0, 3.6), color = DARK_STEEL, mat = MAT.Metal },
+		{ name = "Cap", size = Vector3.new(0.5, 0.5, 0.4), cf = at(0, 0, 4.4), color = DARK_STEEL, mat = MAT.Metal },
+	}
+end
+
+local function hammerParts()
+	local rune = Color3.fromRGB(80, 220, 255)
+	return {
+		{ name = "Handle", size = Vector3.new(0.45, 0.45, 1.6), cf = at(0, 0, 0), color = LEATHER, mat = MAT.Fabric },
+		{ name = "Pommel", size = Vector3.new(0.7, 0.7, 0.5), cf = at(0, 0, -1.05), color = DARK_STEEL, mat = MAT.Metal },
+		{ name = "Shaft", size = Vector3.new(0.45, 0.45, 3.8), cf = at(0, 0, 2.7), color = Color3.fromRGB(70, 50, 35), mat = MAT.Wood },
+		{ name = "HammerHead", size = Vector3.new(3.2, 1.8, 1.8), cf = at(0, 0, 5.4), color = DARK_STEEL, mat = MAT.Metal, trail = { -1.6, 1.6, "X" } },
+		{ name = "FaceFront", size = Vector3.new(0.3, 2, 2), cf = at(-1.75, 0, 5.4), color = GOLD, mat = MAT.Foil },
+		{ name = "FaceBack", size = Vector3.new(0.3, 2, 2), cf = at(1.75, 0, 5.4), color = GOLD, mat = MAT.Foil },
+		{ name = "RuneFront", size = Vector3.new(0.1, 0.8, 0.8), cf = at(-1.95, 0, 5.4), color = rune, mat = MAT.Neon, light = rune },
+		{ name = "RuneBack", size = Vector3.new(0.1, 0.8, 0.8), cf = at(1.95, 0, 5.4), color = rune, mat = MAT.Neon },
+		{ name = "TopSpike", size = Vector3.new(0.5, 0.5, 0.8), cf = at(0, 0, 6.7), color = DARK_STEEL, mat = MAT.Metal },
+	}
+end
+
+local function scytheParts()
+	local purple = Color3.fromRGB(170, 70, 255)
+	local list = {
+		{ name = "Handle", size = Vector3.new(0.35, 0.35, 1.6), cf = at(0, 0, 0), color = Color3.fromRGB(30, 25, 35), mat = MAT.Fabric },
+		{ name = "Shaft", size = Vector3.new(0.35, 0.35, 5.6), cf = at(0, 0, 3.6), color = Color3.fromRGB(60, 40, 70), mat = MAT.Wood },
+		{ name = "Wrap1", size = Vector3.new(0.42, 0.42, 0.15), cf = at(0, 0, 1.2), color = purple, mat = MAT.Neon },
+		{ name = "Wrap2", size = Vector3.new(0.42, 0.42, 0.15), cf = at(0, 0, 5.8), color = purple, mat = MAT.Neon },
+		{ name = "Skull", shape = Enum.PartType.Ball, size = Vector3.new(0.9, 0.9, 0.9), cf = at(0, 0, 6.8), color = Color3.fromRGB(230, 225, 210), mat = MAT.SmoothPlastic, light = purple },
+		{ name = "BladeMount", size = Vector3.new(0.6, 0.3, 0.6), cf = at(-0.3, 0, 6.3), color = DARK_STEEL, mat = MAT.Metal },
+	}
+	-- ใบเคียวโค้งลง ต่อกันเป็นช่วง ๆ
+	local x, z = -0.5, 6.3
+	for i, seg in ipairs({ { 2.2, 0.75, 0 }, { 1.9, 0.65, 18 }, { 1.6, 0.5, 38 }, { 1.0, 0.35, 60 } }) do
+		local len, width, deg = seg[1], seg[2], seg[3]
+		local a = math.rad(deg)
+		local dx, dz = -math.cos(a), -math.sin(a)
+		local cx, cz = x + dx * len / 2, z + dz * len / 2
+		local segCf = CFrame.new(cx, 0, cz) * CFrame.Angles(0, -a, 0)
+		table.insert(list, { name = "Blade" .. i, size = Vector3.new(len + 0.1, 0.12, width), cf = segCf, color = Color3.fromRGB(60, 60, 72), mat = MAT.Metal, trail = (i == 2) and { -0.9, 0.9, "X" } or nil })
+		table.insert(list, { name = "Edge" .. i, size = Vector3.new(len + 0.1, 0.14, 0.12), cf = segCf * CFrame.new(0, 0, -width / 2), color = purple, mat = MAT.Neon })
+		x, z = x + dx * len, z + dz * len
+	end
+	return list
+end
+
+-- damage = ดาเมจ, range = ระยะ, cooldown = หน่วงระหว่างฟัน, arc = มุมด้านหน้า (-1 = รอบตัว)
+local WEAPONS = {
+	Iron = {
+		name = "ดาบเหล็ก", damage = 25, range = 8, cooldown = 0.45, arc = 0.1, knockback = 15,
+		color = STEEL, trailColor = Color3.fromRGB(220, 230, 255), anim = "Slash",
+		parts = swordParts(STEEL, MAT.Metal, DARK_STEEL, Color3.fromRGB(230, 50, 50)),
+	},
+	Axe = {
+		name = "ขวานนักรบ", price = 60, damage = 40, range = 8, cooldown = 0.7, arc = 0.2, knockback = 35,
+		color = Color3.fromRGB(190, 120, 70), trailColor = Color3.fromRGB(255, 240, 220), anim = "Slash",
+		parts = axeParts(),
+	},
+	Gold = {
+		name = "ดาบทองคำ", price = 100, damage = 45, range = 9, cooldown = 0.4, arc = 0.1, knockback = 20,
+		color = GOLD, trailColor = Color3.fromRGB(255, 220, 90), anim = "Slash",
+		parts = swordParts(GOLD, MAT.Foil, Color3.fromRGB(255, 240, 150), Color3.fromRGB(60, 160, 255)),
+	},
+	Hammer = {
+		name = "ค้อนยักษ์", price = 150, damage = 70, cooldown = 1.3, knockback = 90,
+		aoe = { forward = 5, radius = 10 }, shockwave = true,
+		color = Color3.fromRGB(80, 220, 255), trailColor = Color3.fromRGB(120, 230, 255), anim = "Lunge",
+		parts = hammerParts(),
+	},
+	Scythe = {
+		name = "เคียวยมทูต", price = 250, damage = 50, range = 13, cooldown = 0.8, arc = -1, knockback = 25, lifesteal = 0.2,
+		color = Color3.fromRGB(170, 70, 255), trailColor = Color3.fromRGB(190, 110, 255), anim = "Slash",
+		parts = scytheParts(),
+	},
+}
+local SHOP_WEAPONS = { "Axe", "Gold", "Hammer", "Scythe" } -- เรียงตามราคา
+
+-- สร้างชิ้นส่วนอาวุธ: anchored = true สำหรับโชว์บนเคาน์เตอร์, false สำหรับถือจริง (เชื่อมด้วย Weld)
+local function buildWeaponParts(id, parent, baseCf, anchored)
+	local def = WEAPONS[id]
+	local handle
+	for _, s in ipairs(def.parts) do
+		local p = Instance.new("Part")
+		p.Name = s.name
+		if s.shape then
+			p.Shape = s.shape
+		end
+		p.Size = s.size
+		p.Color = s.color
+		p.Material = s.mat
+		p.TopSurface = Enum.SurfaceType.Smooth
+		p.BottomSurface = Enum.SurfaceType.Smooth
+		p.CanCollide = false
+		p.Massless = true
+		p.Anchored = anchored
+		p.CFrame = baseCf * s.cf
+		if s.name == "Handle" then
+			handle = p
+		elseif not anchored then
+			local weld = Instance.new("Weld")
+			weld.Part0 = handle
+			weld.Part1 = p
+			weld.C0 = s.cf
+			weld.Parent = p
+		end
+		if s.light then
+			pointLight(p, s.light, 8, 1)
+		end
+		if s.trail and not anchored then
+			local a0, a1 = Instance.new("Attachment"), Instance.new("Attachment")
+			local axisX = s.trail[3] == "X"
+			a0.Position = axisX and Vector3.new(s.trail[1], 0, 0) or Vector3.new(0, 0, s.trail[1])
+			a1.Position = axisX and Vector3.new(s.trail[2], 0, 0) or Vector3.new(0, 0, s.trail[2])
+			a0.Parent, a1.Parent = p, p
+			local trail = Instance.new("Trail")
+			trail.Attachment0, trail.Attachment1 = a0, a1
+			trail.Color = ColorSequence.new(def.trailColor)
+			trail.Transparency = NumberSequence.new(0.35, 1)
+			trail.Lifetime = 0.18
+			trail.LightEmission = 0.6
+			trail.Parent = p
+		end
+		p.Parent = parent
+	end
+	return handle
 end
 
 -------------------------------------------------------------------------------
@@ -721,9 +885,15 @@ local function buildTown()
 				end
 				local house, cf = buildHouse(town, Vector3.new(p.X, Y, p.Z), dir * dist, info)
 				if info and info.id == "Weapons" then
-					local pad = part({ Name = "BuyGoldSword", Size = Vector3.new(4, 0.4, 4), CFrame = cf * CFrame.new(0, 1.2, 0), Color = Color3.fromRGB(255, 200, 40), Material = MAT.Neon, Parent = house })
-					pad:SetAttribute("BuySword", "Gold")
-					billboardText(pad, "⚔️ ดาบทองคำ 100 เหรียญ", Color3.fromRGB(255, 220, 90), 4)
+					-- แท่นซื้ออาวุธ 4 แบบ + ตัวอย่างอาวุธตั้งโชว์บนเคาน์เตอร์
+					for i, id in ipairs(SHOP_WEAPONS) do
+						local wdef = WEAPONS[id]
+						local x = -6 + (i - 1) * 4
+						local pad = part({ Name = "Buy_" .. id, Size = Vector3.new(3.4, 0.4, 3.4), CFrame = cf * CFrame.new(x, 1.2, -1), Color = wdef.color, Material = MAT.Neon, Parent = house })
+						pad:SetAttribute("BuyWeapon", id)
+						billboardText(pad, wdef.name .. "\n💰 " .. wdef.price, wdef.color, (i % 2 == 1) and 3 or 5.5, 6)
+						buildWeaponParts(id, house, cf * CFrame.new(x, 5.2, 4) * CFrame.Angles(math.rad(-90), 0, 0), true)
+					end
 				elseif info and info.id == "Hospital" then
 					local pad = part({ Name = "HealPad", Size = Vector3.new(6, 0.4, 6), CFrame = cf * CFrame.new(0, 1.2, 0), Color = Color3.fromRGB(90, 230, 120), Material = MAT.Neon, Parent = house })
 					pad:SetAttribute("Heal", true)
@@ -1003,9 +1173,10 @@ local function buildRuins()
 	billboardText(cursed, "💀 ซากปรักหักพัง", Color3.fromRGB(210, 170, 255), 6)
 	buildChest(ruins, center + Vector3.new(2, 2, 2), 50, "หีบสุสาน")
 
-	for i = 1, 6 do
-		local a = i / 6 * math.pi * 2
-		table.insert(monsterSpawns, { kind = "Skeleton", pos = center + Vector3.new(math.cos(a) * 20, 0, math.sin(a) * 20) })
+	for i = 1, 8 do
+		local a = i / 8 * math.pi * 2
+		local kind = (i % 3 == 0) and "Ghost" or "Skeleton"
+		table.insert(monsterSpawns, { kind = kind, pos = center + Vector3.new(math.cos(a) * 20, 0, math.sin(a) * 20) })
 	end
 end
 
@@ -1235,10 +1406,10 @@ local function buildNature()
 			crystal(forest, p)
 		end
 	end
-	for _ = 1, 10 do
+	for i = 1, 12 do
 		local p = forestSpot(30, 60)
 		if p then
-			table.insert(monsterSpawns, { kind = "Slime", pos = p })
+			table.insert(monsterSpawns, { kind = (i % 2 == 0) and "Wolf" or "Slime", pos = p })
 		end
 	end
 
@@ -1256,60 +1427,230 @@ local function buildNature()
 end
 
 -------------------------------------------------------------------------------
--- 10) ⚔️ ระบบเกม (ทำงานตอนกด Play เท่านั้น)
+-- 10) 👾 มอนสเตอร์: รูปร่าง + ท่าเดิน
+--   แต่ละชิ้นส่วนต่อกับชิ้นแม่ด้วยข้อต่อ (Motor6D) ที่จุด joint
+--   ตำแหน่งทั้งหมดวัดจากกึ่งกลางตัว (HumanoidRootPart), ด้านหน้า = -Z
 -------------------------------------------------------------------------------
-local SWORDS = {
-	Iron = { name = "ดาบเหล็ก", damage = 25, color = Color3.fromRGB(200, 200, 210) },
-	Gold = { name = "ดาบทองคำ", damage = 45, color = Color3.fromRGB(255, 200, 40), price = 100 },
-}
+local Ball = Enum.PartType.Ball
+local Cyl = Enum.PartType.Cylinder
+local sin = math.sin
 
 local MONSTER_TYPES = {
 	Slime = {
 		displayName = "สไลม์",
-		hp = 40, damage = 8, speed = 10, coins = 5, reach = 3, aggro = 45, hip = 0.2, respawn = 15,
-		color = Color3.fromRGB(90, 220, 90), material = MAT.Glass,
+		hp = 40, damage = 8, speed = 10, coins = 5, reach = 3, aggro = 45, hip = 0.3, respawn = 15,
+		root = Vector3.new(4, 3.2, 4), stepRate = 7,
 		parts = {
-			{ name = "HumanoidRootPart", size = Vector3.new(4, 3, 4), transparency = 0.25 },
-			{ name = "Head", size = Vector3.new(1, 1, 1), offset = Vector3.new(0, 1.2, 0), transparency = 1 },
-			{ name = "EyeL", size = Vector3.new(0.5, 0.8, 0.2), offset = Vector3.new(-0.7, 0.4, -2.05), color = Color3.new(0, 0, 0), material = MAT.SmoothPlastic },
-			{ name = "EyeR", size = Vector3.new(0.5, 0.8, 0.2), offset = Vector3.new(0.7, 0.4, -2.05), color = Color3.new(0, 0, 0), material = MAT.SmoothPlastic },
+			{ name = "Body", shape = Ball, size = 4.2, pos = Vector3.new(0, 0.3, 0), joint = Vector3.new(0, -1.6, 0), color = Color3.fromRGB(90, 220, 90), mat = MAT.Glass, transparency = 0.25 },
+			{ name = "Core", parent = "Body", shape = Ball, size = 1.5, pos = Vector3.new(0, 0.1, 0.3), color = Color3.fromRGB(40, 150, 50), mat = MAT.Neon, transparency = 0.2 },
+			{ name = "Shine", parent = "Body", shape = Ball, size = 0.8, pos = Vector3.new(-1, 1.5, -1.1), color = Color3.new(1, 1, 1), mat = MAT.SmoothPlastic, transparency = 0.3 },
+			{ name = "EyeL", parent = "Body", shape = Ball, size = 1, pos = Vector3.new(-0.75, 0.8, -1.7), color = Color3.new(1, 1, 1), mat = MAT.SmoothPlastic },
+			{ name = "EyeR", parent = "Body", shape = Ball, size = 1, pos = Vector3.new(0.75, 0.8, -1.7), color = Color3.new(1, 1, 1), mat = MAT.SmoothPlastic },
+			{ name = "PupilL", parent = "Body", shape = Ball, size = 0.5, pos = Vector3.new(-0.75, 0.8, -2.15), color = Color3.new(0, 0, 0), mat = MAT.SmoothPlastic },
+			{ name = "PupilR", parent = "Body", shape = Ball, size = 0.5, pos = Vector3.new(0.75, 0.8, -2.15), color = Color3.new(0, 0, 0), mat = MAT.SmoothPlastic },
+			{ name = "Mouth", parent = "Body", size = Vector3.new(1.1, 0.2, 0.2), pos = Vector3.new(0, -0.1, -2.05), color = Color3.fromRGB(20, 60, 20), mat = MAT.SmoothPlastic },
+			{ name = "LeafStem", parent = "Body", size = Vector3.new(0.2, 0.8, 0.2), pos = Vector3.new(0, 2.7, 0), color = Color3.fromRGB(90, 60, 30), mat = MAT.Wood },
+			{ name = "Leaf", parent = "LeafStem", size = Vector3.new(1.2, 0.15, 0.7), pos = Vector3.new(0.5, 3.05, 0), rot = CFrame.Angles(0, 0, math.rad(25)), color = Color3.fromRGB(60, 170, 60), mat = MAT.Grass },
+			{ name = "Head", size = Vector3.new(0.5, 0.5, 0.5), pos = Vector3.new(0, 1.8, 0), transparency = 1 },
 		},
+		animate = function(pose, phase, walk, atk, now)
+			local hop = math.abs(sin(phase)) * walk
+			pose("Body", CFrame.new(0, hop * 1.4 + sin(now * 3) * 0.08, 0) * CFrame.Angles(-atk * 0.5, 0, sin(phase) * 0.1 * walk))
+			pose("Leaf", CFrame.Angles(0, 0, sin(now * 4) * 0.2))
+		end,
 	},
+
+	Wolf = {
+		displayName = "หมาป่า",
+		hp = 60, damage = 10, speed = 18, coins = 8, reach = 4, aggro = 55, hip = 2.2, respawn = 18,
+		root = Vector3.new(3, 2.4, 6), stepRate = 11,
+		color = Color3.fromRGB(95, 90, 95), mat = MAT.Fabric,
+		parts = {
+			{ name = "Body", size = Vector3.new(2.6, 2.3, 5.4), pos = Vector3.zero },
+			{ name = "Mane", parent = "Body", size = Vector3.new(3, 2.7, 1.8), pos = Vector3.new(0, 0.15, -2), color = Color3.fromRGB(150, 145, 150) },
+			{ name = "Head", parent = "Body", size = Vector3.new(2.1, 1.9, 2.1), pos = Vector3.new(0, 1, -3.6), joint = Vector3.new(0, 0.6, -2.8) },
+			{ name = "Snout", parent = "Head", size = Vector3.new(1.1, 0.9, 1.6), pos = Vector3.new(0, 0.6, -5.2) },
+			{ name = "Nose", parent = "Head", size = Vector3.new(0.5, 0.4, 0.3), pos = Vector3.new(0, 1, -6), color = Color3.new(0, 0, 0), mat = MAT.SmoothPlastic },
+			{ name = "Fangs", parent = "Head", size = Vector3.new(0.8, 0.3, 0.15), pos = Vector3.new(0, 0.1, -5.9), color = Color3.new(1, 1, 1), mat = MAT.SmoothPlastic },
+			{ name = "EarL", parent = "Head", size = Vector3.new(0.5, 1, 0.3), pos = Vector3.new(-0.65, 2.35, -3.4), rot = CFrame.Angles(0, 0, math.rad(-12)) },
+			{ name = "EarR", parent = "Head", size = Vector3.new(0.5, 1, 0.3), pos = Vector3.new(0.65, 2.35, -3.4), rot = CFrame.Angles(0, 0, math.rad(12)) },
+			{ name = "EyeL", parent = "Head", size = Vector3.new(0.35, 0.25, 0.1), pos = Vector3.new(-0.55, 1.4, -4.7), color = Color3.fromRGB(255, 60, 40), mat = MAT.Neon },
+			{ name = "EyeR", parent = "Head", size = Vector3.new(0.35, 0.25, 0.1), pos = Vector3.new(0.55, 1.4, -4.7), color = Color3.fromRGB(255, 60, 40), mat = MAT.Neon },
+			{ name = "LegFL", parent = "Body", size = Vector3.new(0.7, 2.4, 0.7), pos = Vector3.new(-0.85, -2.2, -1.9), joint = Vector3.new(-0.85, -1, -1.9) },
+			{ name = "LegFR", parent = "Body", size = Vector3.new(0.7, 2.4, 0.7), pos = Vector3.new(0.85, -2.2, -1.9), joint = Vector3.new(0.85, -1, -1.9) },
+			{ name = "LegBL", parent = "Body", size = Vector3.new(0.75, 2.4, 0.75), pos = Vector3.new(-0.85, -2.2, 2), joint = Vector3.new(-0.85, -1, 2) },
+			{ name = "LegBR", parent = "Body", size = Vector3.new(0.75, 2.4, 0.75), pos = Vector3.new(0.85, -2.2, 2), joint = Vector3.new(0.85, -1, 2) },
+			{ name = "Tail", parent = "Body", size = Vector3.new(0.55, 0.55, 2.6), pos = Vector3.new(0, 1, 3.7), rot = CFrame.Angles(math.rad(30), 0, 0), joint = Vector3.new(0, 0.6, 2.7), color = Color3.fromRGB(150, 145, 150) },
+		},
+		animate = function(pose, phase, walk, atk, now)
+			local s = sin(phase) * 0.7 * walk
+			pose("LegFL", CFrame.Angles(s, 0, 0))
+			pose("LegBR", CFrame.Angles(s, 0, 0))
+			pose("LegFR", CFrame.Angles(-s, 0, 0))
+			pose("LegBL", CFrame.Angles(-s, 0, 0))
+			pose("Body", CFrame.new(0, math.abs(sin(phase)) * 0.25 * walk, 0))
+			pose("Head", CFrame.new(0, 0, -atk * 0.8) * CFrame.Angles(-atk * 0.6 + sin(phase * 2) * 0.06 * walk, 0, 0))
+			pose("Tail", CFrame.Angles(0, sin(now * 8) * 0.5, 0))
+		end,
+	},
+
 	Skeleton = {
 		displayName = "โครงกระดูก",
-		hp = 80, damage = 12, speed = 14, coins = 12, reach = 4, aggro = 60, hip = 2.4, respawn = 20,
-		color = Color3.fromRGB(230, 225, 210), material = MAT.SmoothPlastic,
+		hp = 80, damage = 12, speed = 13, coins = 12, reach = 4, aggro = 60, hip = 2.6, respawn = 20,
+		root = Vector3.new(2, 2.6, 1.2), stepRate = 8,
+		color = Color3.fromRGB(230, 225, 210), mat = MAT.SmoothPlastic,
 		parts = {
-			{ name = "HumanoidRootPart", size = Vector3.new(2, 2.5, 1) },
-			{ name = "Head", size = Vector3.new(1.5, 1.5, 1.5), offset = Vector3.new(0, 2.05, 0) },
-			{ name = "EyeL", size = Vector3.new(0.3, 0.3, 0.1), offset = Vector3.new(-0.35, 2.15, -0.78), color = Color3.fromRGB(255, 40, 40), material = MAT.Neon },
-			{ name = "EyeR", size = Vector3.new(0.3, 0.3, 0.1), offset = Vector3.new(0.35, 2.15, -0.78), color = Color3.fromRGB(255, 40, 40), material = MAT.Neon },
-			{ name = "ArmL", size = Vector3.new(0.6, 2.3, 0.6), offset = Vector3.new(-1.35, -0.05, 0) },
-			{ name = "ArmR", size = Vector3.new(0.6, 2.3, 0.6), offset = Vector3.new(1.35, -0.05, 0) },
-			{ name = "LegL", size = Vector3.new(0.7, 2.4, 0.7), offset = Vector3.new(-0.5, -2.45, 0) },
-			{ name = "LegR", size = Vector3.new(0.7, 2.4, 0.7), offset = Vector3.new(0.5, -2.45, 0) },
-			{ name = "RustySword", size = Vector3.new(0.3, 0.3, 3), offset = Vector3.new(1.35, -1.2, -1.4), color = Color3.fromRGB(120, 110, 100), material = MAT.CorrodedMetal },
+			{ name = "Pelvis", size = Vector3.new(1.8, 0.5, 0.8), pos = Vector3.new(0, -1.1, 0) },
+			{ name = "Spine", size = Vector3.new(0.4, 2.4, 0.4), pos = Vector3.new(0, 0.1, 0.2), joint = Vector3.new(0, -1, 0.2) },
+			{ name = "Rib1", parent = "Spine", size = Vector3.new(2, 0.25, 1), pos = Vector3.new(0, 0.9, 0) },
+			{ name = "Rib2", parent = "Spine", size = Vector3.new(1.9, 0.25, 0.95), pos = Vector3.new(0, 0.4, 0) },
+			{ name = "Rib3", parent = "Spine", size = Vector3.new(1.7, 0.25, 0.9), pos = Vector3.new(0, -0.1, 0) },
+			{ name = "Cape", parent = "Spine", size = Vector3.new(1.9, 2.6, 0.1), pos = Vector3.new(0, -0.2, 0.75), color = Color3.fromRGB(80, 30, 100), mat = MAT.Fabric, transparency = 0.1 },
+			{ name = "Head", parent = "Spine", size = Vector3.new(1.4, 1.4, 1.5), pos = Vector3.new(0, 2.05, 0), joint = Vector3.new(0, 1.3, 0) },
+			{ name = "Jaw", parent = "Head", size = Vector3.new(1.2, 0.35, 1.2), pos = Vector3.new(0, 1.2, -0.1), joint = Vector3.new(0, 1.4, 0.5) },
+			{ name = "SocketL", parent = "Head", size = Vector3.new(0.4, 0.4, 0.1), pos = Vector3.new(-0.32, 2.2, -0.76), color = Color3.new(0, 0, 0) },
+			{ name = "SocketR", parent = "Head", size = Vector3.new(0.4, 0.4, 0.1), pos = Vector3.new(0.32, 2.2, -0.76), color = Color3.new(0, 0, 0) },
+			{ name = "EyeL", parent = "Head", size = Vector3.new(0.18, 0.18, 0.1), pos = Vector3.new(-0.32, 2.2, -0.8), color = Color3.fromRGB(255, 40, 40), mat = MAT.Neon },
+			{ name = "EyeR", parent = "Head", size = Vector3.new(0.18, 0.18, 0.1), pos = Vector3.new(0.32, 2.2, -0.8), color = Color3.fromRGB(255, 40, 40), mat = MAT.Neon },
+			{ name = "Helmet", parent = "Head", size = Vector3.new(1.6, 0.5, 1.7), pos = Vector3.new(0, 2.8, 0), color = Color3.fromRGB(110, 100, 90), mat = MAT.CorrodedMetal },
+			{ name = "ArmL", parent = "Spine", size = Vector3.new(0.45, 2.4, 0.45), pos = Vector3.new(-1.3, 0.1, 0), joint = Vector3.new(-1.3, 1.2, 0) },
+			{ name = "ArmR", parent = "Spine", size = Vector3.new(0.45, 2.4, 0.45), pos = Vector3.new(1.3, 0.1, 0), joint = Vector3.new(1.3, 1.2, 0) },
+			{ name = "Shield", parent = "ArmL", size = Vector3.new(0.3, 2.2, 2), pos = Vector3.new(-1.65, -0.2, -0.3), color = Color3.fromRGB(100, 70, 45), mat = MAT.WoodPlanks },
+			{ name = "ShieldBoss", parent = "ArmL", shape = Ball, size = 0.6, pos = Vector3.new(-1.8, -0.2, -0.3), color = Color3.fromRGB(110, 100, 90), mat = MAT.CorrodedMetal },
+			{ name = "SwordGuard", parent = "ArmR", size = Vector3.new(0.3, 0.3, 1), pos = Vector3.new(1.3, -1.1, -0.3), color = Color3.fromRGB(90, 80, 70), mat = MAT.CorrodedMetal },
+			{ name = "SwordBlade", parent = "ArmR", size = Vector3.new(0.15, 0.4, 3.2), pos = Vector3.new(1.3, -1.1, -2.2), color = Color3.fromRGB(130, 120, 110), mat = MAT.CorrodedMetal },
+			{ name = "LegL", parent = "Pelvis", size = Vector3.new(0.5, 2.6, 0.5), pos = Vector3.new(-0.45, -2.6, 0), joint = Vector3.new(-0.45, -1.3, 0) },
+			{ name = "LegR", parent = "Pelvis", size = Vector3.new(0.5, 2.6, 0.5), pos = Vector3.new(0.45, -2.6, 0), joint = Vector3.new(0.45, -1.3, 0) },
 		},
+		animate = function(pose, phase, walk, atk, now)
+			local s = sin(phase) * 0.7 * walk
+			pose("LegL", CFrame.Angles(s, 0, 0))
+			pose("LegR", CFrame.Angles(-s, 0, 0))
+			pose("ArmL", CFrame.Angles(-s * 0.6 + 0.3, 0, 0))
+			pose("ArmR", CFrame.Angles(s * 0.6 + atk * 2, 0, 0))
+			pose("Spine", CFrame.Angles(0, sin(phase) * 0.1 * walk, 0))
+			pose("Jaw", CFrame.Angles(math.max(0, sin(now * 10)) * 0.3, 0, 0))
+		end,
 	},
+
+	Ghost = {
+		displayName = "วิญญาณ",
+		hp = 55, damage = 10, speed = 12, coins = 10, reach = 4, aggro = 50, hip = 3, respawn = 20,
+		root = Vector3.new(2.4, 3, 2.4), stepRate = 3,
+		color = Color3.fromRGB(225, 235, 255), mat = MAT.Glass,
+		parts = {
+			{ name = "Head", shape = Ball, size = 3.2, pos = Vector3.new(0, 0.4, 0), transparency = 0.35, light = Color3.fromRGB(170, 200, 255) },
+			{ name = "Tail1", parent = "Head", shape = Cyl, size = Vector3.new(1.2, 2.6, 2.6), pos = Vector3.new(0, -1.4, 0), rot = CFrame.Angles(0, 0, math.rad(90)), joint = Vector3.new(0, -0.8, 0), transparency = 0.4 },
+			{ name = "Tail2", parent = "Tail1", shape = Cyl, size = Vector3.new(1.2, 1.8, 1.8), pos = Vector3.new(0, -2.4, 0.2), rot = CFrame.Angles(0, 0, math.rad(90)), joint = Vector3.new(0, -1.9, 0), transparency = 0.5 },
+			{ name = "Tail3", parent = "Tail2", shape = Ball, size = 1, pos = Vector3.new(0, -3.3, 0.5), joint = Vector3.new(0, -2.9, 0.2), transparency = 0.6 },
+			{ name = "EyeL", parent = "Head", shape = Ball, size = 0.6, pos = Vector3.new(-0.55, 0.9, -1.35), color = Color3.new(0, 0, 0), mat = MAT.SmoothPlastic },
+			{ name = "EyeR", parent = "Head", shape = Ball, size = 0.6, pos = Vector3.new(0.55, 0.9, -1.35), color = Color3.new(0, 0, 0), mat = MAT.SmoothPlastic },
+			{ name = "Mouth", parent = "Head", size = Vector3.new(0.6, 0.8, 0.1), pos = Vector3.new(0, -0.1, -1.55), color = Color3.new(0, 0, 0), mat = MAT.SmoothPlastic },
+			{ name = "ArmL", parent = "Head", size = Vector3.new(0.5, 1.6, 0.5), pos = Vector3.new(-1.75, -0.2, -0.3), joint = Vector3.new(-1.4, 0.6, 0), transparency = 0.4 },
+			{ name = "ArmR", parent = "Head", size = Vector3.new(0.5, 1.6, 0.5), pos = Vector3.new(1.75, -0.2, -0.3), joint = Vector3.new(1.4, 0.6, 0), transparency = 0.4 },
+		},
+		animate = function(pose, phase, walk, atk, now)
+			pose("Head", CFrame.new(0, sin(now * 2) * 0.5, 0) * CFrame.Angles(-atk * 0.4 + walk * 0.15, 0, 0))
+			pose("Tail1", CFrame.Angles(sin(now * 3) * 0.15, 0, sin(now * 2) * 0.1))
+			pose("Tail2", CFrame.Angles(sin(now * 3 + 1) * 0.25, 0, 0))
+			pose("Tail3", CFrame.Angles(sin(now * 3 + 2) * 0.35, 0, 0))
+			pose("ArmL", CFrame.Angles(0.4 + atk * 1.4 + sin(now * 3) * 0.3, 0, 0))
+			pose("ArmR", CFrame.Angles(0.4 + atk * 1.4 + sin(now * 3 + 1.5) * 0.3, 0, 0))
+		end,
+	},
+
 	Golem = {
 		displayName = "โกเลมหิน",
 		hp = 250, damage = 25, speed = 9, coins = 40, reach = 5, aggro = 70, hip = 3, respawn = 40,
-		color = Color3.fromRGB(110, 110, 115), material = MAT.Rock,
+		root = Vector3.new(6, 6, 4), stepRate = 5,
+		color = Color3.fromRGB(110, 110, 115), mat = MAT.Rock,
 		parts = {
-			{ name = "HumanoidRootPart", size = Vector3.new(6, 6, 4) },
-			{ name = "Head", size = Vector3.new(3, 3, 3), offset = Vector3.new(0, 4.5, 0) },
-			{ name = "EyeL", size = Vector3.new(0.6, 0.4, 0.2), offset = Vector3.new(-0.7, 4.8, -1.55), color = Color3.fromRGB(80, 230, 255), material = MAT.Neon },
-			{ name = "EyeR", size = Vector3.new(0.6, 0.4, 0.2), offset = Vector3.new(0.7, 4.8, -1.55), color = Color3.fromRGB(80, 230, 255), material = MAT.Neon },
-			{ name = "Core", size = Vector3.new(1.5, 1.5, 0.4), offset = Vector3.new(0, 0.5, -2.1), color = Color3.fromRGB(80, 230, 255), material = MAT.Neon },
-			{ name = "ArmL", size = Vector3.new(2, 6, 2), offset = Vector3.new(-4.1, -0.5, 0) },
-			{ name = "ArmR", size = Vector3.new(2, 6, 2), offset = Vector3.new(4.1, -0.5, 0) },
-			{ name = "LegL", size = Vector3.new(2.2, 3, 2.2), offset = Vector3.new(-1.6, -4.5, 0) },
-			{ name = "LegR", size = Vector3.new(2.2, 3, 2.2), offset = Vector3.new(1.6, -4.5, 0) },
+			{ name = "Torso", size = Vector3.new(6, 6, 4), pos = Vector3.zero, joint = Vector3.new(0, -3, 0) },
+			{ name = "Core", parent = "Torso", size = Vector3.new(1.6, 1.6, 0.4), pos = Vector3.new(0, 0.5, -2.1), color = Color3.fromRGB(80, 230, 255), mat = MAT.Neon, light = Color3.fromRGB(80, 230, 255) },
+			{ name = "Crack1", parent = "Torso", size = Vector3.new(0.2, 3, 0.1), pos = Vector3.new(1.6, -0.6, -2.05), rot = CFrame.Angles(0, 0, math.rad(20)), color = Color3.fromRGB(80, 230, 255), mat = MAT.Neon },
+			{ name = "Crack2", parent = "Torso", size = Vector3.new(0.2, 2.2, 0.1), pos = Vector3.new(-1.8, 1.4, -2.05), rot = CFrame.Angles(0, 0, math.rad(-30)), color = Color3.fromRGB(80, 230, 255), mat = MAT.Neon },
+			{ name = "ShoulderL", parent = "Torso", size = Vector3.new(3, 2, 3), pos = Vector3.new(-3.4, 3, 0), rot = CFrame.Angles(0.3, 0.4, 0.2), color = Color3.fromRGB(95, 95, 100) },
+			{ name = "ShoulderR", parent = "Torso", size = Vector3.new(3, 2, 3), pos = Vector3.new(3.4, 3, 0), rot = CFrame.Angles(-0.2, -0.3, -0.2), color = Color3.fromRGB(95, 95, 100) },
+			{ name = "MossL", parent = "ShoulderL", size = Vector3.new(2.2, 0.4, 1.8), pos = Vector3.new(-3.4, 4.1, 0), color = Color3.fromRGB(70, 130, 60), mat = MAT.Grass },
+			{ name = "MossTop", parent = "Torso", size = Vector3.new(3.5, 0.4, 2.5), pos = Vector3.new(0.5, 3.1, 0.3), color = Color3.fromRGB(70, 130, 60), mat = MAT.Grass },
+			{ name = "Crystal1", parent = "Torso", size = Vector3.new(0.8, 3, 0.8), pos = Vector3.new(-1, 3.8, 1.5), rot = CFrame.Angles(0.4, 0, 0.3), color = Color3.fromRGB(120, 230, 255), mat = MAT.Neon, transparency = 0.1 },
+			{ name = "Crystal2", parent = "Torso", size = Vector3.new(0.7, 2.4, 0.7), pos = Vector3.new(1, 3.6, 1.6), rot = CFrame.Angles(0.5, 0, -0.4), color = Color3.fromRGB(120, 230, 255), mat = MAT.Neon, transparency = 0.1 },
+			{ name = "Head", parent = "Torso", size = Vector3.new(3, 2.6, 3), pos = Vector3.new(0, 4.3, -0.4), joint = Vector3.new(0, 3, -0.4) },
+			{ name = "Brow", parent = "Head", size = Vector3.new(3.2, 0.6, 0.8), pos = Vector3.new(0, 5, -1.6), color = Color3.fromRGB(90, 90, 95) },
+			{ name = "EyeL", parent = "Head", size = Vector3.new(0.7, 0.35, 0.2), pos = Vector3.new(-0.7, 4.5, -1.95), color = Color3.fromRGB(80, 230, 255), mat = MAT.Neon },
+			{ name = "EyeR", parent = "Head", size = Vector3.new(0.7, 0.35, 0.2), pos = Vector3.new(0.7, 4.5, -1.95), color = Color3.fromRGB(80, 230, 255), mat = MAT.Neon },
+			{ name = "ArmL", parent = "Torso", size = Vector3.new(2.2, 4, 2.2), pos = Vector3.new(-4.3, 0.6, 0), joint = Vector3.new(-4.1, 2.6, 0) },
+			{ name = "FistL", parent = "ArmL", size = Vector3.new(2.8, 2.4, 2.8), pos = Vector3.new(-4.3, -2.4, -0.2), color = Color3.fromRGB(95, 95, 100) },
+			{ name = "ArmR", parent = "Torso", size = Vector3.new(2.2, 4, 2.2), pos = Vector3.new(4.3, 0.6, 0), joint = Vector3.new(4.1, 2.6, 0) },
+			{ name = "FistR", parent = "ArmR", size = Vector3.new(2.8, 2.4, 2.8), pos = Vector3.new(4.3, -2.4, -0.2), color = Color3.fromRGB(95, 95, 100) },
+			{ name = "LegL", parent = "Torso", size = Vector3.new(2.4, 3, 2.4), pos = Vector3.new(-1.6, -4.5, 0), joint = Vector3.new(-1.6, -3, 0) },
+			{ name = "LegR", parent = "Torso", size = Vector3.new(2.4, 3, 2.4), pos = Vector3.new(1.6, -4.5, 0), joint = Vector3.new(1.6, -3, 0) },
 		},
+		animate = function(pose, phase, walk, atk, now)
+			local s = sin(phase) * 0.45 * walk
+			pose("LegL", CFrame.Angles(s, 0, 0))
+			pose("LegR", CFrame.Angles(-s, 0, 0))
+			pose("ArmL", CFrame.Angles(-s * 0.8 + atk * 1.7, 0, 0))
+			pose("ArmR", CFrame.Angles(s * 0.8 + atk * 1.7, 0, 0))
+			pose("Torso", CFrame.new(0, math.abs(sin(phase)) * 0.3 * walk, 0) * CFrame.Angles(atk * 0.2, 0, sin(phase) * 0.06 * walk))
+			pose("Head", CFrame.Angles(0, sin(now * 0.7) * 0.3, 0))
+		end,
 	},
 }
 
 local LEASH = 120 -- มอนสเตอร์ไม่ไล่ผู้เล่นไกลจากบ้านเกินนี้
+local ANIM_DISTANCE = 180 -- ขยับท่าเฉพาะตัวที่มีผู้เล่นอยู่ใกล้ (ประหยัดเน็ต)
+local liveMonsters = {} -- [model] = { root, hum, def, motors, walk, phase, attackAt }
+
+-- ประกอบร่างมอนสเตอร์จากรายการชิ้นส่วน
+local function buildMonsterRig(def, baseCf)
+	local m = Instance.new("Model")
+	m.Name = def.displayName
+
+	local root = Instance.new("Part")
+	root.Name = "HumanoidRootPart"
+	root.Size = def.root
+	root.Transparency = 1
+	root.CFrame = baseCf
+	root.Parent = m
+
+	local parts, motors = { Root = root }, {}
+	for _, spec in ipairs(def.parts) do
+		local p = Instance.new("Part")
+		p.Name = spec.name
+		if spec.shape then
+			p.Shape = spec.shape
+		end
+		p.Size = (type(spec.size) == "number") and Vector3.one * spec.size or spec.size
+		p.Color = spec.color or def.color
+		p.Material = spec.mat or def.mat
+		p.Transparency = spec.transparency or 0
+		p.TopSurface = Enum.SurfaceType.Smooth
+		p.BottomSurface = Enum.SurfaceType.Smooth
+		p.CanCollide = false
+		p.Massless = true
+		p.CFrame = baseCf * CFrame.new(spec.pos) * (spec.rot or CFrame.identity)
+
+		local parent = parts[spec.parent or "Root"]
+		local jointCf = baseCf * CFrame.new(spec.joint or spec.pos)
+		local motor = Instance.new("Motor6D")
+		motor.Name = spec.name
+		motor.Part0 = parent
+		motor.Part1 = p
+		motor.C0 = parent.CFrame:Inverse() * jointCf
+		motor.C1 = p.CFrame:Inverse() * jointCf
+		motor.Parent = parent
+		motors[spec.name] = { motor = motor, c0 = motor.C0 }
+
+		if spec.light then
+			pointLight(p, spec.light, 14, 1.2)
+		end
+		parts[spec.name] = p
+		p.Parent = m
+	end
+	m.PrimaryPart = root
+	return m, root, motors
+end
 
 local function getStat(player, name)
 	local ls = player:FindFirstChild("leaderstats")
@@ -1326,37 +1667,9 @@ end
 
 local function spawnMonster(kind, home)
 	local def = MONSTER_TYPES[kind]
-	local rootSpec = def.parts[1]
-	local m = Instance.new("Model")
-	m.Name = def.displayName
-
-	local baseCf = CFrame.new(home + Vector3.new(0, def.hip + rootSpec.size.Y / 2 + 1, 0))
+	local baseCf = CFrame.new(home + Vector3.new(0, def.hip + def.root.Y / 2 + 1, 0))
 		* CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0)
-	local root
-	for i, spec in ipairs(def.parts) do
-		local p = Instance.new("Part")
-		p.Name = spec.name
-		p.Size = spec.size
-		p.CFrame = baseCf * CFrame.new(spec.offset or Vector3.zero)
-		p.Color = spec.color or def.color
-		p.Material = spec.material or def.material
-		p.Transparency = spec.transparency or 0
-		p.TopSurface = Enum.SurfaceType.Smooth
-		p.BottomSurface = Enum.SurfaceType.Smooth
-		p.Anchored = false
-		if i == 1 then
-			root = p
-		else
-			p.CanCollide = false
-			p.Massless = true
-			local weld = Instance.new("WeldConstraint")
-			weld.Part0 = root
-			weld.Part1 = p
-			weld.Parent = p
-		end
-		p.Parent = m
-	end
-	m.PrimaryPart = root
+	local m, root, motors = buildMonsterRig(def, baseCf)
 
 	local hum = Instance.new("Humanoid")
 	hum.RigType = Enum.HumanoidRigType.R15
@@ -1372,7 +1685,11 @@ local function spawnMonster(kind, home)
 	m.Parent = monstersFolder
 	root:SetNetworkOwner(nil)
 
+	local state = { root = root, hum = hum, def = def, motors = motors, walk = 0, phase = rng:NextNumber(0, 6), attackAt = -10 }
+	liveMonsters[m] = state
+
 	hum.Died:Connect(function()
+		liveMonsters[m] = nil
 		local tag = hum:FindFirstChild("creator")
 		local killer = tag and tag.Value
 		if killer and killer:IsA("Player") and killer.Parent then
@@ -1384,9 +1701,14 @@ local function spawnMonster(kind, home)
 				kills.Value += 1
 			end
 		end
+		-- ล้มคว่ำแล้วจางหาย
+		local fall = motors[def.parts[1].name]
+		if fall then
+			fall.motor.C0 = fall.c0 * CFrame.Angles(math.rad(-80), 0, 0)
+		end
 		for _, p in ipairs(m:GetDescendants()) do
-			if p:IsA("BasePart") then
-				p.Transparency = math.max(p.Transparency, 0.6)
+			if p:IsA("BasePart") and p ~= root then
+				TweenService:Create(p, TweenInfo.new(1.5), { Transparency = 1 }):Play()
 			end
 		end
 		task.delay(2, function()
@@ -1417,8 +1739,9 @@ local function spawnMonster(kind, home)
 			end
 			if targetRoot then
 				hum:MoveTo(targetRoot.Position)
-				if best <= def.reach + rootSpec.size.X / 2 and os.clock() - lastHit > 1 then
+				if best <= def.reach + def.root.X / 2 and os.clock() - lastHit > 1.1 then
 					lastHit = os.clock()
+					state.attackAt = os.clock() -- เล่นท่าโจมตี
 					targetHum:TakeDamage(def.damage)
 				end
 			elseif os.clock() > nextWander then
@@ -1430,25 +1753,91 @@ local function spawnMonster(kind, home)
 	end)
 end
 
-local function makeSword(player, swordId)
-	local def = SWORDS[swordId]
+-- ลูปอนิเมชั่น: ขยับข้อต่อตามความเร็วที่เดิน ประมาณ 15 ครั้งต่อวินาที
+local function startMonsterAnimation()
+	local acc = 0
+	RunService.Heartbeat:Connect(function(dt)
+		acc += dt
+		if acc < 1 / 15 then
+			return
+		end
+		local step = acc
+		acc = 0
+		local now = os.clock()
+
+		local playerPositions = {}
+		for _, pl in ipairs(Players:GetPlayers()) do
+			local r = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+			if r then
+				table.insert(playerPositions, r.Position)
+			end
+		end
+
+		for m, st in pairs(liveMonsters) do
+			if not m.Parent then
+				liveMonsters[m] = nil
+				continue
+			end
+			local near = false
+			for _, pos in ipairs(playerPositions) do
+				if (pos - st.root.Position).Magnitude < ANIM_DISTANCE then
+					near = true
+					break
+				end
+			end
+			if near then
+				local v = st.root.AssemblyLinearVelocity
+				local speed = Vector3.new(v.X, 0, v.Z).Magnitude
+				st.walk = lerp(st.walk, math.clamp(speed / st.def.speed, 0, 1), 0.35)
+				st.phase += step * st.def.stepRate * (0.4 + st.walk)
+				local atk = math.clamp(1 - (now - st.attackAt) / 0.45, 0, 1)
+				local motors = st.motors
+				st.def.animate(function(name, cf)
+					local mo = motors[name]
+					if mo then
+						mo.motor.C0 = mo.c0 * cf
+					end
+				end, st.phase, st.walk, atk, now)
+			end
+		end
+	end)
+end
+
+-------------------------------------------------------------------------------
+-- 11) ⚔️ ระบบต่อสู้ + ร้านค้า + เวลา (ทำงานตอนกด Play เท่านั้น)
+-------------------------------------------------------------------------------
+local function hitSpark(pos, color)
+	local p = part({ Name = "HitSpark", Shape = Enum.PartType.Ball, Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(pos), Color = color, Material = MAT.Neon, CanCollide = false })
+	TweenService:Create(p, TweenInfo.new(0.3), { Size = Vector3.new(4, 4, 4), Transparency = 1 }):Play()
+	Debris:AddItem(p, 0.35)
+end
+
+local function shockwave(pos, color)
+	local ring = cylinder({ Name = "Shockwave", Position = pos, Height = 0.4, Diameter = 2, Color = color, Material = MAT.Neon, CanCollide = false, Transparency = 0.2 })
+	TweenService:Create(ring, TweenInfo.new(0.4), { Size = Vector3.new(0.4, 24, 24), Transparency = 1 }):Play()
+	Debris:AddItem(ring, 0.45)
+end
+
+local function flashRed(m)
+	local hl = Instance.new("Highlight")
+	hl.FillColor = Color3.fromRGB(255, 60, 60)
+	hl.FillTransparency = 0.4
+	hl.OutlineTransparency = 1
+	hl.Parent = m
+	Debris:AddItem(hl, 0.15)
+end
+
+local function makeWeapon(player, id)
+	local def = WEAPONS[id]
 	local tool = Instance.new("Tool")
 	tool.Name = def.name
 	tool.CanBeDropped = false
-	tool.ToolTip = "คลิกเพื่อฟัน (ดาเมจ " .. def.damage .. ")"
-	tool.GripPos = Vector3.new(0, 0, -1.5)
+	tool.ToolTip = string.format("ดาเมจ %d • คลิกเพื่อโจมตี", def.damage)
+	tool.GripPos = Vector3.zero
 	tool.GripForward = Vector3.new(-1, 0, 0)
 	tool.GripRight = Vector3.new(0, 1, 0)
 	tool.GripUp = Vector3.new(0, 0, 1)
-
-	local handle = Instance.new("Part")
-	handle.Name = "Handle"
-	handle.Size = Vector3.new(1, 0.8, 4)
-	handle.Color = def.color
-	handle.Material = MAT.Metal
-	handle.CanCollide = false
-	handle.Massless = true
-	handle.Parent = tool
+	buildWeaponParts(id, tool, CFrame.new(), false)
 
 	local cooling = false
 	tool.Activated:Connect(function()
@@ -1457,33 +1846,51 @@ local function makeSword(player, swordId)
 		end
 		local char = player.Character
 		local root = char and char:FindFirstChild("HumanoidRootPart")
-		if not root then
+		local myHum = char and char:FindFirstChildOfClass("Humanoid")
+		if not root or not myHum then
 			return
 		end
 		cooling = true
-		task.delay(0.45, function()
+		task.delay(def.cooldown, function()
 			cooling = false
 		end)
 
-		-- ท่าฟัน: สคริปต์ Animate มาตรฐานของตัวละครจะเล่นท่า Slash เมื่อเจอค่านี้
+		-- ท่าฟัน/ทุบ: สคริปต์ Animate มาตรฐานของตัวละครจะเล่นท่าเมื่อเจอค่านี้
 		local anim = Instance.new("StringValue")
 		anim.Name = "toolanim"
-		anim.Value = "Slash"
+		anim.Value = def.anim
 		anim.Parent = tool
 		Debris:AddItem(anim, 1)
 
-		for _, m in ipairs(monstersFolder:GetChildren()) do
-			local hum = m:FindFirstChildOfClass("Humanoid")
-			local mr = m.PrimaryPart
-			if hum and mr and hum.Health > 0 then
-				local offset = mr.Position - root.Position
-				local inRange = offset.Magnitude <= 8 + mr.Size.X / 2
-				if inRange and root.CFrame.LookVector:Dot(offset.Unit) > 0.1 then
-					local tag = hum:FindFirstChild("creator") or Instance.new("ObjectValue")
+		local look = root.CFrame.LookVector
+		local center = def.aoe and (root.Position + look * def.aoe.forward) or root.Position
+		local radius = def.aoe and def.aoe.radius or def.range
+		if def.shockwave then
+			shockwave(center - Vector3.new(0, 2.8, 0), def.color)
+		end
+
+		for m, st in pairs(liveMonsters) do
+			local mr = st.root
+			if m.Parent and st.hum.Health > 0 then
+				local offset = mr.Position - center
+				local inRange = offset.Magnitude <= radius + mr.Size.X / 2
+				local fromMe = mr.Position - root.Position
+				local inFront = def.aoe or def.arc <= -1 or (fromMe.Magnitude > 0.1 and look:Dot(fromMe.Unit) > def.arc)
+				if inRange and inFront then
+					local tag = st.hum:FindFirstChild("creator") or Instance.new("ObjectValue")
 					tag.Name = "creator"
 					tag.Value = player
-					tag.Parent = hum
-					hum:TakeDamage(def.damage)
+					tag.Parent = st.hum
+					st.hum:TakeDamage(def.damage)
+					flashRed(m)
+					hitSpark(mr.Position, def.color)
+					local push = Vector3.new(fromMe.X, 0, fromMe.Z)
+					if push.Magnitude > 0.1 then
+						mr:ApplyImpulse((push.Unit + Vector3.new(0, 0.4, 0)) * mr.AssemblyMass * def.knockback)
+					end
+					if def.lifesteal then
+						myHum.Health = math.min(myHum.MaxHealth, myHum.Health + def.damage * def.lifesteal)
+					end
 				end
 			end
 		end
@@ -1491,8 +1898,8 @@ local function makeSword(player, swordId)
 	return tool
 end
 
-local function giveSword(player, swordId)
-	local name = SWORDS[swordId].name
+local function giveWeapon(player, id)
+	local name = WEAPONS[id].name
 	local backpack = player:FindFirstChildOfClass("Backpack")
 	if not backpack then
 		return
@@ -1500,7 +1907,7 @@ local function giveSword(player, swordId)
 	if backpack:FindFirstChild(name) or (player.Character and player.Character:FindFirstChild(name)) then
 		return
 	end
-	makeSword(player, swordId).Parent = backpack
+	makeWeapon(player, id).Parent = backpack
 end
 
 local function hookGameplay()
@@ -1517,9 +1924,11 @@ local function hookGameplay()
 
 		local function equip()
 			player:WaitForChild("Backpack")
-			giveSword(player, "Iron")
-			if player:GetAttribute("OwnsGold") then
-				giveSword(player, "Gold")
+			giveWeapon(player, "Iron")
+			for _, id in ipairs(SHOP_WEAPONS) do
+				if player:GetAttribute("Owns_" .. id) then
+					giveWeapon(player, id)
+				end
 			end
 		end
 		player.CharacterAdded:Connect(equip)
@@ -1553,18 +1962,18 @@ local function hookGameplay()
 					hum.Health = hum.MaxHealth
 				end
 			end)
-		elseif obj:GetAttribute("BuySword") then
-			local swordId = obj:GetAttribute("BuySword")
+		elseif obj:GetAttribute("BuyWeapon") then
+			local id = obj:GetAttribute("BuyWeapon")
 			obj.Touched:Connect(function(hit)
 				local player = playerFromHit(hit)
-				if not player or player:GetAttribute("OwnsGold") then
+				if not player or player:GetAttribute("Owns_" .. id) then
 					return
 				end
 				local coins = getStat(player, "Coins")
-				if coins and coins.Value >= SWORDS[swordId].price then
-					coins.Value -= SWORDS[swordId].price
-					player:SetAttribute("OwnsGold", true)
-					giveSword(player, swordId)
+				if coins and coins.Value >= WEAPONS[id].price then
+					coins.Value -= WEAPONS[id].price
+					player:SetAttribute("Owns_" .. id, true)
+					giveWeapon(player, id)
 				end
 			end)
 		elseif obj:GetAttribute("ChestReward") then
@@ -1615,6 +2024,7 @@ local function hookGameplay()
 		for _, s in ipairs(monsterSpawns) do
 			spawnMonster(s.kind, s.pos)
 		end
+		startMonsterAnimation()
 	end
 end
 
