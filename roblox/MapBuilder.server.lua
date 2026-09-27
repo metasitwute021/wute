@@ -9,6 +9,10 @@
 	  🏔️ ภูเขาหิมะ (ทิศเหนือ)   ศาลเจ้าบนยอดเขา
 	  ⚓ ท่าเรือ + ประภาคาร (ทิศใต้)
 	  💀 ซากปรักหักพัง + สุสาน (ทิศตะวันออกเฉียงใต้)
+	  🌳 ต้นไม้โลก + หมู่บ้านเอลฟ์ (ทิศตะวันออกไกล)   บันไดวน บ้านห้อยกิ่ง สะพานเชือก
+	  👺 ค่ายก็อบลิน, 🐍 หนองน้ำแม่มด, 🌋 ภูเขาไฟรังมังกร
+	  💀 ดันเจี้ยนใต้ดิน 9 ห้อง + บอสมิโนทอร์
+	  🌀 ลานวาร์ปในเมือง ไปได้ทุกโซน
 	  🌊 ทะเลล้อมรอบเกาะ
 
 	ระบบเกม:
@@ -30,12 +34,14 @@
 local CONFIG = {
 	MapName = "FantasyWorld",
 	Seed = 7,                -- เปลี่ยนเลขนี้ = ภูเขา/ต้นไม้/หินจะสุ่มตำแหน่งใหม่
-	WorldHalfSize = 768,     -- ครึ่งหนึ่งของความกว้างโลก (โลกกว้าง 1536 studs)
+	WorldHalfSize = 1536,    -- ครึ่งหนึ่งของความกว้างโลก (โลกกว้าง 3072 studs)
 	ClearTerrain = true,     -- ล้าง Terrain เดิมก่อนสร้าง
 	RemoveBaseplate = true,  -- ลบ Baseplate เดิมของเทมเพลต
-	TreeCount = 450,         -- ต้นไม้ทั่วเกาะ
-	ForestTreeCount = 260,   -- ต้นไม้เพิ่มเติมในป่า
-	RockCount = 70,
+	TreeCount = 1300,        -- ต้นไม้ทั่วเกาะ
+	ForestTreeCount = 260,   -- ต้นไม้เพิ่มเติมในป่ามหัศจรรย์
+	ElderwoodTreeCount = 380, -- ต้นไม้ยักษ์ในป่าโบราณรอบต้นไม้โลก
+	RockCount = 180,
+	DarkTheme = true,        -- ธีมภาพมืด หมอก แสงเงา (false = สว่างสดใส)
 	DayLengthMinutes = 12,   -- 1 วันในเกม = กี่นาทีจริง
 	SpawnMonsters = true,
 	StartCoins = 0,
@@ -63,7 +69,11 @@ local ZONES = {
 	{ name = "Town", x = 0, z = 0, radius = 235, blend = 90, height = 8 },
 	{ name = "Castle", x = -430, z = 40, radius = 100, blend = 80, height = 44 },
 	{ name = "Ruins", x = 330, z = 330, radius = 55, blend = 60, height = 12 },
-	{ name = "Harbor", x = 0, z = 560, radius = 55, blend = 30, height = 4 },
+	{ name = "Harbor", x = 0, z = 1180, radius = 55, blend = 30, height = 4 },
+	{ name = "WorldTree", x = 950, z = 80, radius = 130, blend = 110, height = 18 },
+	{ name = "GoblinCamp", x = -620, z = 520, radius = 80, blend = 70, height = 14 },
+	{ name = "DungeonGate", x = -380, z = -420, radius = 35, blend = 60, height = 28 },
+	{ name = "Swamp", x = 650, z = 800, radius = 170, blend = 80, height = 1, bumps = 5 },
 }
 local ZONE = {}
 for _, zn in ipairs(ZONES) do
@@ -71,7 +81,15 @@ for _, zn in ipairs(ZONES) do
 end
 
 local FOREST = { minX = 270, maxX = 620, minZ = -230, maxZ = 230 }
+local ELDERWOOD = { minX = 650, maxX = 1350, minZ = -420, maxZ = 560 } -- ป่าโบราณรอบต้นไม้โลก
 local SHRINE_POS = Vector2.new(0, -470) -- ศาลเจ้าบนภูเขา
+local VOLCANO = { x = -1100, z = -350, radius = 330, height = 190, crater = 50 }
+local PEAKS = { -- ยอดเขาเดี่ยว ๆ กระจายทั่วเกาะ
+	{ x = 1250, z = -600, radius = 320, height = 170 },
+	{ x = 500, z = -1050, radius = 260, height = 140 },
+	{ x = -1150, z = 520, radius = 250, height = 130 },
+	{ x = -500, z = 1100, radius = 220, height = 110 },
+}
 
 -------------------------------------------------------------------------------
 -- ตัวช่วยทั่วไป
@@ -182,54 +200,98 @@ end
 -------------------------------------------------------------------------------
 -- 🏔️ ภูมิประเทศ: ความสูงพื้นดินที่ตำแหน่ง (x, z)
 -------------------------------------------------------------------------------
+local TERRAIN_TOP = 256
+
 local function heightAt(x, z)
 	local noise = math.noise
 	-- เนินเขาทั่วไป
 	local h = 12 + noise(x / 180, z / 180, NOISE_SEED) * 18 + noise(x / 55, z / 55, NOISE_SEED + 3.3) * 4
 
-	-- เทือกเขาทางทิศเหนือ (z ติดลบ)
-	local m = smooth((-z - 250) / 250)
+	-- เทือกเขาทางทิศเหนือ มีสันเขาหลายยอด (z ติดลบ)
+	local m = smooth((-z - 330) / 300)
 	if m > 0 then
-		h += m * (60 + (noise(x / 110, z / 110, NOISE_SEED + 7.7) + 0.6) * 90)
+		local ridge = math.max(0, 1 - math.abs(noise(x / 260, z / 260, NOISE_SEED + 7.7)) * 2.2)
+		h += m * (45 + ridge * ridge * 160 + noise(x / 90, z / 90, NOISE_SEED + 8.8) * 25)
+	end
+
+	-- ยอดเขาเดี่ยว
+	for _, pk in ipairs(PEAKS) do
+		local dx, dz = x - pk.x, z - pk.z
+		local t = 1 - math.sqrt(dx * dx + dz * dz) / pk.radius
+		if t > 0 then
+			h += pk.height * t ^ 1.6 * (0.8 + noise(x / 70, z / 70, NOISE_SEED + 4.4) * 0.5)
+		end
+	end
+
+	-- ภูเขาไฟ: กรวยสูง มีปล่องลาวาตรงกลาง
+	local vx, vz = x - VOLCANO.x, z - VOLCANO.z
+	local dv = math.sqrt(vx * vx + vz * vz)
+	if dv < VOLCANO.radius then
+		local rim = VOLCANO.height * (1 - VOLCANO.crater / VOLCANO.radius) ^ 1.2
+		if dv < VOLCANO.crater then
+			h += rim - (VOLCANO.crater - dv) * 0.9
+		else
+			h += VOLCANO.height * (1 - dv / VOLCANO.radius) ^ 1.2
+		end
 	end
 
 	-- ขอบเกาะค่อย ๆ ลาดลงทะเล
 	local d = math.sqrt(x * x + z * z)
-	local coast = 660 + noise(x / 300, z / 300, NOISE_SEED + 1.1) * 60
-	h = lerp(h, -14, smooth((d - (coast - 120)) / 120))
+	local coast = 1330 + noise(x / 400, z / 400, NOISE_SEED + 1.1) * 90
+	h = lerp(h, -14, smooth((d - (coast - 140)) / 140))
 
 	-- อ่าวทางทิศใต้ สำหรับท่าเรือ
-	local bay = smooth((z - 590) / 50) * (1 - smooth((math.abs(x) - 110) / 80))
+	local hb = ZONE.Harbor
+	local bay = smooth((z - (hb.z + 30)) / 50) * (1 - smooth((math.abs(x - hb.x) - 110) / 80))
 	h = lerp(h, -14, bay)
 
-	-- ปรับพื้นที่เมือง/ปราสาท/ฯลฯ ให้เรียบ
+	-- ปรับพื้นที่เมือง/ปราสาท/ฯลฯ ให้เรียบ (หนองน้ำมีหลุมบ่อเป็นแอ่งน้ำ)
 	for _, zn in ipairs(ZONES) do
 		local dx, dz = x - zn.x, z - zn.z
 		local t = smooth((math.sqrt(dx * dx + dz * dz) - zn.radius) / zn.blend)
 		if t < 1 then
 			h = lerp(zn.height, h, t)
+			if zn.bumps then
+				h += noise(x / 35, z / 35, NOISE_SEED + 5.5) * zn.bumps * 2 * (1 - t)
+			end
 		end
 	end
 
-	return math.clamp(h, -20, 190)
+	return math.clamp(h, -20, TERRAIN_TOP - 8)
 end
 
 local function inForest(x, z)
 	return x > FOREST.minX and x < FOREST.maxX and z > FOREST.minZ and z < FOREST.maxZ
 end
 
+local function nearZone(name, x, z, extra)
+	local zn = ZONE[name]
+	local r = zn.radius + (extra or 0)
+	return (x - zn.x) ^ 2 + (z - zn.z) ^ 2 < r * r
+end
+
 local function surfaceMaterial(h, x, z)
+	local dv = math.sqrt((x - VOLCANO.x) ^ 2 + (z - VOLCANO.z) ^ 2)
+	if dv < VOLCANO.crater + 4 then
+		return MAT.CrackedLava
+	elseif dv < VOLCANO.radius * 0.6 then
+		return MAT.Basalt
+	end
+	if nearZone("Swamp", x, z, 30) then
+		return (h < 5) and MAT.Mud or MAT.LeafyGrass
+	end
 	if h < 3 then
 		return MAT.Sand
-	elseif h > 120 then
+	elseif h > 150 then
 		return MAT.Snow
-	elseif h > 70 then
+	elseif h > 85 then
 		return MAT.Rock
 	elseif inForest(x, z) then
 		return MAT.LeafyGrass
+	elseif x > ELDERWOOD.minX and x < ELDERWOOD.maxX and z > ELDERWOOD.minZ and z < ELDERWOOD.maxZ then
+		return (math.noise(x / 40, z / 40, NOISE_SEED + 9.9) > 0.25) and MAT.Ground or MAT.LeafyGrass
 	end
-	local r = ZONE.Ruins
-	if (x - r.x) ^ 2 + (z - r.z) ^ 2 < 75 ^ 2 then
+	if nearZone("Ruins", x, z, 20) or nearZone("GoblinCamp", x, z, 10) then
 		return MAT.Ground
 	end
 	return MAT.Grass
@@ -426,32 +488,79 @@ local function reset()
 	monstersFolder = folder("Monsters")
 end
 
+local function effect(className, props)
+	local e = Lighting:FindFirstChildOfClass(className) or Instance.new(className)
+	for k, v in pairs(props) do
+		e[k] = v
+	end
+	e.Parent = Lighting
+	return e
+end
+
 local function setupLighting()
-	Lighting.ClockTime = 13
-	Lighting.Brightness = 2.5
-	Lighting.OutdoorAmbient = Color3.fromRGB(135, 135, 150)
+	-- ระบบแสงแบบ Future ให้เงาจากไฟทุกดวง (บางเวอร์ชันตั้งจากสคริปต์ไม่ได้ ดู README)
+	pcall(function()
+		Lighting.Technology = Enum.Technology.Future
+	end)
+	pcall(function()
+		terrain.Decoration = true -- ใบหญ้าบนพื้น
+	end)
 	Lighting.GlobalShadows = true
+	Lighting.EnvironmentDiffuseScale = 1
+	Lighting.EnvironmentSpecularScale = 1 -- เงาสะท้อนบนผิววัตถุ
 
-	if not Lighting:FindFirstChildOfClass("Atmosphere") then
-		local atmo = Instance.new("Atmosphere")
-		atmo.Density = 0.32
-		atmo.Haze = 1.2
-		atmo.Color = Color3.fromRGB(199, 220, 255)
-		atmo.Decay = Color3.fromRGB(106, 112, 125)
-		atmo.Parent = Lighting
-	end
-	if not Lighting:FindFirstChildOfClass("BloomEffect") then
-		local bloom = Instance.new("BloomEffect")
-		bloom.Intensity = 0.6
-		bloom.Size = 30
-		bloom.Threshold = 1.5
-		bloom.Parent = Lighting
+	if CONFIG.DarkTheme then
+		-- 🌙 ธีมมืด: ป่าลึกยามโพล้เพล้ หมอกหนา แสงไฟเรืองรอง
+		Lighting.ClockTime = 17.6
+		Lighting.Brightness = 1.6
+		Lighting.Ambient = Color3.fromRGB(25, 25, 35)
+		Lighting.OutdoorAmbient = Color3.fromRGB(70, 78, 100)
+		Lighting.ExposureCompensation = -0.15
+		effect("Atmosphere", { Density = 0.42, Offset = 0.1, Haze = 2.2, Glare = 0.4, Color = Color3.fromRGB(140, 160, 185), Decay = Color3.fromRGB(55, 65, 90) })
+		effect("ColorCorrectionEffect", { Brightness = -0.03, Contrast = 0.18, Saturation = -0.1, TintColor = Color3.fromRGB(220, 232, 255) })
+		effect("BloomEffect", { Intensity = 0.9, Size = 36, Threshold = 1.1 })
+		effect("SunRaysEffect", { Intensity = 0.12, Spread = 0.8 })
+		effect("DepthOfFieldEffect", { FarIntensity = 0.12, FocusDistance = 80, InFocusRadius = 70, NearIntensity = 0 })
+		terrain.WaterColor = Color3.fromRGB(20, 60, 75)
+	else
+		Lighting.ClockTime = 13
+		Lighting.Brightness = 2.5
+		Lighting.Ambient = Color3.fromRGB(70, 70, 70)
+		Lighting.OutdoorAmbient = Color3.fromRGB(135, 135, 150)
+		effect("Atmosphere", { Density = 0.32, Offset = 0, Haze = 1.2, Glare = 0, Color = Color3.fromRGB(199, 220, 255), Decay = Color3.fromRGB(106, 112, 125) })
+		effect("BloomEffect", { Intensity = 0.6, Size = 30, Threshold = 1.5 })
+		terrain.WaterColor = Color3.fromRGB(30, 120, 160)
 	end
 
-	terrain.WaterColor = Color3.fromRGB(30, 120, 160)
-	terrain.WaterWaveSize = 0.2
-	terrain.WaterReflectance = 0.6
-	terrain.WaterTransparency = 0.5
+	-- 🌊 น้ำสะท้อนแสง
+	terrain.WaterReflectance = 1
+	terrain.WaterTransparency = 0.35
+	terrain.WaterWaveSize = 0.12
+	terrain.WaterWaveSpeed = 8
+
+	-- ☁️ เมฆ
+	local clouds = terrain:FindFirstChildOfClass("Clouds") or Instance.new("Clouds")
+	clouds.Cover = CONFIG.DarkTheme and 0.65 or 0.45
+	clouds.Density = 0.5
+	clouds.Color = CONFIG.DarkTheme and Color3.fromRGB(120, 125, 140) or Color3.new(1, 1, 1)
+	clouds.Parent = terrain
+end
+
+-- หิ่งห้อย: อนุภาคเรืองแสงลอยในพื้นที่กล่อง
+local function fireflies(parent, center, size, color, rate)
+	local box = part({ Name = "Fireflies", Size = size, CFrame = CFrame.new(center), Transparency = 1, CanCollide = false, CanTouch = false, Parent = parent })
+	local fx = Instance.new("ParticleEmitter")
+	fx.Shape = Enum.ParticleEmitterShape.Box
+	fx.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+	fx.Color = ColorSequence.new(color or Color3.fromRGB(200, 255, 140))
+	fx.LightEmission = 1
+	fx.Size = NumberSequence.new(0.25)
+	fx.Transparency = NumberSequence.new(0.1, 1)
+	fx.Lifetime = NumberRange.new(3, 6)
+	fx.Speed = NumberRange.new(0.5, 1.5)
+	fx.SpreadAngle = Vector2.new(180, 180)
+	fx.Rate = rate or 15
+	fx.Parent = box
 end
 
 local TEAM_DEFS = {
@@ -494,10 +603,12 @@ end
 -------------------------------------------------------------------------------
 local function buildTerrain()
 	local VOX = 4
-	local Y0, Y1 = -24, 200
+	local Y0, Y1 = -24, TERRAIN_TOP
 	local CHUNK = 128
 	local ny = (Y1 - Y0) / VOX
 	local n = CHUNK / VOX
+
+	local done, total = 0, (2 * HALF / CHUNK) ^ 2
 
 	-- ทะเลรอบนอกสุด
 	terrain:FillBlock(CFrame.new(0, -8, 0), Vector3.new(HALF * 5, 16, HALF * 5), MAT.Water)
@@ -551,6 +662,10 @@ local function buildTerrain()
 
 			local region = Region3.new(Vector3.new(cx, Y0, cz), Vector3.new(cx + CHUNK, Y1, cz + CHUNK))
 			terrain:WriteVoxels(region, VOX, mats, occs)
+			done += 1
+			if done % 36 == 0 then
+				print(string.format("   ภูมิประเทศ %d%%", done * 100 // total))
+			end
 			task.wait() -- พักให้ Studio ไม่ค้าง
 		end
 	end
@@ -1031,8 +1146,8 @@ local function buildHarbor()
 	local wood = Color3.fromRGB(150, 110, 70)
 
 	part({ Name = "Boardwalk", Size = Vector3.new(80, 1, 70), CFrame = CFrame.new(hz.x, hz.height + 0.5, hz.z), Color = Color3.fromRGB(160, 120, 80), Material = MAT.WoodPlanks, Parent = harbor })
-	part({ Name = "Pier", Size = Vector3.new(14, 1, 110), CFrame = CFrame.new(hz.x, hz.height + 0.5, 645), Color = wood, Material = MAT.WoodPlanks, Parent = harbor })
-	for z = 600, 696, 12 do
+	part({ Name = "Pier", Size = Vector3.new(14, 1, 110), CFrame = CFrame.new(hz.x, hz.height + 0.5, hz.z + 85), Color = wood, Material = MAT.WoodPlanks, Parent = harbor })
+	for z = hz.z + 40, hz.z + 136, 12 do
 		for _, sx in ipairs({ -6, 6 }) do
 			cylinder({ Name = "PierPost", Position = Vector3.new(hz.x + sx, -5.5, z), Height = 20, Diameter = 1.5, Color = Color3.fromRGB(100, 70, 45), Material = MAT.Wood, Parent = harbor })
 		end
@@ -1040,7 +1155,7 @@ local function buildHarbor()
 
 	-- เรือใบ (นั่งที่พวงมาลัยได้)
 	local boat = model("Boat", harbor)
-	local bx, bz = hz.x + 20, 675
+	local bx, bz = hz.x + 20, hz.z + 115
 	part({ Name = "Hull", Size = Vector3.new(10, 3, 30), CFrame = CFrame.new(bx, 1.5, bz), Color = Color3.fromRGB(120, 70, 40), Material = MAT.WoodPlanks, Parent = boat })
 	for _, sx in ipairs({ -1, 1 }) do
 		part({ Name = "HullSide", Size = Vector3.new(1, 3, 30), CFrame = CFrame.new(bx + sx * 5.5, 4.5, bz), Color = Color3.fromRGB(150, 40, 40), Material = MAT.Wood, Parent = boat })
@@ -1050,7 +1165,7 @@ local function buildHarbor()
 	part({ ClassName = "Seat", Name = "Helm", Size = Vector3.new(2, 1, 2), CFrame = CFrame.new(bx, 3.5, bz + 11), Color = Color3.fromRGB(110, 75, 45), Material = MAT.Wood, Parent = boat })
 
 	-- ประภาคาร
-	local lx, lz = hz.x + 42, 612
+	local lx, lz = hz.x + 42, hz.z + 52
 	cylinder({ Name = "LighthouseRock", Position = Vector3.new(lx, -5, lz), Height = 20, Diameter = 18, Color = Color3.fromRGB(110, 110, 110), Material = MAT.Rock, Parent = harbor })
 	for i = 0, 5 do
 		cylinder({
@@ -1213,6 +1328,759 @@ local function buildShrine()
 end
 
 -------------------------------------------------------------------------------
+-- 🌀 จุดวาร์ป: ประตูวงกลมเรืองแสง แตะแล้วพาไปยังตำแหน่ง WarpTarget
+-------------------------------------------------------------------------------
+local WARPS = {} -- { name, color, landing } ใช้สร้างลานวาร์ปในเมือง
+local WARP_HOME -- จุดโผล่ที่ลานวาร์ปในเมือง (ตั้งค่าใน buildWarpCircle)
+local returnPortals = {} -- ประตู "กลับลานวาร์ป" ที่ยังไม่ได้ตั้งปลายทาง
+
+local function buildPortal(parent, pos, color, label, target)
+	local pad = cylinder({ Name = "Portal", Position = pos + Vector3.new(0, 0.4, 0), Height = 0.6, Diameter = 8, Color = color, Material = MAT.Neon, Transparency = 0.15, Parent = parent })
+	if target then
+		pad:SetAttribute("WarpTarget", target)
+	end
+	cylinder({ Name = "PortalRim", Position = pos + Vector3.new(0, 0.25, 0), Height = 0.5, Diameter = 10.5, Color = Color3.fromRGB(55, 55, 65), Material = MAT.Slate, Parent = parent })
+	local gem = part({ Name = "PortalCrystal", Size = Vector3.new(1.4, 3, 1.4), CFrame = CFrame.new(pos + Vector3.new(0, 5, 0)) * CFrame.Angles(0, math.rad(45), 0), Color = color, Material = MAT.Neon, CanCollide = false, Parent = parent })
+	pointLight(gem, color, 18, 1.5)
+	local swirl = Instance.new("ParticleEmitter")
+	swirl.Color = ColorSequence.new(color)
+	swirl.LightEmission = 1
+	swirl.Size = NumberSequence.new(0.4, 0)
+	swirl.Transparency = NumberSequence.new(0, 1)
+	swirl.Lifetime = NumberRange.new(1, 1.6)
+	swirl.Speed = NumberRange.new(3, 5)
+	swirl.SpreadAngle = Vector2.new(20, 20)
+	swirl.Rate = 25
+	swirl.EmissionDirection = Enum.NormalId.Right -- ทรงกระบอกถูกหมุน 90° ด้าน Right จึงชี้ขึ้น
+	swirl.Parent = pad
+	billboardText(gem, label, color, 3, 10)
+	return pad
+end
+
+-- ลงทะเบียนจุดวาร์ป + สร้างประตูกลับเมืองข้างจุดโผล่
+local function registerWarp(parent, name, color, landing, portalPos)
+	table.insert(WARPS, { name = name, color = color, landing = landing })
+	local pad = buildPortal(parent, portalPos, Color3.fromRGB(120, 200, 255), "🌀 กลับลานวาร์ป", nil)
+	table.insert(returnPortals, pad)
+end
+
+local function buildWarpCircle()
+	local circle = folder("WarpCircle")
+	local center = Vector3.new(-110, ZONE.Town.height, -110)
+	local top = center.Y + 1.2
+	cylinder({ Name = "WarpPlaza", Position = center + Vector3.new(0, 0.6, 0), Height = 1.2, Diameter = 76, Color = Color3.fromRGB(70, 75, 90), Material = MAT.Slate, Parent = circle })
+	cylinder({ Name = "WarpRing", Position = center + Vector3.new(0, 1.25, 0), Height = 0.1, Diameter = 60, Color = Color3.fromRGB(90, 170, 255), Material = MAT.Neon, Transparency = 0.6, Parent = circle })
+	local core = part({ Name = "WarpCore", Size = Vector3.new(4, 12, 4), CFrame = CFrame.new(center + Vector3.new(0, 9, 0)) * CFrame.Angles(0, math.rad(45), math.rad(8)), Color = Color3.fromRGB(110, 190, 255), Material = MAT.Neon, CanCollide = false, Parent = circle })
+	pointLight(core, Color3.fromRGB(110, 190, 255), 40, 2)
+	billboardText(core, "🌀 ลานวาร์ป: เหยียบวงกลมเพื่อเดินทาง", Color3.fromRGB(170, 220, 255), 9, 22)
+
+	WARP_HOME = Vector3.new(center.X + 12, top + 3, center.Z)
+	for i, w in ipairs(WARPS) do
+		local a = (i - 1) / #WARPS * math.pi * 2
+		local pos = Vector3.new(center.X + math.cos(a) * 28, top, center.Z + math.sin(a) * 28)
+		buildPortal(circle, pos, w.color, w.name, w.landing)
+	end
+	for _, pad in ipairs(returnPortals) do
+		pad:SetAttribute("WarpTarget", WARP_HOME)
+	end
+end
+
+-------------------------------------------------------------------------------
+-- 🪵 ตัวช่วยสร้างของยาว ๆ (กิ่งไม้ เชือก สะพาน)
+-------------------------------------------------------------------------------
+-- ทรงกระบอกเชื่อมจุด a ไป b
+local function limb(parent, a, b, dia, color, material, name)
+	local len = (b - a).Magnitude
+	return part({
+		Name = name or "Limb",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(len + dia * 0.3, dia, dia),
+		CFrame = CFrame.lookAt((a + b) / 2, b) * CFrame.Angles(0, math.rad(90), 0),
+		Color = color,
+		Material = material,
+		Parent = parent,
+	})
+end
+
+-- เส้นเชือก/คานสี่เหลี่ยมบาง ๆ เชื่อมจุด a ไป b
+local function rope(parent, a, b, thick, color)
+	return part({
+		Name = "Rope",
+		Size = Vector3.new(thick or 0.3, thick or 0.3, (b - a).Magnitude),
+		CFrame = CFrame.lookAt((a + b) / 2, b),
+		Color = color or Color3.fromRGB(150, 120, 80),
+		Material = MAT.Fabric,
+		CanCollide = false,
+		Parent = parent,
+	})
+end
+
+-- สะพานไม้ห้อยโค้งลงตรงกลาง
+local function plankBridge(parent, a, b, width, sag)
+	local dist = (b - a).Magnitude
+	local n = math.ceil(dist / 1.6)
+	local prev
+	for i = 0, n do
+		local t = i / n
+		local p = a:Lerp(b, t) - Vector3.new(0, math.sin(t * math.pi) * sag, 0)
+		if prev then
+			part({
+				Name = "Plank",
+				Size = Vector3.new(width, 0.4, (p - prev).Magnitude + 0.2),
+				CFrame = CFrame.lookAt((p + prev) / 2, p),
+				Color = Color3.fromRGB(140 + (i % 3) * 8, 100, 65),
+				Material = MAT.WoodPlanks,
+				Parent = parent,
+			})
+		end
+		prev = p
+	end
+	local dir = (b - a).Unit
+	local side = dir:Cross(Vector3.new(0, 1, 0)).Unit * (width / 2)
+	for _, s in ipairs({ -1, 1 }) do
+		rope(parent, a + side * s + Vector3.new(0, 2.8, 0), b + side * s + Vector3.new(0, 2.8, 0), 0.25)
+	end
+end
+
+local function lantern(parent, pos, color, withLight)
+	part({ Name = "LanternHook", Size = Vector3.new(0.15, 1, 0.15), CFrame = CFrame.new(pos + Vector3.new(0, 0.9, 0)), Color = Color3.fromRGB(60, 50, 40), Material = MAT.Metal, CanCollide = false, Parent = parent })
+	local l = part({ Name = "Lantern", Shape = Enum.PartType.Ball, Size = Vector3.new(1.1, 1.1, 1.1), CFrame = CFrame.new(pos), Color = color, Material = MAT.Neon, CanCollide = false, Parent = parent })
+	if withLight then
+		pointLight(l, color, 16, 1.4)
+	end
+	return l
+end
+
+-------------------------------------------------------------------------------
+-- 🌳 ต้นไม้โลก + หมู่บ้านเอลฟ์
+-------------------------------------------------------------------------------
+local ELF_WALL = Color3.fromRGB(235, 232, 220)
+local ELF_ROOF = Color3.fromRGB(45, 120, 115)
+local ELF_GOLD = Color3.fromRGB(230, 190, 90)
+local ELF_GLOW = Color3.fromRGB(140, 240, 220)
+local BARK = Color3.fromRGB(78, 58, 46)
+local BARK_DARK = Color3.fromRGB(58, 42, 36)
+local LEAF_A = Color3.fromRGB(35, 85, 65)
+local LEAF_B = Color3.fromRGB(60, 118, 78)
+
+local function trunkRadius(y)
+	return 30 - 15 * math.clamp(y / 180, 0, 1)
+end
+
+-- บ้านเอลฟ์: ผนังขาว หลังคาเขียวอมฟ้า ขอบทอง โคมไฟข้างใน
+local function buildElfHouse(parent, cf)
+	local house = model("ElfHouse", parent)
+	buildRoom(house, cf, 12, 10, 9, { wallColor = ELF_WALL, material = MAT.Marble, floorColor = Color3.fromRGB(170, 130, 90), doorWidth = 4, doorHeight = 7 })
+	gableRoof(house, cf * CFrame.new(0, 10, 0), 12, 10, 5, ELF_ROOF)
+	part({ Name = "RoofTrim", Size = Vector3.new(14.2, 0.4, 0.4), CFrame = cf * CFrame.new(0, 15, 0), Color = ELF_GOLD, Material = MAT.Foil, Parent = house })
+	for _, sx in ipairs({ -1, 1 }) do
+		part({ Name = "DoorFrame", Size = Vector3.new(0.4, 7.4, 0.4), CFrame = cf * CFrame.new(sx * 2.2, 4.7, -5.2), Color = ELF_GOLD, Material = MAT.Foil, Parent = house })
+	end
+	local lamp = part({ Name = "HouseLamp", Shape = Enum.PartType.Ball, Size = Vector3.new(1.2, 1.2, 1.2), CFrame = cf * CFrame.new(0, 8.5, 1), Color = Color3.fromRGB(255, 220, 150), Material = MAT.Neon, CanCollide = false, Parent = house })
+	pointLight(lamp, Color3.fromRGB(255, 210, 150), 16, 1.2)
+	-- กระบะดอกไม้ใต้หน้าต่าง
+	for _, sx in ipairs({ -1, 1 }) do
+		local box = cf * CFrame.new(sx * 6.6, 3.6, 0)
+		part({ Name = "FlowerBox", Size = Vector3.new(0.8, 0.6, 4), CFrame = box, Color = Color3.fromRGB(120, 85, 55), Material = MAT.Wood, Parent = house })
+		for k = -1, 1 do
+			part({ Name = "Flower", Shape = Enum.PartType.Ball, Size = Vector3.new(0.6, 0.6, 0.6), CFrame = box * CFrame.new(0, 0.5, k * 1.2), Color = ({ Color3.fromRGB(255, 120, 190), Color3.fromRGB(250, 230, 120), Color3.fromRGB(150, 200, 255) })[k + 2], Material = MAT.Neon, CanCollide = false, Parent = house })
+		end
+	end
+	return house
+end
+
+-- บ้านรูปผลไม้ห้อยจากกิ่ง (ตกแต่ง)
+local function elfPod(parent, anchor, drop)
+	local pos = anchor - Vector3.new(0, drop, 0)
+	rope(parent, anchor, pos + Vector3.new(0, 3.2, 0), 0.3)
+	local pod = model("ElfPod", parent)
+	part({ Name = "PodBody", Shape = Enum.PartType.Ball, Size = Vector3.new(7, 7, 7), CFrame = CFrame.new(pos), Color = Color3.fromRGB(150, 110, 75), Material = MAT.Wood, Parent = pod })
+	coneRoof(pod, pos + Vector3.new(0, 2.5, 0), 8, ELF_ROOF)
+	for k = 0, 3 do
+		local a = k / 4 * math.pi * 2
+		part({ Name = "PodWindow", Shape = Enum.PartType.Ball, Size = Vector3.new(1.2, 1.2, 1.2), CFrame = CFrame.new(pos + Vector3.new(math.cos(a) * 3.1, 0.3, math.sin(a) * 3.1)), Color = Color3.fromRGB(255, 210, 130), Material = MAT.Neon, CanCollide = false, Parent = pod })
+	end
+	pointLight(pod:FindFirstChild("PodBody"), Color3.fromRGB(255, 200, 130), 14, 1)
+end
+
+local function buildWorldTree()
+	local tree = folder("WorldTree")
+	local WT = ZONE.WorldTree
+	local base = Vector3.new(WT.x, WT.height, WT.z)
+	local function ring(angleDeg, radius, y)
+		local a = math.rad(angleDeg)
+		return base + Vector3.new(math.cos(a) * radius, y, math.sin(a) * radius)
+	end
+	local function facingTrunk(pos)
+		return CFrame.lookAt(pos, Vector3.new(base.X, pos.Y, base.Z))
+	end
+
+	-- ลำต้น 9 ท่อนเรียวขึ้น + สันเปลือกไม้ + รูนเรืองแสง
+	for i = 0, 8 do
+		cylinder({ Name = "Trunk", Position = base + Vector3.new(0, i * 20 + 10, 0), Height = 21, Diameter = trunkRadius(i * 20 + 10) * 2 + 1, Color = (i % 2 == 0) and BARK or BARK_DARK, Material = MAT.Wood, Parent = tree })
+	end
+	for k = 0, 11 do
+		local ang = k * 30 + 15
+		limb(tree, ring(ang, trunkRadius(0) + 0.5, 0), ring(ang, trunkRadius(180) + 0.5, 180), 3.5, BARK_DARK, MAT.Wood, "BarkRidge")
+	end
+	for _ = 1, 26 do
+		local y = rng:NextNumber(8, 170)
+		local ang = rng:NextNumber(0, 360)
+		local p = ring(ang, trunkRadius(y) + 0.6, y)
+		part({ Name = "Rune", Size = Vector3.new(0.3, rng:NextNumber(1.5, 4), 0.3), CFrame = facingTrunk(p) * CFrame.Angles(0, 0, rng:NextNumber(-0.6, 0.6)), Color = ELF_GLOW, Material = MAT.Neon, CanCollide = false, Parent = tree })
+	end
+	task.wait()
+
+	-- รากใหญ่แผ่ออก (เว้นช่วงมุม 0-70° ที่บันไดเริ่ม)
+	for ang = 85, 355, 30 do
+		local a = ring(ang, trunkRadius(0) - 4, 7)
+		local b = ring(ang + rng:NextNumber(-8, 8), trunkRadius(0) + 42, -3)
+		limb(tree, a, b, 8, BARK, MAT.Wood, "Root")
+		limb(tree, a:Lerp(b, 0.5), ring(ang + 18, trunkRadius(0) + 30, -3), 4, BARK_DARK, MAT.Wood, "RootBranch")
+	end
+
+	-- ลานรอบลำต้น 3 ชั้น + บันไดวนขึ้น
+	local DECKS = { 40, 85, 130 }
+	local deckTopY = {}
+	for di, dy in ipairs(DECKS) do
+		local rIn = trunkRadius(dy) + 0.5
+		local rMid = rIn + 7
+		for k = 0, 35 do
+			local ang = k * 10 + 5
+			if ang < 290 then -- เว้นช่องให้บันไดที่ขึ้นมาจากชั้นล่าง
+				local p = ring(ang, rMid, dy)
+				part({ Name = "Deck", Size = Vector3.new(rMid * math.rad(10) + 0.8, 1, 14), CFrame = facingTrunk(p), Color = Color3.fromRGB(150, 110, 72), Material = MAT.WoodPlanks, Parent = tree })
+				if k % 3 == 0 then
+					local post = ring(ang, rIn + 13.5, dy)
+					cylinder({ Name = "RailPost", Position = post + Vector3.new(0, 2, 0), Height = 3.5, Diameter = 0.5, Color = ELF_GOLD, Material = MAT.Wood, Parent = tree })
+					if k % 6 == 0 then
+						lantern(tree, post + Vector3.new(0, 4.8, 0), (k % 12 == 0) and ELF_GLOW or Color3.fromRGB(255, 210, 140), k % 12 == 0)
+					end
+				end
+			end
+		end
+		deckTopY[di] = base.Y + dy + 0.5
+
+		-- ระเบียงยื่นออกไป + บ้านเอลฟ์ 3 หลังต่อชั้น
+		for _, ang in ipairs({ 20, 140, 250 }) do
+			local bc = ring(ang, rIn + 14 + 9, dy)
+			local bcf = facingTrunk(bc)
+			part({ Name = "Balcony", Size = Vector3.new(18, 1, 18), CFrame = bcf, Color = Color3.fromRGB(150, 110, 72), Material = MAT.WoodPlanks, Parent = tree })
+			limb(tree, ring(ang, trunkRadius(dy - 14), dy - 14), ring(ang, rIn + 26, dy - 0.5), 1.4, BARK, MAT.Wood, "Strut")
+			buildElfHouse(tree, bcf * CFrame.new(0, 0.5, 2))
+		end
+
+		-- บันไดวนจากชั้นล่าง (หรือพื้นดิน) ขึ้นมาที่ชั้นนี้
+		local fromY = (di == 1) and 0 or DECKS[di - 1]
+		for sIdx = 0, 71 do
+			local y = fromY + (dy - fromY) * sIdx / 72
+			local ang = sIdx * 5
+			local r = trunkRadius(y) + 7
+			local p = ring(ang, r, y)
+			part({ Name = "Stair", Size = Vector3.new(r * math.rad(5) + 0.7, 1, 6), CFrame = facingTrunk(p), Color = Color3.fromRGB(135, 98, 62), Material = MAT.WoodPlanks, Parent = tree })
+			if sIdx % 4 == 0 then
+				cylinder({ Name = "StairPost", Position = ring(ang, r + 3.2, y + 1.8), Height = 3, Diameter = 0.35, Color = ELF_GOLD, Material = MAT.Wood, Parent = tree })
+			end
+			if sIdx % 18 == 9 then
+				lantern(tree, ring(ang, r + 3.2, y + 4), ELF_GLOW, true)
+			end
+		end
+		task.wait()
+	end
+
+	-- กิ่งใหญ่ + พุ่มใบ + เถาวัลย์ + บ้านห้อยกิ่ง
+	local BRIDGE_ANGLES = { [80] = true, [190] = true }
+	local branchTips = {}
+	for _, br in ipairs({ { 80, 158 }, { 190, 156 }, { 10, 150 }, { 130, 165 }, { 240, 152 }, { 290, 168 }, { 335, 160 }, { 160, 176 }, { 265, 177 } }) do
+		local ang, y = br[1], br[2]
+		local dir = Vector3.new(math.cos(math.rad(ang)), 0, math.sin(math.rad(ang)))
+		local p = base + Vector3.new(0, y, 0) + dir * trunkRadius(y) * 0.8
+		local segs = { { 32, 0.25, 10 }, { 30, 0.05, 7.5 }, { 26, -0.12, 5 } }
+		for si, sg in ipairs(segs) do
+			local q = p + (dir + Vector3.new(0, sg[2], 0)).Unit * sg[1]
+			limb(tree, p, q, sg[3], BARK, MAT.Wood, "Branch")
+			-- เถาวัลย์ห้อย ปลายเรืองแสง
+			if si >= 2 then
+				for _ = 1, 2 do
+					local top = p:Lerp(q, rng:NextNumber(0.2, 0.9))
+					local len = rng:NextNumber(10, 24)
+					part({ Name = "Vine", Size = Vector3.new(0.35, len, 0.35), CFrame = CFrame.new(top - Vector3.new(0, len / 2, 0)), Color = Color3.fromRGB(45, 95, 55), Material = MAT.Grass, CanCollide = false, Parent = tree })
+					part({ Name = "VineGlow", Shape = Enum.PartType.Ball, Size = Vector3.new(0.8, 0.8, 0.8), CFrame = CFrame.new(top - Vector3.new(0, len, 0)), Color = ELF_GLOW, Material = MAT.Neon, CanCollide = false, Parent = tree })
+				end
+			end
+			p = q
+		end
+		-- พุ่มใบปลายกิ่ง (เดินทะลุได้)
+		for k = 1, 3 do
+			local off = Vector3.new(rng:NextNumber(-10, 10), rng:NextNumber(-2, 10), rng:NextNumber(-10, 10))
+			local s = rng:NextNumber(26, 38)
+			part({ Name = "Foliage", Shape = Enum.PartType.Ball, Size = Vector3.new(s, s, s), CFrame = CFrame.new(p + off - dir * (k - 1) * 12), Color = LEAF_A:Lerp(LEAF_B, rng:NextNumber()), Material = MAT.Grass, CanCollide = false, Parent = tree })
+		end
+		for _ = 1, 4 do
+			part({ Name = "SpiritLight", Shape = Enum.PartType.Ball, Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(p + Vector3.new(rng:NextNumber(-14, 14), rng:NextNumber(-12, 0), rng:NextNumber(-14, 14))), Color = ELF_GLOW, Material = MAT.Neon, CanCollide = false, Parent = tree })
+		end
+		pointLight(tree:GetChildren()[#tree:GetChildren()], ELF_GLOW, 24, 1)
+		if not BRIDGE_ANGLES[ang] then
+			elfPod(tree, p - dir * 8 - Vector3.new(0, 3, 0), rng:NextNumber(9, 14))
+		end
+		branchTips[ang] = { dir = dir, y = y }
+	end
+	task.wait()
+
+	-- ลานห้อยจากกิ่ง + สะพานเชือกจากชั้นบนสุด
+	local topDeck = DECKS[3]
+	for ang in pairs(BRIDGE_ANGLES) do
+		local dir = branchTips[ang].dir
+		local center = base + Vector3.new(0, topDeck, 0) + dir * 75
+		local pcf = facingTrunk(center)
+		part({ Name = "HangingPlatform", Size = Vector3.new(18, 1, 18), CFrame = pcf, Color = Color3.fromRGB(150, 110, 72), Material = MAT.WoodPlanks, Parent = tree })
+		local anchor = base + Vector3.new(0, branchTips[ang].y + 9, 0) + dir * 75
+		for _, c in ipairs({ Vector3.new(-8.5, 0, -8.5), Vector3.new(8.5, 0, -8.5), Vector3.new(-8.5, 0, 8.5), Vector3.new(8.5, 0, 8.5) }) do
+			rope(tree, (pcf * CFrame.new(c)).Position, anchor, 0.35)
+		end
+		buildElfHouse(tree, pcf * CFrame.new(0, 0.5, 2))
+		lantern(tree, (pcf * CFrame.new(7, 3.5, -7)).Position, Color3.fromRGB(255, 210, 140), true)
+		local from = base + Vector3.new(0, topDeck + 0.5, 0) + dir * (trunkRadius(topDeck) + 14.2)
+		local to = center + Vector3.new(0, 0.5, 0) - dir * 9
+		plankBridge(tree, from, to, 5, 2.5)
+	end
+
+	-- บันไดปีนเถาวัลย์ (TrussPart) จากชั้นบนสุดขึ้นยอดต้นไม้
+	local topY = 180
+	local trussPos = ring(45, trunkRadius(topDeck) + 5, (topDeck + topY) / 2 + 1)
+	part({ ClassName = "TrussPart", Name = "VineLadder", Size = Vector3.new(2, topY - topDeck + 2, 2), CFrame = CFrame.new(trussPos), Color = Color3.fromRGB(70, 120, 60), Material = MAT.Grass, Parent = tree })
+
+	-- 💚 ยอดต้นไม้: ลานหัวใจต้นไม้โลก
+	local crown = base + Vector3.new(0, topY, 0)
+	cylinder({ Name = "CrownPlatform", Position = crown + Vector3.new(0, 1, 0), Height = 2, Diameter = 46, Color = Color3.fromRGB(150, 110, 72), Material = MAT.WoodPlanks, Parent = tree })
+	local heart = part({ Name = "HeartOfWorldTree", Size = Vector3.new(4, 10, 4), CFrame = CFrame.new(crown + Vector3.new(0, 8, 0)) * CFrame.Angles(0, math.rad(45), 0), Color = Color3.fromRGB(120, 255, 170), Material = MAT.Neon, Parent = tree })
+	pointLight(heart, Color3.fromRGB(120, 255, 170), 60, 2.5)
+	local sparkle = Instance.new("Sparkles")
+	sparkle.SparkleColor = Color3.fromRGB(150, 255, 200)
+	sparkle.Parent = heart
+	billboardText(heart, "💚 หัวใจต้นไม้โลก", Color3.fromRGB(170, 255, 200), 7, 16)
+	buildChest(tree, crown + Vector3.new(-9, 2, -9), 150, "หีบต้นไม้โลก")
+	for k = 0, 11 do
+		local a = k * 30
+		local s = rng:NextNumber(40, 60)
+		part({ Name = "Crown", Shape = Enum.PartType.Ball, Size = Vector3.new(s, s, s), CFrame = CFrame.new(ring(a, rng:NextNumber(42, 60), topY + rng:NextNumber(18, 34))), Color = LEAF_A:Lerp(LEAF_B, rng:NextNumber()), Material = MAT.Grass, CanCollide = false, Parent = tree })
+	end
+
+	fireflies(tree, base + Vector3.new(0, 50, 0), Vector3.new(320, 100, 320), Color3.fromRGB(180, 255, 200), 45)
+
+	registerWarp(tree, "🌳 ต้นไม้โลก", Color3.fromRGB(120, 230, 160), groundPos(WT.x - 80, WT.z, 4), groundPos(WT.x - 92, WT.z))
+	registerWarp(tree, "🧝 หมู่บ้านเอลฟ์ (ยอดต้นไม้)", ELF_GLOW, crown + Vector3.new(10, 5, 6), crown + Vector3.new(10, 2, -10))
+
+	for i = 1, 4 do
+		local a = i / 4 * math.pi * 2
+		table.insert(monsterSpawns, { kind = "EvilEye", pos = groundPos(WT.x + math.cos(a) * 200, WT.z + math.sin(a) * 200) })
+	end
+end
+
+-------------------------------------------------------------------------------
+-- 👺 ค่ายก็อบลิน
+-------------------------------------------------------------------------------
+local function campfire(parent, pos, big)
+	for k = 0, 7 do
+		local a = k / 8 * math.pi * 2
+		part({ Name = "FireStone", Size = Vector3.new(1.4, 0.9, 1.4), CFrame = CFrame.new(pos + Vector3.new(math.cos(a) * 2.4, 0.4, math.sin(a) * 2.4)) * CFrame.Angles(0, a, 0), Color = Color3.fromRGB(90, 90, 95), Material = MAT.Rock, Parent = parent })
+	end
+	for k = 0, 2 do
+		part({ Name = "FireLog", Size = Vector3.new(0.7, 0.7, 3.4), CFrame = CFrame.new(pos + Vector3.new(0, 0.5, 0)) * CFrame.Angles(0, k * 1.05, 0.2), Color = Color3.fromRGB(70, 45, 30), Material = MAT.Wood, Parent = parent })
+	end
+	local core = part({ Name = "Embers", Size = Vector3.new(1.5, 0.5, 1.5), CFrame = CFrame.new(pos + Vector3.new(0, 0.8, 0)), Color = Color3.fromRGB(255, 120, 30), Material = MAT.Neon, CanCollide = false, Parent = parent })
+	local fire = Instance.new("Fire")
+	fire.Size = big and 8 or 5
+	fire.Heat = 9
+	fire.Parent = core
+	pointLight(core, Color3.fromRGB(255, 140, 60), big and 36 or 24, 2)
+end
+
+local function buildGoblinCamp()
+	local camp = folder("GoblinCamp")
+	local gc = ZONE.GoblinCamp
+	local center = Vector3.new(gc.x, gc.height, gc.z)
+	local gateAngle = math.deg(math.atan2(-center.Z, -center.X)) -- ประตูหันไปทางเมือง
+
+	-- รั้วไม้ปลายแหลม
+	for deg = 0, 359, 3 do
+		local diff = math.abs(((deg - gateAngle + 180) % 360) - 180)
+		if diff > 12 then
+			local a = math.rad(deg)
+			local h = rng:NextNumber(9, 12)
+			local p = center + Vector3.new(math.cos(a) * 58, h / 2 - 1, math.sin(a) * 58)
+			cylinder({ Name = "Palisade", Position = p, Height = h, Diameter = 2.6, Color = Color3.fromRGB(95, 70, 45), Material = MAT.Wood, Parent = camp })
+			part({ Name = "Spike", Size = Vector3.new(1.2, 1.6, 1.2), CFrame = CFrame.new(p + Vector3.new(0, h / 2 + 0.6, 0)) * CFrame.Angles(0, a, math.rad(45)), Color = Color3.fromRGB(80, 60, 40), Material = MAT.Wood, Parent = camp })
+		end
+	end
+
+	-- เต็นท์
+	local tentColors = { Color3.fromRGB(120, 85, 55), Color3.fromRGB(140, 60, 45), Color3.fromRGB(100, 95, 70) }
+	for i = 0, 5 do
+		local a = i / 6 * math.pi * 2 + 0.3
+		local pos = center + Vector3.new(math.cos(a) * 34, 0, math.sin(a) * 34)
+		local cf = CFrame.lookAt(pos, center)
+		gableRoof(camp, cf, 10, 12, 7, tentColors[i % 3 + 1])
+		part({ Name = "TentFlap", Size = Vector3.new(3, 5, 0.2), CFrame = cf * CFrame.new(0, 2.5, -7), Color = Color3.fromRGB(60, 40, 25), Material = MAT.Fabric, Parent = camp })
+	end
+
+	-- ไฟกองกลาง + เสาโทเทม + กรงขัง
+	campfire(camp, center, true)
+	for _, off in ipairs({ Vector3.new(14, 0, 8), Vector3.new(-12, 0, -14) }) do
+		local p = center + off
+		cylinder({ Name = "Totem", Position = p + Vector3.new(0, 6, 0), Height = 12, Diameter = 2, Color = Color3.fromRGB(110, 75, 45), Material = MAT.Wood, Parent = camp })
+		part({ Name = "TotemSkull", Shape = Enum.PartType.Ball, Size = Vector3.new(2.6, 2.6, 2.6), CFrame = CFrame.new(p + Vector3.new(0, 13, 0)), Color = Color3.fromRGB(225, 220, 200), Material = MAT.SmoothPlastic, Parent = camp })
+		for _, sx in ipairs({ -0.5, 0.5 }) do
+			part({ Name = "TotemEye", Size = Vector3.new(0.4, 0.4, 0.2), CFrame = CFrame.lookAt(p + Vector3.new(sx, 13.3, 0), center + Vector3.new(0, 13.3, 0)) * CFrame.new(0, 0, -1.25), Color = Color3.fromRGB(255, 60, 40), Material = MAT.Neon, CanCollide = false, Parent = camp })
+		end
+	end
+	local cage = center + Vector3.new(-20, 0, 18)
+	part({ Name = "CageFloor", Size = Vector3.new(7, 0.6, 7), CFrame = CFrame.new(cage + Vector3.new(0, 0.3, 0)), Color = Color3.fromRGB(80, 60, 40), Material = MAT.WoodPlanks, Parent = camp })
+	part({ Name = "CageTop", Size = Vector3.new(7, 0.6, 7), CFrame = CFrame.new(cage + Vector3.new(0, 7.3, 0)), Color = Color3.fromRGB(80, 60, 40), Material = MAT.WoodPlanks, Parent = camp })
+	for k = -3, 3, 1.5 do
+		for _, side in ipairs({ -3.3, 3.3 }) do
+			part({ Name = "CageBar", Size = Vector3.new(0.3, 7, 0.3), CFrame = CFrame.new(cage + Vector3.new(k, 3.8, side)), Color = Color3.fromRGB(70, 70, 75), Material = MAT.Metal, Parent = camp })
+			part({ Name = "CageBar", Size = Vector3.new(0.3, 7, 0.3), CFrame = CFrame.new(cage + Vector3.new(side, 3.8, k)), Color = Color3.fromRGB(70, 70, 75), Material = MAT.Metal, Parent = camp })
+		end
+	end
+	for _ = 1, 10 do
+		local a, d = rng:NextNumber(0, math.pi * 2), rng:NextNumber(18, 48)
+		part({ Name = "Crate", Size = Vector3.new(3, 3, 3), CFrame = CFrame.new(center + Vector3.new(math.cos(a) * d, 1.5, math.sin(a) * d)) * CFrame.Angles(0, a, 0), Color = Color3.fromRGB(150, 110, 70), Material = MAT.WoodPlanks, Parent = camp })
+	end
+	buildChest(camp, center + Vector3.new(8, 0, -20), 60, "หีบก็อบลิน")
+
+	local g = math.rad(gateAngle)
+	local gateDir = Vector3.new(math.cos(g), 0, math.sin(g))
+	registerWarp(camp, "👺 ค่ายก็อบลิน", Color3.fromRGB(150, 200, 80), groundPos(center.X + gateDir.X * 75, center.Z + gateDir.Z * 75, 4), groundPos(center.X + gateDir.X * 88, center.Z + gateDir.Z * 88))
+	for i = 1, 10 do
+		local a = i / 10 * math.pi * 2
+		table.insert(monsterSpawns, { kind = "Goblin", pos = center + Vector3.new(math.cos(a) * 22, 0, math.sin(a) * 22) })
+	end
+end
+
+-------------------------------------------------------------------------------
+-- 🐍 หนองน้ำ + กระท่อมแม่มด
+-------------------------------------------------------------------------------
+local function buildSwamp()
+	local swamp = folder("Swamp")
+	local sw = ZONE.Swamp
+	local center = Vector3.new(sw.x, 0, sw.z)
+
+	for _ = 1, 28 do
+		local a, d = rng:NextNumber(0, math.pi * 2), rng:NextNumber(20, sw.radius)
+		local p = groundPos(center.X + math.cos(a) * d, center.Z + math.sin(a) * d)
+		local h = rng:NextNumber(12, 22)
+		local top = p + Vector3.new(rng:NextNumber(-3, 3), h, rng:NextNumber(-3, 3))
+		limb(swamp, p - Vector3.new(0, 2, 0), top, 1.8, Color3.fromRGB(60, 55, 50), MAT.Wood, "DeadTree")
+		for _ = 1, 2 do
+			local arm = top:Lerp(p, rng:NextNumber(0.1, 0.4))
+			limb(swamp, arm, arm + Vector3.new(rng:NextNumber(-6, 6), rng:NextNumber(1, 4), rng:NextNumber(-6, 6)), 0.8, Color3.fromRGB(60, 55, 50), MAT.Wood, "DeadBranch")
+		end
+		rope(swamp, top - Vector3.new(0, 2, 0), top - Vector3.new(0, 8, 0), 0.5, Color3.fromRGB(80, 100, 60)) -- ตะไคร่ห้อย
+	end
+
+	-- ใบบัว + ดอกบัว บนแอ่งน้ำ, ต้นกก
+	for _ = 1, 140 do
+		local a, d = rng:NextNumber(0, math.pi * 2), rng:NextNumber(0, sw.radius)
+		local x, z = center.X + math.cos(a) * d, center.Z + math.sin(a) * d
+		local h = heightAt(x, z)
+		if h < -0.8 then
+			cylinder({ Name = "LilyPad", Position = Vector3.new(x, 0.05, z), Height = 0.1, Diameter = rng:NextNumber(2, 4), Color = Color3.fromRGB(60, 130, 60), Material = MAT.Grass, CanCollide = false, Parent = swamp })
+			if rng:NextNumber() < 0.2 then
+				part({ Name = "LotusFlower", Shape = Enum.PartType.Ball, Size = Vector3.new(0.9, 0.9, 0.9), CFrame = CFrame.new(x, 0.4, z), Color = Color3.fromRGB(255, 150, 200), Material = MAT.Neon, CanCollide = false, Parent = swamp })
+			end
+		elseif h < 3 and rng:NextNumber() < 0.5 then
+			for _ = 1, 4 do
+				local rh = rng:NextNumber(3, 5)
+				part({ Name = "Reed", Size = Vector3.new(0.2, rh, 0.2), CFrame = CFrame.new(x + rng:NextNumber(-1, 1), h + rh / 2, z + rng:NextNumber(-1, 1)) * CFrame.Angles(rng:NextNumber(-0.2, 0.2), 0, rng:NextNumber(-0.2, 0.2)), Color = Color3.fromRGB(110, 130, 60), Material = MAT.Grass, CanCollide = false, Parent = swamp })
+			end
+		end
+	end
+
+	-- ไฟผี (Will-o'-wisp)
+	for _ = 1, 12 do
+		local a, d = rng:NextNumber(0, math.pi * 2), rng:NextNumber(10, sw.radius)
+		local p = center + Vector3.new(math.cos(a) * d, rng:NextNumber(4, 8), math.sin(a) * d)
+		local wisp = part({ Name = "Wisp", Shape = Enum.PartType.Ball, Size = Vector3.new(1.2, 1.2, 1.2), CFrame = CFrame.new(p), Color = Color3.fromRGB(120, 255, 200), Material = MAT.Neon, CanCollide = false, Parent = swamp })
+		pointLight(wisp, Color3.fromRGB(120, 255, 200), 14, 1.2)
+	end
+
+	-- กระท่อมแม่มดบนเสาไม้
+	local hutBase = center + Vector3.new(0, 9, 0)
+	for _, c in ipairs({ Vector3.new(-6, 0, -5), Vector3.new(6, 0, -5), Vector3.new(-6, 0, 5), Vector3.new(6, 0, 5) }) do
+		limb(swamp, hutBase + c - Vector3.new(0, 14, 0), hutBase + c, 1.2, Color3.fromRGB(70, 55, 40), MAT.Wood, "Stilt")
+	end
+	local hutCf = CFrame.lookAt(hutBase, hutBase + Vector3.new(-1, 0, 0))
+	local hut = model("WitchHut", swamp)
+	buildRoom(hut, hutCf, 14, 12, 9, { wallColor = Color3.fromRGB(80, 65, 55), material = MAT.WoodPlanks, floorColor = Color3.fromRGB(70, 55, 45), doorWidth = 4 })
+	gableRoof(hut, hutCf * CFrame.new(0, 10, 0), 14, 12, 7, Color3.fromRGB(80, 50, 100))
+	local cauldron = cylinder({ Name = "Cauldron", Position = (hutCf * CFrame.new(0, 2.2, 2)).Position, Height = 2.4, Diameter = 3, Color = Color3.fromRGB(35, 35, 40), Material = MAT.Metal, Parent = hut })
+	local brew = cylinder({ Name = "Brew", Position = cauldron.Position + Vector3.new(0, 1.25, 0), Height = 0.1, Diameter = 2.6, Color = Color3.fromRGB(120, 255, 90), Material = MAT.Neon, CanCollide = false, Parent = hut })
+	pointLight(brew, Color3.fromRGB(120, 255, 90), 18, 1.5)
+	-- ทางลาดขึ้นกระท่อม
+	local rampFrom = (hutCf * CFrame.new(0, 0, -6)).Position
+	local rampTo = rampFrom + Vector3.new(-18, 0, 0)
+	plankBridge(swamp, Vector3.new(rampTo.X, heightAt(rampTo.X, rampTo.Z) + 0.5, rampTo.Z), rampFrom + Vector3.new(0, 1, 0), 4, 0)
+	buildChest(hut, (hutCf * CFrame.new(4, 1, 3)).Position, 70, "หีบแม่มด")
+
+	fireflies(swamp, center + Vector3.new(0, 8, 0), Vector3.new(300, 16, 300), Color3.fromRGB(150, 255, 120), 30)
+	local land = groundPos(center.X - 40, center.Z - 20, 4)
+	registerWarp(swamp, "🐍 หนองน้ำแม่มด", Color3.fromRGB(120, 200, 120), land, land + Vector3.new(0, -4, 12))
+	for i = 1, 11 do
+		local a = i / 11 * math.pi * 2
+		local p = groundPos(center.X + math.cos(a) * 70, center.Z + math.sin(a) * 70)
+		table.insert(monsterSpawns, { kind = (i % 2 == 0) and "PoisonSlime" or "Snake", pos = Vector3.new(p.X, math.max(p.Y, 0.5), p.Z) })
+	end
+end
+
+-------------------------------------------------------------------------------
+-- 🌋 ภูเขาไฟ + รังมังกร
+-------------------------------------------------------------------------------
+local function buildVolcano()
+	local volc = folder("Volcano")
+	local v = VOLCANO
+	local bottom = heightAt(v.x, v.z)
+
+	local lava = cylinder({ Name = "LavaPool", Position = Vector3.new(v.x, bottom + 1.5, v.z), Height = 1, Diameter = v.crater * 1.7, Color = Color3.fromRGB(255, 90, 20), Material = MAT.Neon, Transparency = 0.1, Parent = volc })
+	lava:SetAttribute("Lava", true)
+	pointLight(lava, Color3.fromRGB(255, 110, 40), 60, 3)
+	local smoke = Instance.new("ParticleEmitter")
+	smoke.Color = ColorSequence.new(Color3.fromRGB(60, 55, 55))
+	smoke.Size = NumberSequence.new(8, 30)
+	smoke.Transparency = NumberSequence.new(0.3, 1)
+	smoke.Lifetime = NumberRange.new(6, 10)
+	smoke.Speed = NumberRange.new(10, 18)
+	smoke.SpreadAngle = Vector2.new(15, 15)
+	smoke.Rate = 6
+	smoke.EmissionDirection = Enum.NormalId.Right
+	smoke.Parent = lava
+	local embers = Instance.new("ParticleEmitter")
+	embers.Color = ColorSequence.new(Color3.fromRGB(255, 160, 60))
+	embers.LightEmission = 1
+	embers.Size = NumberSequence.new(0.5, 0)
+	embers.Lifetime = NumberRange.new(2, 4)
+	embers.Speed = NumberRange.new(15, 30)
+	embers.SpreadAngle = Vector2.new(30, 30)
+	embers.Rate = 30
+	embers.EmissionDirection = Enum.NormalId.Right
+	embers.Parent = lava
+
+	-- เสาหินบะซอลต์บนไหล่เขา
+	for _ = 1, 16 do
+		local a, d = rng:NextNumber(0, math.pi * 2), rng:NextNumber(v.crater + 30, v.radius * 0.8)
+		local p = groundPos(v.x + math.cos(a) * d, v.z + math.sin(a) * d)
+		local h = rng:NextNumber(8, 20)
+		part({ Name = "BasaltSpire", Size = Vector3.new(4, h, 4), CFrame = CFrame.new(p + Vector3.new(0, h / 2 - 1, 0)) * CFrame.Angles(rng:NextNumber(-0.2, 0.2), rng:NextNumber(0, 3), rng:NextNumber(-0.2, 0.2)), Color = Color3.fromRGB(45, 40, 42), Material = MAT.Basalt, Parent = volc })
+	end
+
+	-- รังมังกรบนปากปล่อง: กองทอง + หีบ
+	local lairPos = groundPos(v.x + v.crater + 14, v.z)
+	for _ = 1, 24 do
+		part({ Name = "Gold", Size = Vector3.new(rng:NextNumber(0.8, 2), rng:NextNumber(0.4, 1), rng:NextNumber(0.8, 2)), CFrame = CFrame.new(lairPos + Vector3.new(rng:NextNumber(-6, 6), rng:NextNumber(0, 1.5), rng:NextNumber(-6, 6))) * CFrame.Angles(rng:NextNumber(0, 1), rng:NextNumber(0, 3), 0), Color = Color3.fromRGB(255, 200, 50), Material = MAT.Foil, Parent = volc })
+	end
+	buildChest(volc, lairPos + Vector3.new(0, 1, 0), 400, "สมบัติมังกร")
+	table.insert(monsterSpawns, { kind = "Dragon", pos = lairPos })
+	for i = 1, 6 do
+		local a = math.rad(-75 + (i - 1) * 30) -- ไหล่เขาฝั่งตะวันออก (ฝั่งตะวันตกติดทะเล)
+		table.insert(monsterSpawns, { kind = "MagmaSlime", pos = groundPos(v.x + math.cos(a) * 170, v.z + math.sin(a) * 170) })
+	end
+
+	local foot = groundPos(v.x + v.radius - 40, v.z, 4)
+	registerWarp(volc, "🌋 ภูเขาไฟ (รังมังกร)", Color3.fromRGB(255, 120, 50), foot, foot + Vector3.new(0, -4, 12))
+end
+
+-------------------------------------------------------------------------------
+-- 💀 ดันเจี้ยนใต้ดิน 9 ห้อง
+-------------------------------------------------------------------------------
+local DUNGEON = { origin = Vector3.new(-380, -320, -760), spacing = 90, room = 60, height = 22, door = 14 }
+local DUNGEON_ORDER = { { 0, 0 }, { 1, 0 }, { 2, 0 }, { 2, 1 }, { 1, 1 }, { 0, 1 }, { 0, 2 }, { 1, 2 }, { 2, 2 } }
+local DUNGEON_ROOMS = { "entrance", "goblins", "slimes", "snakes", "eyes", "armory", "crypt", "treasure", "boss" }
+
+local function dungeonTorch(parent, pos, facingPos)
+	local cf = CFrame.lookAt(pos, Vector3.new(facingPos.X, pos.Y, facingPos.Z))
+	part({ Name = "TorchHolder", Size = Vector3.new(0.5, 1.8, 0.5), CFrame = cf * CFrame.Angles(math.rad(-25), 0, 0), Color = Color3.fromRGB(60, 50, 40), Material = MAT.Metal, Parent = parent })
+	local flame = part({ Name = "TorchFlame", Size = Vector3.new(0.6, 0.6, 0.6), CFrame = cf * CFrame.new(0, 1.1, -0.4), Color = Color3.fromRGB(255, 150, 50), Material = MAT.Neon, CanCollide = false, Parent = parent })
+	local fire = Instance.new("Fire")
+	fire.Size = 2.5
+	fire.Heat = 6
+	fire.Parent = flame
+	pointLight(flame, Color3.fromRGB(255, 140, 60), 28, 1.8)
+end
+
+local function buildDungeon()
+	local dg = folder("Dungeon")
+	local D = DUNGEON
+	local wallColor, floorColor = Color3.fromRGB(78, 76, 82), Color3.fromRGB(58, 56, 60)
+	local function roomCenter(i, j)
+		return D.origin + Vector3.new(i * D.spacing, 0, j * D.spacing)
+	end
+	local doors = {}
+	local function key(i, j)
+		return i .. "," .. j
+	end
+	for k = 1, #DUNGEON_ORDER - 1 do
+		local a, b = DUNGEON_ORDER[k], DUNGEON_ORDER[k + 1]
+		doors[key(a[1], a[2])] = doors[key(a[1], a[2])] or {}
+		doors[key(b[1], b[2])] = doors[key(b[1], b[2])] or {}
+		local dx, dz = b[1] - a[1], b[2] - a[2]
+		doors[key(a[1], a[2])][dx .. "," .. dz] = true
+		doors[key(b[1], b[2])][(0 - dx) .. "," .. (0 - dz)] = true
+
+		-- ทางเดินเชื่อมห้อง
+		local ca, cb = roomCenter(a[1], a[2]), roomCenter(b[1], b[2])
+		local mid = (ca + cb) / 2
+		local side = Vector3.new(dz, 0, dx)
+		local len = D.spacing - D.room + 2
+		local sizeAlong = function(w, h, l)
+			return (dx ~= 0) and Vector3.new(l, h, w) or Vector3.new(w, h, l)
+		end
+		part({ Name = "CorridorFloor", Size = sizeAlong(D.door, 2, len), CFrame = CFrame.new(mid - Vector3.new(0, 1, 0)), Color = floorColor, Material = MAT.Slate, Parent = dg })
+		part({ Name = "CorridorCeiling", Size = sizeAlong(D.door + 4, 2, len), CFrame = CFrame.new(mid + Vector3.new(0, 15, 0)), Color = wallColor, Material = MAT.Rock, Parent = dg })
+		for _, s in ipairs({ -1, 1 }) do
+			part({ Name = "CorridorWall", Size = sizeAlong(2, 14, len), CFrame = CFrame.new(mid + side * s * (D.door / 2 + 1) + Vector3.new(0, 7, 0)), Color = wallColor, Material = MAT.Cobblestone, Parent = dg })
+		end
+		dungeonTorch(dg, mid + side * (D.door / 2 - 0.2) + Vector3.new(0, 7, 0), mid)
+	end
+
+	local H, S, T = D.height, D.room, 2
+	for idx, rc in ipairs(DUNGEON_ORDER) do
+		local c = roomCenter(rc[1], rc[2])
+		local kind = DUNGEON_ROOMS[idx]
+		local room = folder("Room" .. idx .. "_" .. kind, dg)
+		part({ Name = "Floor", Size = Vector3.new(S, 2, S), CFrame = CFrame.new(c - Vector3.new(0, 1, 0)), Color = floorColor, Material = MAT.Slate, Parent = room })
+		part({ Name = "Ceiling", Size = Vector3.new(S + 4, 2, S + 4), CFrame = CFrame.new(c + Vector3.new(0, H + 1, 0)), Color = wallColor, Material = MAT.Rock, Parent = room })
+		local d = doors[key(rc[1], rc[2])]
+		for _, w in ipairs({ { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) do
+			local normal = Vector3.new(w[1], 0, w[2])
+			local tangent = Vector3.new(w[2], 0, w[1])
+			local wallC = c + normal * (S / 2 + T / 2) + Vector3.new(0, H / 2, 0)
+			local function wsize(len, h)
+				return (w[1] ~= 0) and Vector3.new(T, h, len) or Vector3.new(len, h, T)
+			end
+			if d[w[1] .. "," .. w[2]] then
+				local segLen = (S + 2 * T - D.door) / 2
+				for _, s in ipairs({ -1, 1 }) do
+					part({ Name = "Wall", Size = wsize(segLen, H), CFrame = CFrame.new(wallC + tangent * s * (D.door / 2 + segLen / 2)), Color = wallColor, Material = MAT.Cobblestone, Parent = room })
+				end
+				part({ Name = "Lintel", Size = wsize(D.door, H - 12), CFrame = CFrame.new(c + normal * (S / 2 + T / 2) + Vector3.new(0, 12 + (H - 12) / 2, 0)), Color = wallColor, Material = MAT.Cobblestone, Parent = room })
+			else
+				part({ Name = "Wall", Size = wsize(S + 2 * T, H), CFrame = CFrame.new(wallC), Color = wallColor, Material = MAT.Cobblestone, Parent = room })
+			end
+			-- คบเพลิงสองข้างของทุกผนัง
+			for _, s in ipairs({ -1, 1 }) do
+				dungeonTorch(room, c + normal * (S / 2 - 0.3) + tangent * s * 18 + Vector3.new(0, 8, 0), c)
+			end
+		end
+		-- เสาหิน
+		for _, sx in ipairs({ -1, 1 }) do
+			for _, sz in ipairs({ -1, 1 }) do
+				part({ Name = "Pillar", Size = Vector3.new(4, H, 4), CFrame = CFrame.new(c + Vector3.new(sx * 17, H / 2, sz * 17)), Color = Color3.fromRGB(95, 92, 98), Material = MAT.Cobblestone, Parent = room })
+			end
+		end
+		-- กระดูกกระจายตามพื้น
+		for _ = 1, 8 do
+			part({ Name = "Bone", Size = Vector3.new(0.4, 0.4, rng:NextNumber(1.5, 3)), CFrame = CFrame.new(c + Vector3.new(rng:NextNumber(-26, 26), 0.2, rng:NextNumber(-26, 26))) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), Color = Color3.fromRGB(220, 215, 195), Material = MAT.SmoothPlastic, CanCollide = false, Parent = room })
+		end
+
+		local function spawns(kindName, count)
+			for n = 1, count do
+				local a = n / count * math.pi * 2
+				table.insert(monsterSpawns, { kind = kindName, pos = c + Vector3.new(math.cos(a) * 10, 0, math.sin(a) * 10) })
+			end
+		end
+
+		if kind == "entrance" then
+			registerWarp(room, "💀 ดันเจี้ยน (ห้องแรก)", Color3.fromRGB(190, 90, 255), c + Vector3.new(-12, 4, 0), c + Vector3.new(-12, 0, 12))
+			for _, sz in ipairs({ -1, 1 }) do
+				part({ Name = "Statue", Size = Vector3.new(4, 10, 4), CFrame = CFrame.new(c + Vector3.new(20, 5, sz * 8)), Color = Color3.fromRGB(120, 120, 125), Material = MAT.Marble, Parent = room })
+				part({ Name = "StatueHead", Shape = Enum.PartType.Ball, Size = Vector3.new(3, 3, 3), CFrame = CFrame.new(c + Vector3.new(20, 11.5, sz * 8)), Color = Color3.fromRGB(120, 120, 125), Material = MAT.Marble, Parent = room })
+			end
+		elseif kind == "goblins" or kind == "armory" then
+			for _ = 1, 8 do
+				part({ Name = "Crate", Size = Vector3.new(3, 3, 3), CFrame = CFrame.new(c + Vector3.new(rng:NextNumber(-24, 24), 1.5, rng:NextNumber(-24, 24))) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), Color = Color3.fromRGB(130, 95, 60), Material = MAT.WoodPlanks, Parent = room })
+			end
+			if kind == "armory" then
+				for k = -2, 2 do
+					part({ Name = "SpearRack", Size = Vector3.new(0.3, 8, 0.3), CFrame = CFrame.new(c + Vector3.new(k * 2, 4, 27)) * CFrame.Angles(math.rad(-10), 0, 0), Color = Color3.fromRGB(110, 110, 120), Material = MAT.Metal, Parent = room })
+				end
+			end
+			spawns("Goblin", kind == "goblins" and 4 or 3)
+		elseif kind == "slimes" then
+			for _ = 1, 10 do
+				cylinder({ Name = "Ooze", Position = c + Vector3.new(rng:NextNumber(-24, 24), 0.05, rng:NextNumber(-24, 24)), Height = 0.1, Diameter = rng:NextNumber(3, 7), Color = Color3.fromRGB(150, 60, 200), Material = MAT.Neon, Transparency = 0.3, CanCollide = false, Parent = room })
+			end
+			spawns("PoisonSlime", 4)
+		elseif kind == "snakes" then
+			for _ = 1, 12 do
+				part({ Name = "Egg", Shape = Enum.PartType.Ball, Size = Vector3.new(1.3, 1.3, 1.3), CFrame = CFrame.new(c + Vector3.new(rng:NextNumber(-8, 8), 0.6, rng:NextNumber(-8, 8))), Color = Color3.fromRGB(235, 230, 200), Material = MAT.SmoothPlastic, Parent = room })
+			end
+			spawns("Snake", 4)
+		elseif kind == "eyes" then
+			for _ = 1, 6 do
+				local cr = part({ Name = "EyeCrystal", Size = Vector3.new(2, rng:NextNumber(4, 8), 2), CFrame = CFrame.new(c + Vector3.new(rng:NextNumber(-22, 22), 2, rng:NextNumber(-22, 22))) * CFrame.Angles(rng:NextNumber(-0.3, 0.3), rng:NextNumber(0, 3), rng:NextNumber(-0.3, 0.3)), Color = Color3.fromRGB(190, 70, 255), Material = MAT.Neon, Parent = room })
+				pointLight(cr, Color3.fromRGB(190, 70, 255), 14, 1)
+			end
+			spawns("EvilEye", 3)
+		elseif kind == "crypt" then
+			for k = -1, 1 do
+				part({ Name = "Coffin", Size = Vector3.new(3.5, 2, 8), CFrame = CFrame.new(c + Vector3.new(k * 9, 1, -20)), Color = Color3.fromRGB(60, 45, 35), Material = MAT.Wood, Parent = room })
+				local candle = part({ Name = "Candle", Size = Vector3.new(0.4, 1.2, 0.4), CFrame = CFrame.new(c + Vector3.new(k * 9, 2.6, -15)), Color = Color3.fromRGB(240, 235, 210), Material = MAT.SmoothPlastic, Parent = room })
+				pointLight(candle, Color3.fromRGB(255, 200, 120), 10, 1)
+			end
+			spawns("Skeleton", 4)
+		elseif kind == "treasure" then
+			for _ = 1, 30 do
+				part({ Name = "Gold", Size = Vector3.new(rng:NextNumber(0.8, 2), rng:NextNumber(0.4, 1), rng:NextNumber(0.8, 2)), CFrame = CFrame.new(c + Vector3.new(rng:NextNumber(-7, 7), rng:NextNumber(0, 1.5), rng:NextNumber(-7, 7))), Color = Color3.fromRGB(255, 200, 50), Material = MAT.Foil, Parent = room })
+			end
+			buildChest(room, c, 120, "หีบห้องสมบัติ")
+			spawns("Bat", 3)
+		elseif kind == "boss" then
+			for _, sx in ipairs({ -1, 1 }) do
+				local ch = part({ Name = "LavaChannel", Size = Vector3.new(4, 0.4, S - 6), CFrame = CFrame.new(c + Vector3.new(sx * 24, 0.2, 0)), Color = Color3.fromRGB(255, 90, 20), Material = MAT.Neon, Parent = room })
+				ch:SetAttribute("Lava", true)
+				pointLight(ch, Color3.fromRGB(255, 110, 40), 30, 2)
+			end
+			local throne = part({ Name = "BossThrone", Size = Vector3.new(10, 8, 4), CFrame = CFrame.new(c + Vector3.new(0, 4, 27)), Color = Color3.fromRGB(70, 30, 30), Material = MAT.Basalt, Parent = room })
+			billboardText(throne, "🐂 ห้องบอส: มิโนทอร์", Color3.fromRGB(255, 120, 90), 7, 16)
+			buildChest(room, c + Vector3.new(0, 0, 22), 500, "สมบัติบอส")
+			table.insert(monsterSpawns, { kind = "Minotaur", pos = c })
+		end
+		task.wait()
+	end
+
+	-- ประตูทางเข้าดันเจี้ยนบนพื้นดิน
+	local gate = folder("DungeonGate")
+	local gz = ZONE.DungeonGate
+	local g = Vector3.new(gz.x, gz.height, gz.z)
+	part({ Name = "GatePlatform", Size = Vector3.new(30, 2, 30), CFrame = CFrame.new(g - Vector3.new(0, 0.5, 0)), Color = Color3.fromRGB(80, 78, 85), Material = MAT.Cobblestone, Parent = gate })
+	for _, sx in ipairs({ -1, 1 }) do
+		part({ Name = "GatePillar", Size = Vector3.new(4, 18, 4), CFrame = CFrame.new(g + Vector3.new(sx * 8, 9, 0)), Color = Color3.fromRGB(90, 88, 95), Material = MAT.Cobblestone, Parent = gate })
+		dungeonTorch(gate, g + Vector3.new(sx * 8, 11, -2.3), g + Vector3.new(sx * 8, 11, -10))
+	end
+	part({ Name = "GateLintel", Size = Vector3.new(22, 4, 5), CFrame = CFrame.new(g + Vector3.new(0, 20, 0)), Color = Color3.fromRGB(80, 78, 85), Material = MAT.Cobblestone, Parent = gate })
+	local skull = part({ Name = "GateSkull", Shape = Enum.PartType.Ball, Size = Vector3.new(4, 4, 4), CFrame = CFrame.new(g + Vector3.new(0, 23.5, 0)), Color = Color3.fromRGB(225, 220, 200), Material = MAT.SmoothPlastic, Parent = gate })
+	pointLight(skull, Color3.fromRGB(190, 90, 255), 25, 1.5)
+	local entry = WARPS[#WARPS] -- ห้องแรกของดันเจี้ยน (เพิ่งลงทะเบียนด้านบน)
+	table.remove(WARPS, #WARPS)
+	buildPortal(gate, g + Vector3.new(0, 0.5, 0), Color3.fromRGB(190, 90, 255), "💀 เข้าดันเจี้ยน", entry.landing)
+	registerWarp(gate, "💀 ประตูดันเจี้ยน", Color3.fromRGB(190, 90, 255), g + Vector3.new(0, 4, -14), g + Vector3.new(12, 0.5, -10))
+end
+
+-- จุดวาร์ปของพื้นที่เดิม
+local function registerClassicWarps()
+	local warps = folder("Warps")
+	local c = ZONE.Castle
+	registerWarp(warps, "🏰 ปราสาทหลวง", Color3.fromRGB(255, 210, 120), groundPos(c.x + 80, c.z, 4), groundPos(c.x + 80, c.z + 14))
+	registerWarp(warps, "🌲 ป่ามหัศจรรย์", Color3.fromRGB(120, 255, 140), groundPos(425, 12, 4), groundPos(425, 26))
+	local r = ZONE.Ruins
+	registerWarp(warps, "🦴 ซากปรักหักพัง", Color3.fromRGB(200, 170, 255), groundPos(r.x - 45, r.z - 45, 4), groundPos(r.x - 58, r.z - 45))
+	local hb = ZONE.Harbor
+	registerWarp(warps, "⚓ ท่าเรือ", Color3.fromRGB(120, 200, 255), Vector3.new(hb.x - 12, hb.height + 5, hb.z - 20), Vector3.new(hb.x - 26, hb.height + 1, hb.z - 20))
+	local sy = heightAt(SHRINE_POS.X, SHRINE_POS.Y) + 1
+	registerWarp(warps, "🏔️ ศาลเจ้าบนเขา", Color3.fromRGB(170, 230, 255), Vector3.new(SHRINE_POS.X - 6, sy + 4, SHRINE_POS.Y + 4), Vector3.new(SHRINE_POS.X + 6, sy, SHRINE_POS.Y + 4))
+end
+
+-------------------------------------------------------------------------------
 -- 8) 🛤️ เส้นทางเชื่อมแต่ละพื้นที่
 -------------------------------------------------------------------------------
 local function buildPath(parent, a, b, width, color, material)
@@ -1220,8 +2088,9 @@ local function buildPath(parent, a, b, width, color, material)
 	for i = 0, steps - 1 do
 		local p1 = a:Lerp(b, i / steps)
 		local p2 = a:Lerp(b, (i + 1) / steps)
-		local v1 = Vector3.new(p1.X, heightAt(p1.X, p1.Y) + 0.1, p1.Y)
-		local v2 = Vector3.new(p2.X, heightAt(p2.X, p2.Y) + 0.1, p2.Y)
+		-- ช่วงที่ผ่านน้ำ ทางเดินลอยเหนือน้ำเหมือนสะพานไม้
+		local v1 = Vector3.new(p1.X, math.max(heightAt(p1.X, p1.Y), 0.4) + 0.1, p1.Y)
+		local v2 = Vector3.new(p2.X, math.max(heightAt(p2.X, p2.Y), 0.4) + 0.1, p2.Y)
 		part({
 			Name = "Path",
 			Size = Vector3.new(width, 1, (v2 - v1).Magnitude + 1.5),
@@ -1239,7 +2108,11 @@ local function buildPaths()
 	local paths = folder("Paths")
 	local dirt, dirtMat = Color3.fromRGB(150, 120, 90), MAT.Pebble
 	buildPath(paths, Vector2.new(-238, 0), Vector2.new(-368, ZONE.Castle.z), 12, Color3.fromRGB(140, 140, 145), MAT.Cobblestone) -- ไปปราสาท
-	buildPath(paths, Vector2.new(0, 238), Vector2.new(0, 522), 10, dirt, dirtMat) -- ไปท่าเรือ
+	buildPath(paths, Vector2.new(0, 238), Vector2.new(0, ZONE.Harbor.z - 38), 10, dirt, dirtMat) -- ไปท่าเรือ
+	buildPath(paths, Vector2.new(440, 0), Vector2.new(ZONE.WorldTree.x - 150, ZONE.WorldTree.z), 10, dirt, dirtMat) -- ไปต้นไม้โลก
+	buildPath(paths, Vector2.new(-168, 168), Vector2.new(-560, 470), 8, dirt, dirtMat) -- ไปค่ายก็อบลิน
+	buildPath(paths, Vector2.new(-168, -168), Vector2.new(ZONE.DungeonGate.x + 14, ZONE.DungeonGate.z + 20), 8, Color3.fromRGB(110, 105, 110), MAT.Cobblestone) -- ไปประตูดันเจี้ยน
+	buildPath(paths, Vector2.new(360, 360), Vector2.new(ZONE.Swamp.x - 60, ZONE.Swamp.z - 110), 8, dirt, dirtMat) -- ไปหนองน้ำ
 	buildPath(paths, Vector2.new(238, 0), Vector2.new(440, 0), 8, dirt, dirtMat) -- เข้าป่า
 	buildPath(paths, Vector2.new(168, 168), Vector2.new(300, 300), 8, dirt, dirtMat) -- ไปซากปรักหักพัง
 	buildPath(paths, Vector2.new(0, -238), Vector2.new(SHRINE_POS.X, SHRINE_POS.Y + 14), 8, dirt, dirtMat) -- ขึ้นเขา
@@ -1248,7 +2121,7 @@ end
 -------------------------------------------------------------------------------
 -- 9) 🌲 ธรรมชาติ: ต้นไม้ หิน เห็ดยักษ์ คริสตัล
 -------------------------------------------------------------------------------
-local BLOCK_MARGIN = { Town = 25, Castle = 35, Ruins = 5, Harbor = 50 }
+local BLOCK_MARGIN = { Town = 25, Castle = 35, Ruins = 5, Harbor = 50, WorldTree = 40, GoblinCamp = 15, DungeonGate = 15, Swamp = 0 }
 
 local function isBlocked(x, z)
 	for _, zn in ipairs(ZONES) do
@@ -1258,6 +2131,9 @@ local function isBlocked(x, z)
 		end
 	end
 	if (x - SHRINE_POS.X) ^ 2 + (z - SHRINE_POS.Y) ^ 2 < 30 ^ 2 then
+		return true
+	end
+	if (x - VOLCANO.x) ^ 2 + (z - VOLCANO.z) ^ 2 < (VOLCANO.radius * 0.75) ^ 2 then
 		return true
 	end
 	for _, p in ipairs(pathPoints) do
@@ -1417,6 +2293,42 @@ local function buildNature()
 		local p = forestSpot(30, 60)
 		if p then
 			table.insert(monsterSpawns, { kind = (i % 2 == 0) and "Wolf" or "Slime", pos = p })
+		end
+	end
+
+	fireflies(forest, Vector3.new((FOREST.minX + FOREST.maxX) / 2, 30, (FOREST.minZ + FOREST.maxZ) / 2), Vector3.new(FOREST.maxX - FOREST.minX, 40, FOREST.maxZ - FOREST.minZ), nil, 40)
+
+	-- 🌲 ป่าโบราณ (Elderwood): ต้นไม้ยักษ์สีเข้มรอบต้นไม้โลก
+	local elder = folder("Elderwood")
+	for i = 1, CONFIG.ElderwoodTreeCount do
+		local p = randomSpot(ELDERWOOD.minX, ELDERWOOD.maxX, ELDERWOOD.minZ, ELDERWOOD.maxZ, 3.5, 90)
+		if p then
+			local h = rng:NextNumber(28, 46)
+			local w = rng:NextNumber(3.5, 6.5)
+			local t = model("AncientTree", elder)
+			cylinder({ Name = "Trunk", Position = p + Vector3.new(0, h / 2 - 1, 0), Height = h, Diameter = w, Color = Color3.fromRGB(58, 44, 38), Material = MAT.Wood, Parent = t })
+			for k = 1, 3 do
+				local a = rng:NextNumber(0, math.pi * 2)
+				limb(t, p + Vector3.new(0, 3, 0), p + Vector3.new(math.cos(a) * w * 1.6, -0.5, math.sin(a) * w * 1.6), w * 0.35, Color3.fromRGB(58, 44, 38), MAT.Wood, "Root")
+			end
+			for k = 1, 3 do
+				local s = rng:NextNumber(16, 26)
+				part({ Name = "Canopy", Shape = Enum.PartType.Ball, Size = Vector3.new(s, s, s), CFrame = CFrame.new(p + Vector3.new(rng:NextNumber(-6, 6), h - 2 + k * 3, rng:NextNumber(-6, 6))), Color = Color3.fromRGB(28, 62, 46):Lerp(Color3.fromRGB(45, 85, 55), rng:NextNumber()), Material = MAT.Grass, Parent = t })
+			end
+			if rng:NextNumber() < 0.15 then
+				local g = part({ Name = "GlowShroom", Shape = Enum.PartType.Ball, Size = Vector3.new(1.4, 1.4, 1.4), CFrame = CFrame.new(p + Vector3.new(w * 0.7, 0.6, 0)), Color = Color3.fromRGB(90, 220, 255), Material = MAT.Neon, CanCollide = false, Parent = t })
+				pointLight(g, Color3.fromRGB(90, 220, 255), 10, 0.8)
+			end
+		end
+		if i % 50 == 0 then
+			task.wait()
+		end
+	end
+	fireflies(elder, Vector3.new((ELDERWOOD.minX + ELDERWOOD.maxX) / 2, 25, (ELDERWOOD.minZ + ELDERWOOD.maxZ) / 2), Vector3.new(ELDERWOOD.maxX - ELDERWOOD.minX, 40, ELDERWOOD.maxZ - ELDERWOOD.minZ), Color3.fromRGB(150, 230, 255), 50)
+	for i = 1, 5 do
+		local p = randomSpot(ELDERWOOD.minX, ELDERWOOD.maxX, ELDERWOOD.minZ, ELDERWOOD.maxZ, 3.5, 60)
+		if p then
+			table.insert(monsterSpawns, { kind = "Wolf", pos = p })
 		end
 	end
 
@@ -1607,6 +2519,223 @@ local MONSTER_TYPES = {
 		end,
 	},
 
+	Goblin = {
+		displayName = "ก็อบลิน",
+		hp = 50, damage = 9, speed = 16, coins = 7, reach = 3.5, aggro = 55, hip = 1.6, respawn = 18,
+		root = Vector3.new(1.8, 2, 1.2), stepRate = 11,
+		color = Color3.fromRGB(110, 160, 70), mat = MAT.SmoothPlastic,
+		parts = {
+			{ name = "Torso", size = Vector3.new(1.8, 2, 1.1), pos = Vector3.zero, joint = Vector3.new(0, -1, 0), color = Color3.fromRGB(100, 70, 45), mat = MAT.Fabric },
+			{ name = "Belt", parent = "Torso", size = Vector3.new(1.9, 0.3, 1.2), pos = Vector3.new(0, -0.8, 0), color = Color3.fromRGB(55, 40, 30), mat = MAT.Fabric },
+			{ name = "Loincloth", parent = "Torso", size = Vector3.new(1.2, 0.9, 0.15), pos = Vector3.new(0, -1.3, -0.6), color = Color3.fromRGB(120, 80, 50), mat = MAT.Fabric },
+			{ name = "Head", parent = "Torso", size = Vector3.new(1.6, 1.4, 1.4), pos = Vector3.new(0, 1.75, -0.1), joint = Vector3.new(0, 1, 0) },
+			{ name = "Nose", parent = "Head", size = Vector3.new(0.35, 0.5, 0.6), pos = Vector3.new(0, 1.65, -0.95) },
+			{ name = "EarL", parent = "Head", size = Vector3.new(1.2, 0.25, 0.5), pos = Vector3.new(-1.25, 1.95, 0), rot = CFrame.Angles(0, 0, math.rad(-20)), joint = Vector3.new(-0.8, 1.9, 0) },
+			{ name = "EarR", parent = "Head", size = Vector3.new(1.2, 0.25, 0.5), pos = Vector3.new(1.25, 1.95, 0), rot = CFrame.Angles(0, 0, math.rad(20)), joint = Vector3.new(0.8, 1.9, 0) },
+			{ name = "EyeL", parent = "Head", size = Vector3.new(0.3, 0.25, 0.1), pos = Vector3.new(-0.35, 1.95, -0.82), color = Color3.fromRGB(255, 230, 40), mat = MAT.Neon },
+			{ name = "EyeR", parent = "Head", size = Vector3.new(0.3, 0.25, 0.1), pos = Vector3.new(0.35, 1.95, -0.82), color = Color3.fromRGB(255, 230, 40), mat = MAT.Neon },
+			{ name = "Teeth", parent = "Head", size = Vector3.new(0.7, 0.15, 0.1), pos = Vector3.new(0, 1.3, -0.82), color = Color3.fromRGB(240, 235, 200) },
+			{ name = "Bandana", parent = "Head", size = Vector3.new(1.7, 0.35, 1.5), pos = Vector3.new(0, 2.35, -0.1), color = Color3.fromRGB(170, 40, 40), mat = MAT.Fabric },
+			{ name = "ArmL", parent = "Torso", size = Vector3.new(0.5, 1.8, 0.5), pos = Vector3.new(-1.15, 0.1, 0), joint = Vector3.new(-1.15, 0.9, 0) },
+			{ name = "ArmR", parent = "Torso", size = Vector3.new(0.5, 1.8, 0.5), pos = Vector3.new(1.15, 0.1, 0), joint = Vector3.new(1.15, 0.9, 0) },
+			{ name = "Club", parent = "ArmR", size = Vector3.new(0.4, 0.4, 2.4), pos = Vector3.new(1.15, -0.8, -1), color = Color3.fromRGB(110, 75, 45), mat = MAT.Wood },
+			{ name = "ClubHead", parent = "ArmR", size = Vector3.new(0.9, 0.9, 1.1), pos = Vector3.new(1.15, -0.8, -2.5), color = Color3.fromRGB(90, 60, 40), mat = MAT.Wood },
+			{ name = "LegL", parent = "Torso", size = Vector3.new(0.6, 1.6, 0.6), pos = Vector3.new(-0.45, -1.8, 0), joint = Vector3.new(-0.45, -1, 0) },
+			{ name = "LegR", parent = "Torso", size = Vector3.new(0.6, 1.6, 0.6), pos = Vector3.new(0.45, -1.8, 0), joint = Vector3.new(0.45, -1, 0) },
+			{ name = "FootL", parent = "LegL", size = Vector3.new(0.7, 0.3, 0.9), pos = Vector3.new(-0.45, -2.5, -0.15) },
+			{ name = "FootR", parent = "LegR", size = Vector3.new(0.7, 0.3, 0.9), pos = Vector3.new(0.45, -2.5, -0.15) },
+		},
+		animate = function(pose, phase, walk, atk, now)
+			local s = sin(phase) * 0.8 * walk
+			pose("LegL", CFrame.Angles(s, 0, 0))
+			pose("LegR", CFrame.Angles(-s, 0, 0))
+			pose("ArmL", CFrame.Angles(-s * 0.7, 0, 0))
+			pose("ArmR", CFrame.Angles(s * 0.7 + atk * 2.2, 0, 0))
+			pose("Torso", CFrame.new(0, math.abs(sin(phase)) * 0.15 * walk, 0) * CFrame.Angles(0.15 * walk, 0, 0))
+			pose("EarL", CFrame.Angles(0, 0, sin(now * 6) * 0.15))
+			pose("EarR", CFrame.Angles(0, 0, -sin(now * 6) * 0.15))
+		end,
+	},
+
+	Minotaur = {
+		displayName = "👑 มิโนทอร์ (บอส)",
+		hp = 900, damage = 35, speed = 13, coins = 200, reach = 6, aggro = 70, hip = 3.5, respawn = 90,
+		root = Vector3.new(5, 5, 3), stepRate = 6,
+		color = Color3.fromRGB(95, 60, 40), mat = MAT.Fabric,
+		parts = {
+			{ name = "Torso", size = Vector3.new(5, 5, 3), pos = Vector3.zero, joint = Vector3.new(0, -2.5, 0) },
+			{ name = "Chest", parent = "Torso", size = Vector3.new(4.4, 2.4, 0.4), pos = Vector3.new(0, 1, -1.55), color = Color3.fromRGB(140, 95, 70) },
+			{ name = "Belt", parent = "Torso", size = Vector3.new(5.2, 0.8, 3.2), pos = Vector3.new(0, -2.2, 0), color = Color3.fromRGB(50, 35, 25) },
+			{ name = "Buckle", parent = "Torso", size = Vector3.new(1, 0.8, 0.2), pos = Vector3.new(0, -2.2, -1.65), color = Color3.fromRGB(255, 200, 60), mat = MAT.Foil },
+			{ name = "Loin", parent = "Torso", size = Vector3.new(3, 2, 0.3), pos = Vector3.new(0, -3.4, -1.5), color = Color3.fromRGB(120, 25, 30) },
+			{ name = "Head", parent = "Torso", size = Vector3.new(2.6, 2.6, 2.8), pos = Vector3.new(0, 3.8, -0.8), joint = Vector3.new(0, 2.6, -0.3) },
+			{ name = "Snout", parent = "Head", size = Vector3.new(1.8, 1.3, 1.2), pos = Vector3.new(0, 3.3, -2.6), color = Color3.fromRGB(130, 90, 70) },
+			{ name = "NoseRing", parent = "Head", shape = Ball, size = 0.5, pos = Vector3.new(0, 2.75, -3.25), color = Color3.fromRGB(255, 200, 60), mat = MAT.Foil },
+			{ name = "HornL", parent = "Head", size = Vector3.new(1.8, 0.7, 0.7), pos = Vector3.new(-2, 4.8, -0.8), rot = CFrame.Angles(0, 0, math.rad(20)), color = Color3.fromRGB(230, 220, 190), mat = MAT.SmoothPlastic },
+			{ name = "HornTipL", parent = "Head", size = Vector3.new(0.5, 1.6, 0.5), pos = Vector3.new(-2.9, 5.7, -0.8), rot = CFrame.Angles(0, 0, math.rad(-15)), color = Color3.fromRGB(230, 220, 190), mat = MAT.SmoothPlastic },
+			{ name = "HornR", parent = "Head", size = Vector3.new(1.8, 0.7, 0.7), pos = Vector3.new(2, 4.8, -0.8), rot = CFrame.Angles(0, 0, math.rad(-20)), color = Color3.fromRGB(230, 220, 190), mat = MAT.SmoothPlastic },
+			{ name = "HornTipR", parent = "Head", size = Vector3.new(0.5, 1.6, 0.5), pos = Vector3.new(2.9, 5.7, -0.8), rot = CFrame.Angles(0, 0, math.rad(15)), color = Color3.fromRGB(230, 220, 190), mat = MAT.SmoothPlastic },
+			{ name = "EyeL", parent = "Head", size = Vector3.new(0.4, 0.3, 0.1), pos = Vector3.new(-0.7, 4.2, -2.22), color = Color3.fromRGB(255, 40, 30), mat = MAT.Neon },
+			{ name = "EyeR", parent = "Head", size = Vector3.new(0.4, 0.3, 0.1), pos = Vector3.new(0.7, 4.2, -2.22), color = Color3.fromRGB(255, 40, 30), mat = MAT.Neon },
+			{ name = "ArmL", parent = "Torso", size = Vector3.new(1.6, 4, 1.6), pos = Vector3.new(-3.4, 0.4, 0), joint = Vector3.new(-3.2, 2.2, 0) },
+			{ name = "BracerL", parent = "ArmL", size = Vector3.new(1.8, 1, 1.8), pos = Vector3.new(-3.4, -0.8, 0), color = Color3.fromRGB(90, 90, 100), mat = MAT.Metal },
+			{ name = "ArmR", parent = "Torso", size = Vector3.new(1.6, 4, 1.6), pos = Vector3.new(3.4, 0.4, 0), joint = Vector3.new(3.2, 2.2, 0) },
+			{ name = "BracerR", parent = "ArmR", size = Vector3.new(1.8, 1, 1.8), pos = Vector3.new(3.4, -0.8, 0), color = Color3.fromRGB(90, 90, 100), mat = MAT.Metal },
+			{ name = "AxeHandle", parent = "ArmR", size = Vector3.new(0.4, 0.4, 7), pos = Vector3.new(3.4, -1.5, -2.8), color = Color3.fromRGB(70, 50, 35), mat = MAT.Wood },
+			{ name = "AxeBladeTop", parent = "ArmR", size = Vector3.new(0.3, 2.4, 2.6), pos = Vector3.new(3.4, -0.1, -5.6), color = Color3.fromRGB(150, 150, 160), mat = MAT.Metal },
+			{ name = "AxeBladeBottom", parent = "ArmR", size = Vector3.new(0.3, 2.4, 2.6), pos = Vector3.new(3.4, -2.9, -5.6), color = Color3.fromRGB(150, 150, 160), mat = MAT.Metal },
+			{ name = "LegL", parent = "Torso", size = Vector3.new(1.8, 3, 1.8), pos = Vector3.new(-1.2, -4, 0), joint = Vector3.new(-1.2, -2.5, 0) },
+			{ name = "HoofL", parent = "LegL", size = Vector3.new(1.9, 0.8, 2), pos = Vector3.new(-1.2, -5.6, -0.1), color = Color3.fromRGB(40, 35, 30) },
+			{ name = "LegR", parent = "Torso", size = Vector3.new(1.8, 3, 1.8), pos = Vector3.new(1.2, -4, 0), joint = Vector3.new(1.2, -2.5, 0) },
+			{ name = "HoofR", parent = "LegR", size = Vector3.new(1.9, 0.8, 2), pos = Vector3.new(1.2, -5.6, -0.1), color = Color3.fromRGB(40, 35, 30) },
+			{ name = "Tail", parent = "Torso", size = Vector3.new(0.3, 2.5, 0.3), pos = Vector3.new(0, -2.2, 1.9), rot = CFrame.Angles(math.rad(30), 0, 0), joint = Vector3.new(0, -1.2, 1.6) },
+		},
+		animate = function(pose, phase, walk, atk, now)
+			local s = sin(phase) * 0.55 * walk
+			pose("LegL", CFrame.Angles(s, 0, 0))
+			pose("LegR", CFrame.Angles(-s, 0, 0))
+			pose("ArmL", CFrame.Angles(-s * 0.6 + atk * 1.2, 0, 0))
+			pose("ArmR", CFrame.Angles(s * 0.6 + atk * 2.6, 0, 0))
+			pose("Torso", CFrame.new(0, math.abs(sin(phase)) * 0.3 * walk, 0) * CFrame.Angles(atk * 0.25, sin(phase) * 0.08 * walk, 0))
+			pose("Head", CFrame.Angles(-atk * 0.3 + sin(now * 2) * 0.05, 0, 0))
+			pose("Tail", CFrame.Angles(0, 0, sin(now * 5) * 0.4))
+		end,
+	},
+
+	Dragon = {
+		displayName = "🐉 มังกรเพลิง (บอส)",
+		hp = 1500, damage = 40, speed = 24, coins = 400, reach = 20, aggro = 110, hip = 16, respawn = 150,
+		root = Vector3.new(8, 6, 14), stepRate = 3, ranged = true, attackEffect = "fire",
+		color = Color3.fromRGB(150, 30, 30), mat = MAT.Slate,
+		parts = {
+			{ name = "Body", size = Vector3.new(7, 6, 12), pos = Vector3.zero },
+			{ name = "Belly", parent = "Body", size = Vector3.new(6, 3, 10), pos = Vector3.new(0, -2, 0), color = Color3.fromRGB(210, 150, 70), mat = MAT.SmoothPlastic },
+			{ name = "Spike1", parent = "Body", size = Vector3.new(0.6, 1.8, 1.2), pos = Vector3.new(0, 3.8, -4), color = Color3.fromRGB(60, 20, 20) },
+			{ name = "Spike2", parent = "Body", size = Vector3.new(0.6, 2.2, 1.2), pos = Vector3.new(0, 3.9, -1), color = Color3.fromRGB(60, 20, 20) },
+			{ name = "Spike3", parent = "Body", size = Vector3.new(0.6, 2, 1.2), pos = Vector3.new(0, 3.8, 2), color = Color3.fromRGB(60, 20, 20) },
+			{ name = "Spike4", parent = "Body", size = Vector3.new(0.6, 1.6, 1.2), pos = Vector3.new(0, 3.7, 5), color = Color3.fromRGB(60, 20, 20) },
+			{ name = "Neck1", parent = "Body", size = Vector3.new(3, 3, 5), pos = Vector3.new(0, 2.5, -8), rot = CFrame.Angles(math.rad(30), 0, 0), joint = Vector3.new(0, 1.5, -5.5) },
+			{ name = "Neck2", parent = "Neck1", size = Vector3.new(2.6, 2.6, 5), pos = Vector3.new(0, 5, -11.5), rot = CFrame.Angles(math.rad(20), 0, 0), joint = Vector3.new(0, 4, -10) },
+			{ name = "Head", parent = "Neck2", size = Vector3.new(3.6, 3, 5.5), pos = Vector3.new(0, 6.5, -15.5), joint = Vector3.new(0, 6, -13.5) },
+			{ name = "Jaw", parent = "Head", size = Vector3.new(3, 1, 4.5), pos = Vector3.new(0, 4.6, -16), joint = Vector3.new(0, 5.2, -14) },
+			{ name = "Teeth", parent = "Head", size = Vector3.new(2.8, 0.4, 0.3), pos = Vector3.new(0, 5.1, -18.1), color = Color3.new(1, 1, 1), mat = MAT.SmoothPlastic },
+			{ name = "Mouth", parent = "Head", size = Vector3.new(1, 1, 1), pos = Vector3.new(0, 5.4, -18.6), transparency = 1 },
+			{ name = "HornL", parent = "Head", size = Vector3.new(0.6, 0.6, 3.5), pos = Vector3.new(-1.2, 8.3, -13.6), rot = CFrame.Angles(math.rad(-30), 0, 0), color = Color3.fromRGB(230, 220, 190), mat = MAT.SmoothPlastic },
+			{ name = "HornR", parent = "Head", size = Vector3.new(0.6, 0.6, 3.5), pos = Vector3.new(1.2, 8.3, -13.6), rot = CFrame.Angles(math.rad(-30), 0, 0), color = Color3.fromRGB(230, 220, 190), mat = MAT.SmoothPlastic },
+			{ name = "EyeL", parent = "Head", size = Vector3.new(0.5, 0.4, 0.2), pos = Vector3.new(-1.3, 7.2, -17.1), color = Color3.fromRGB(255, 220, 40), mat = MAT.Neon },
+			{ name = "EyeR", parent = "Head", size = Vector3.new(0.5, 0.4, 0.2), pos = Vector3.new(1.3, 7.2, -17.1), color = Color3.fromRGB(255, 220, 40), mat = MAT.Neon },
+			{ name = "WingL1", parent = "Body", size = Vector3.new(10, 0.4, 7), pos = Vector3.new(-8.5, 3, 0), joint = Vector3.new(-3.5, 3, 0), color = Color3.fromRGB(110, 20, 25), transparency = 0.05 },
+			{ name = "WingBoneL", parent = "WingL1", size = Vector3.new(19, 0.6, 0.6), pos = Vector3.new(-12.5, 3.3, -3.3), color = Color3.fromRGB(70, 20, 20) },
+			{ name = "WingL2", parent = "WingL1", size = Vector3.new(10, 0.3, 6), pos = Vector3.new(-18, 3, 0.8), joint = Vector3.new(-13.5, 3, 0), color = Color3.fromRGB(110, 20, 25), transparency = 0.05 },
+			{ name = "WingR1", parent = "Body", size = Vector3.new(10, 0.4, 7), pos = Vector3.new(8.5, 3, 0), joint = Vector3.new(3.5, 3, 0), color = Color3.fromRGB(110, 20, 25), transparency = 0.05 },
+			{ name = "WingBoneR", parent = "WingR1", size = Vector3.new(19, 0.6, 0.6), pos = Vector3.new(12.5, 3.3, -3.3), color = Color3.fromRGB(70, 20, 20) },
+			{ name = "WingR2", parent = "WingR1", size = Vector3.new(10, 0.3, 6), pos = Vector3.new(18, 3, 0.8), joint = Vector3.new(13.5, 3, 0), color = Color3.fromRGB(110, 20, 25), transparency = 0.05 },
+			{ name = "LegFL", parent = "Body", size = Vector3.new(1.8, 5, 1.8), pos = Vector3.new(-2.5, -4.5, -3.5), joint = Vector3.new(-2.5, -2, -3.5) },
+			{ name = "LegFR", parent = "Body", size = Vector3.new(1.8, 5, 1.8), pos = Vector3.new(2.5, -4.5, -3.5), joint = Vector3.new(2.5, -2, -3.5) },
+			{ name = "LegBL", parent = "Body", size = Vector3.new(2, 5, 2), pos = Vector3.new(-2.5, -4.5, 3.5), joint = Vector3.new(-2.5, -2, 3.5) },
+			{ name = "LegBR", parent = "Body", size = Vector3.new(2, 5, 2), pos = Vector3.new(2.5, -4.5, 3.5), joint = Vector3.new(2.5, -2, 3.5) },
+			{ name = "Tail1", parent = "Body", size = Vector3.new(2.6, 2.6, 6), pos = Vector3.new(0, 0.5, 9), joint = Vector3.new(0, 0.5, 6) },
+			{ name = "Tail2", parent = "Tail1", size = Vector3.new(2, 2, 6), pos = Vector3.new(0, 0.5, 15), joint = Vector3.new(0, 0.5, 12) },
+			{ name = "Tail3", parent = "Tail2", size = Vector3.new(1.4, 1.4, 6), pos = Vector3.new(0, 0.5, 21), joint = Vector3.new(0, 0.5, 18) },
+			{ name = "TailSpike", parent = "Tail3", size = Vector3.new(0.4, 3, 3), pos = Vector3.new(0, 0.5, 24.5), rot = CFrame.Angles(math.rad(45), 0, 0), color = Color3.fromRGB(60, 20, 20) },
+		},
+		animate = function(pose, phase, walk, atk, now)
+			local flap = sin(now * 4) * 0.6
+			pose("WingL1", CFrame.Angles(0, 0, flap))
+			pose("WingR1", CFrame.Angles(0, 0, -flap))
+			pose("WingL2", CFrame.Angles(0, 0, sin(now * 4 - 0.7) * 0.5))
+			pose("WingR2", CFrame.Angles(0, 0, -sin(now * 4 - 0.7) * 0.5))
+			pose("Body", CFrame.new(0, sin(now * 2) * 1.5, 0))
+			pose("Tail1", CFrame.Angles(0, sin(now * 1.5) * 0.25, 0))
+			pose("Tail2", CFrame.Angles(0, sin(now * 1.5 - 0.8) * 0.3, 0))
+			pose("Tail3", CFrame.Angles(0, sin(now * 1.5 - 1.6) * 0.35, 0))
+			pose("Neck1", CFrame.Angles(-atk * 0.3, sin(now * 0.8) * 0.15, 0))
+			pose("Head", CFrame.Angles(-atk * 0.4, 0, 0))
+			pose("Jaw", CFrame.Angles(atk * 0.7, 0, 0))
+			local s = sin(now * 3) * 0.2
+			pose("LegFL", CFrame.Angles(0.4 + s, 0, 0))
+			pose("LegFR", CFrame.Angles(0.4 - s, 0, 0))
+			pose("LegBL", CFrame.Angles(0.6 - s, 0, 0))
+			pose("LegBR", CFrame.Angles(0.6 + s, 0, 0))
+		end,
+	},
+
+	Snake = {
+		displayName = "งูยักษ์",
+		hp = 45, damage = 10, speed = 14, coins = 7, reach = 3, aggro = 45, hip = 0.2, respawn = 15,
+		root = Vector3.new(2, 1.2, 3), stepRate = 6,
+		color = Color3.fromRGB(60, 110, 50), mat = MAT.Slate,
+		parts = (function()
+			local list = {
+				{ name = "Head", size = Vector3.new(1.6, 1, 2.2), pos = Vector3.new(0, 0.3, -2), joint = Vector3.new(0, 0.2, -1) },
+				{ name = "Hood", parent = "Head", size = Vector3.new(3, 2, 0.3), pos = Vector3.new(0, 0.9, -0.9), color = Color3.fromRGB(200, 180, 60) },
+				{ name = "EyeL", parent = "Head", size = Vector3.new(0.3, 0.3, 0.3), pos = Vector3.new(-0.62, 0.65, -2.6), color = Color3.fromRGB(255, 230, 40), mat = MAT.Neon },
+				{ name = "EyeR", parent = "Head", size = Vector3.new(0.3, 0.3, 0.3), pos = Vector3.new(0.62, 0.65, -2.6), color = Color3.fromRGB(255, 230, 40), mat = MAT.Neon },
+				{ name = "Tongue", parent = "Head", size = Vector3.new(0.15, 0.1, 1), pos = Vector3.new(0, 0.1, -3.5), joint = Vector3.new(0, 0.1, -3), color = Color3.fromRGB(220, 30, 60), mat = MAT.SmoothPlastic },
+			}
+			local parent = "Root"
+			for i = 1, 7 do
+				local w = 1.5 - i * 0.13
+				table.insert(list, {
+					name = "Seg" .. i, parent = parent,
+					size = Vector3.new(w, w * 0.8, 2.1), pos = Vector3.new(0, -0.1, 0.5 + i * 2), joint = Vector3.new(0, -0.1, -0.5 + i * 2),
+					color = (i % 2 == 0) and Color3.fromRGB(200, 180, 60) or Color3.fromRGB(60, 110, 50),
+				})
+				parent = "Seg" .. i
+			end
+			return list
+		end)(),
+		animate = function(pose, phase, walk, atk, now)
+			local amp = 0.35 * (0.3 + walk)
+			for i = 1, 7 do
+				pose("Seg" .. i, CFrame.Angles(0, sin(phase - i * 0.7) * amp, 0))
+			end
+			pose("Head", CFrame.new(0, atk * 0.6, -atk * 1.5) * CFrame.Angles(atk * 0.3, -sin(phase) * amp * 0.5, 0))
+			pose("Tongue", CFrame.new(0, 0, -math.max(0, sin(now * 8)) * 0.4))
+		end,
+	},
+
+	EvilEye = {
+		displayName = "ตาปีศาจ",
+		hp = 60, damage = 12, speed = 11, coins = 12, reach = 18, aggro = 60, hip = 6, respawn = 25,
+		root = Vector3.new(3, 3, 3), stepRate = 1, ranged = true, attackEffect = "beam",
+		color = Color3.fromRGB(120, 40, 70), mat = MAT.SmoothPlastic,
+		parts = {
+			{ name = "Head", shape = Ball, size = 3.6, pos = Vector3.zero, color = Color3.fromRGB(240, 235, 225) },
+			{ name = "Iris", parent = "Head", shape = Cyl, size = Vector3.new(0.2, 1.9, 1.9), pos = Vector3.new(0, 0, -1.72), rot = CFrame.Angles(0, math.rad(90), 0), color = Color3.fromRGB(190, 40, 220), mat = MAT.Neon, light = Color3.fromRGB(200, 60, 255) },
+			{ name = "Pupil", parent = "Head", shape = Cyl, size = Vector3.new(0.2, 0.8, 0.8), pos = Vector3.new(0, 0, -1.82), rot = CFrame.Angles(0, math.rad(90), 0), color = Color3.new(0, 0, 0) },
+			{ name = "Glint", parent = "Head", shape = Ball, size = 0.3, pos = Vector3.new(0.35, 0.4, -1.85), color = Color3.new(1, 1, 1), mat = MAT.Neon },
+			{ name = "LidTop", parent = "Head", size = Vector3.new(3.2, 0.6, 1.4), pos = Vector3.new(0, 1.55, -1), rot = CFrame.Angles(math.rad(-25), 0, 0), joint = Vector3.new(0, 1.5, 0) },
+			{ name = "LidBottom", parent = "Head", size = Vector3.new(3, 0.5, 1.2), pos = Vector3.new(0, -1.55, -1), rot = CFrame.Angles(math.rad(25), 0, 0) },
+			{ name = "Vein1", parent = "Head", size = Vector3.new(0.1, 0.1, 1.4), pos = Vector3.new(-1.1, 0.6, -1.3), rot = CFrame.Angles(0, math.rad(30), 0), color = Color3.fromRGB(230, 40, 40), mat = MAT.Neon },
+			{ name = "Vein2", parent = "Head", size = Vector3.new(0.1, 0.1, 1.4), pos = Vector3.new(1.1, -0.5, -1.3), rot = CFrame.Angles(0, math.rad(-30), 0), color = Color3.fromRGB(230, 40, 40), mat = MAT.Neon },
+			{ name = "WingL1", parent = "Head", size = Vector3.new(2.6, 0.1, 1.8), pos = Vector3.new(-2.9, 0.6, 0.5), joint = Vector3.new(-1.6, 0.6, 0.5), color = Color3.fromRGB(90, 30, 60), transparency = 0.1 },
+			{ name = "WingL2", parent = "WingL1", size = Vector3.new(2.2, 0.08, 1.4), pos = Vector3.new(-5.2, 0.6, 0.7), joint = Vector3.new(-4.2, 0.6, 0.5), color = Color3.fromRGB(90, 30, 60), transparency = 0.1 },
+			{ name = "WingR1", parent = "Head", size = Vector3.new(2.6, 0.1, 1.8), pos = Vector3.new(2.9, 0.6, 0.5), joint = Vector3.new(1.6, 0.6, 0.5), color = Color3.fromRGB(90, 30, 60), transparency = 0.1 },
+			{ name = "WingR2", parent = "WingR1", size = Vector3.new(2.2, 0.08, 1.4), pos = Vector3.new(5.2, 0.6, 0.7), joint = Vector3.new(4.2, 0.6, 0.5), color = Color3.fromRGB(90, 30, 60), transparency = 0.1 },
+			{ name = "Tent1a", parent = "Head", size = Vector3.new(0.45, 1.4, 0.45), pos = Vector3.new(-0.8, -2.1, 0.8), joint = Vector3.new(-0.8, -1.4, 0.8) },
+			{ name = "Tent1b", parent = "Tent1a", size = Vector3.new(0.35, 1.3, 0.35), pos = Vector3.new(-0.8, -3.4, 0.8), joint = Vector3.new(-0.8, -2.8, 0.8), color = Color3.fromRGB(200, 60, 230), mat = MAT.Neon },
+			{ name = "Tent2a", parent = "Head", size = Vector3.new(0.45, 1.4, 0.45), pos = Vector3.new(0, -2.1, 1), joint = Vector3.new(0, -1.4, 1) },
+			{ name = "Tent2b", parent = "Tent2a", size = Vector3.new(0.35, 1.3, 0.35), pos = Vector3.new(0, -3.4, 1), joint = Vector3.new(0, -2.8, 1), color = Color3.fromRGB(200, 60, 230), mat = MAT.Neon },
+			{ name = "Tent3a", parent = "Head", size = Vector3.new(0.45, 1.4, 0.45), pos = Vector3.new(0.8, -2.1, 0.8), joint = Vector3.new(0.8, -1.4, 0.8) },
+			{ name = "Tent3b", parent = "Tent3a", size = Vector3.new(0.35, 1.3, 0.35), pos = Vector3.new(0.8, -3.4, 0.8), joint = Vector3.new(0.8, -2.8, 0.8), color = Color3.fromRGB(200, 60, 230), mat = MAT.Neon },
+		},
+		animate = function(pose, phase, walk, atk, now)
+			local flap = sin(now * 14) * 0.6
+			pose("WingL1", CFrame.Angles(0, 0, flap))
+			pose("WingR1", CFrame.Angles(0, 0, -flap))
+			pose("WingL2", CFrame.Angles(0, 0, sin(now * 14 - 0.6) * 0.4))
+			pose("WingR2", CFrame.Angles(0, 0, -sin(now * 14 - 0.6) * 0.4))
+			pose("Head", CFrame.new(0, sin(now * 2.5) * 0.6, 0) * CFrame.Angles(sin(now * 0.9) * 0.15, sin(now * 0.6) * 0.4, 0))
+			local blink = (now % 4 < 0.15) and 0.9 or 0
+			pose("LidTop", CFrame.Angles(blink - atk * 0.3, 0, 0))
+			for k = 1, 3 do
+				pose("Tent" .. k .. "a", CFrame.Angles(sin(now * 3 + k) * 0.35, 0, sin(now * 2 + k) * 0.2))
+				pose("Tent" .. k .. "b", CFrame.Angles(sin(now * 3 + k - 0.8) * 0.45, 0, 0))
+			end
+		end,
+	},
+
 	Golem = {
 		displayName = "โกเลมหิน",
 		hp = 250, damage = 25, speed = 9, coins = 40, reach = 5, aggro = 70, hip = 3, respawn = 40,
@@ -1645,6 +2774,32 @@ local MONSTER_TYPES = {
 		end,
 	},
 }
+
+-- สไลม์สีอื่น ๆ: ใช้ร่างเดียวกับสไลม์เขียว เปลี่ยนสีและค่าพลัง
+local function slimeVariant(displayName, body, core, stem, stats)
+	local base = MONSTER_TYPES.Slime
+	local v = table.clone(base)
+	v.displayName = displayName
+	v.parts = {}
+	for _, spec in ipairs(base.parts) do
+		local c = table.clone(spec)
+		if c.name == "Body" then
+			c.color = body
+		elseif c.name == "Core" then
+			c.color = core
+			c.light = core
+		elseif c.name == "Leaf" or c.name == "LeafStem" then
+			c.color = stem
+		end
+		table.insert(v.parts, c)
+	end
+	for k, val in pairs(stats) do
+		v[k] = val
+	end
+	return v
+end
+MONSTER_TYPES.MagmaSlime = slimeVariant("สไลม์ลาวา", Color3.fromRGB(255, 110, 40), Color3.fromRGB(255, 230, 90), Color3.fromRGB(50, 35, 30), { hp = 70, damage = 14, coins = 12 })
+MONSTER_TYPES.PoisonSlime = slimeVariant("สไลม์พิษ", Color3.fromRGB(150, 60, 200), Color3.fromRGB(130, 255, 90), Color3.fromRGB(90, 40, 110), { hp = 55, damage = 11, coins = 9 })
 
 local LEASH = 120 -- มอนสเตอร์ไม่ไล่ผู้เล่นไกลจากบ้านเกินนี้
 local ANIM_DISTANCE = 180 -- ขยับท่าเฉพาะตัวที่มีผู้เล่นอยู่ใกล้ (ประหยัดเน็ต)
@@ -1736,6 +2891,22 @@ local function spawnMonster(kind, home)
 	local state = { root = root, hum = hum, def = def, motors = motors, walk = 0, phase = rng:NextNumber(0, 6), attackAt = -10 }
 	liveMonsters[m] = state
 
+	-- เอฟเฟกต์โจมตีพิเศษ: มังกรพ่นไฟ / ตาปีศาจยิงลำแสง
+	if def.attackEffect == "fire" then
+		local fire = Instance.new("ParticleEmitter")
+		fire.Color = ColorSequence.new(Color3.fromRGB(255, 200, 60), Color3.fromRGB(255, 60, 20))
+		fire.LightEmission = 1
+		fire.Size = NumberSequence.new(2, 7)
+		fire.Transparency = NumberSequence.new(0, 1)
+		fire.Lifetime = NumberRange.new(0.5, 0.8)
+		fire.Speed = NumberRange.new(40, 60)
+		fire.SpreadAngle = Vector2.new(12, 12)
+		fire.Rate = 0
+		fire.EmissionDirection = Enum.NormalId.Front
+		fire.Parent = m:FindFirstChild("Mouth")
+		state.fx = fire
+	end
+
 	hum.Died:Connect(function()
 		liveMonsters[m] = nil
 		local tag = hum:FindFirstChild("creator")
@@ -1786,10 +2957,30 @@ local function spawnMonster(kind, home)
 				end
 			end
 			if targetRoot then
-				hum:MoveTo(targetRoot.Position)
-				if best <= def.reach + def.root.X / 2 and os.clock() - lastHit > 1.1 then
+				if def.ranged and best < def.reach * 0.6 then
+					hum:MoveTo(root.Position) -- ตัวที่โจมตีไกล หยุดยิงจากระยะนี้
+				else
+					hum:MoveTo(targetRoot.Position)
+				end
+				if best <= def.reach + def.root.X / 2 and os.clock() - lastHit > (def.ranged and 1.8 or 1.1) then
 					lastHit = os.clock()
 					state.attackAt = os.clock() -- เล่นท่าโจมตี
+					if def.ranged then
+						local flat = Vector3.new(targetRoot.Position.X, root.Position.Y, targetRoot.Position.Z)
+						if (flat - root.Position).Magnitude > 0.5 then
+							root.CFrame = CFrame.lookAt(root.Position, flat)
+						end
+					end
+					if state.fx then
+						state.fx:Emit(60)
+					elseif def.attackEffect == "beam" then
+						local eye = m:FindFirstChild("Iris")
+						if eye then
+							local a, b = eye.Position, targetRoot.Position
+							local beam = part({ Name = "EyeBeam", Size = Vector3.new(0.5, 0.5, (b - a).Magnitude), CFrame = CFrame.lookAt((a + b) / 2, b), Color = Color3.fromRGB(220, 70, 255), Material = MAT.Neon, CanCollide = false, CanTouch = false })
+							Debris:AddItem(beam, 0.2)
+						end
+					end
 					targetHum:TakeDamage(def.damage)
 				end
 			elseif os.clock() > nextWander then
@@ -1990,6 +3181,7 @@ local function hookGameplay()
 	end
 
 	local chestCooldown = {} -- [chest][player] = เวลาที่เปิดล่าสุด
+	local warpCooldown, lavaCooldown = {}, {}
 	for _, obj in ipairs(mapFolder:GetDescendants()) do
 		if not obj:IsA("BasePart") then
 			continue
@@ -2002,6 +3194,33 @@ local function hookGameplay()
 					player.Neutral = false
 					player.Team = team
 				end
+			end)
+		elseif obj:GetAttribute("WarpTarget") then
+			obj.Touched:Connect(function(hit)
+				local player = playerFromHit(hit)
+				local target = obj:GetAttribute("WarpTarget")
+				if not player or not target or not player.Character then
+					return
+				end
+				local last = warpCooldown[player]
+				if last and os.clock() - last < 2 then
+					return
+				end
+				warpCooldown[player] = os.clock()
+				player.Character:PivotTo(CFrame.new(target))
+			end)
+		elseif obj:GetAttribute("Lava") then
+			obj.Touched:Connect(function(hit)
+				local player, hum = playerFromHit(hit)
+				if not player then
+					return
+				end
+				local last = lavaCooldown[player]
+				if last and os.clock() - last < 0.5 then
+					return
+				end
+				lavaCooldown[player] = os.clock()
+				hum:TakeDamage(15)
 			end)
 		elseif obj:GetAttribute("Heal") then
 			obj.Touched:Connect(function(hit)
@@ -2048,6 +3267,7 @@ local function hookGameplay()
 		for _, list in pairs(chestCooldown) do
 			list[player] = nil
 		end
+		warpCooldown[player], lavaCooldown[player] = nil, nil
 	end)
 
 	-- กลางวัน/กลางคืน + ไฟถนนเปิดตอนกลางคืน
@@ -2056,7 +3276,10 @@ local function hookGameplay()
 		local wasNight = nil
 		while true do
 			local dt = task.wait(0.5)
-			Lighting.ClockTime = (Lighting.ClockTime + dt / secondsPerHour) % 24
+			local clock = Lighting.ClockTime
+			-- ธีมมืด: ช่วงกลางวันผ่านเร็วขึ้น 4 เท่า ให้เวลาส่วนใหญ่เป็นโพล้เพล้/กลางคืน
+			local speed = (CONFIG.DarkTheme and clock > 7 and clock < 16) and 4 or 1
+			Lighting.ClockTime = (clock + dt * speed / secondsPerHour) % 24
 			local night = Lighting.ClockTime >= 18 or Lighting.ClockTime < 6.2
 			if night ~= wasNight then
 				wasNight = night
@@ -2092,6 +3315,14 @@ buildCastle()
 buildHarbor()
 buildRuins()
 buildShrine()
+print("⏳ กำลังสร้างต้นไม้โลก หมู่บ้านเอลฟ์ ดันเจี้ยน...")
+registerClassicWarps()
+buildWorldTree()
+buildGoblinCamp()
+buildSwamp()
+buildVolcano()
+buildDungeon()
+buildWarpCircle()
 buildPaths()
 print("⏳ กำลังปลูกต้นไม้...")
 buildNature()
