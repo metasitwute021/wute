@@ -12,8 +12,8 @@
 	  🌊 ทะเลล้อมรอบเกาะ
 
 	ระบบเกม:
-	  - มอนสเตอร์ 5 ชนิด มีท่าเดิน/ท่าโจมตี: สไลม์ + หมาป่า (ป่า),
-	    โครงกระดูก + วิญญาณ (ซากปรักหักพัง), โกเลมหิน (ภูเขา)
+	  - มอนสเตอร์ 6 ชนิด มีท่าเดิน/ท่าโจมตี: สไลม์ + หมาป่า (ป่า),
+	    โครงกระดูก + วิญญาณ + ค้างคาว (ซากปรักหักพัง), โกเลมหิน + ค้างคาว (ภูเขา)
 	  - อาวุธ 5 แบบ: ดาบเหล็ก (ฟรี), ขวานนักรบ, ดาบทองคำ, ค้อนยักษ์, เคียวยมทูต
 	  - ฆ่ามอนสเตอร์ได้เหรียญ เอาไปซื้ออาวุธที่ร้านอาวุธ
 	  - หีบสมบัติ 3 จุด, โรงพยาบาลฟื้นเลือด
@@ -1178,6 +1178,10 @@ local function buildRuins()
 		local kind = (i % 3 == 0) and "Ghost" or "Skeleton"
 		table.insert(monsterSpawns, { kind = kind, pos = center + Vector3.new(math.cos(a) * 20, 0, math.sin(a) * 20) })
 	end
+	for i = 1, 4 do
+		local a = i / 4 * math.pi * 2 + 0.4
+		table.insert(monsterSpawns, { kind = "Bat", pos = center + Vector3.new(math.cos(a) * 32, 0, math.sin(a) * 32) })
+	end
 end
 
 -------------------------------------------------------------------------------
@@ -1202,6 +1206,9 @@ local function buildShrine()
 
 	for _, off in ipairs({ Vector2.new(50, 30), Vector2.new(-50, 30), Vector2.new(40, -40), Vector2.new(-40, -40) }) do
 		table.insert(monsterSpawns, { kind = "Golem", pos = groundPos(x + off.X, z + off.Y) })
+	end
+	for _, off in ipairs({ Vector2.new(0, 45), Vector2.new(60, -10), Vector2.new(-60, -10) }) do
+		table.insert(monsterSpawns, { kind = "Bat", pos = groundPos(x + off.X, z + off.Y) })
 	end
 end
 
@@ -1556,6 +1563,47 @@ local MONSTER_TYPES = {
 			pose("Tail3", CFrame.Angles(sin(now * 3 + 2) * 0.35, 0, 0))
 			pose("ArmL", CFrame.Angles(0.4 + atk * 1.4 + sin(now * 3) * 0.3, 0, 0))
 			pose("ArmR", CFrame.Angles(0.4 + atk * 1.4 + sin(now * 3 + 1.5) * 0.3, 0, 0))
+		end,
+	},
+
+	Bat = {
+		displayName = "ค้างคาว",
+		hp = 30, damage = 6, speed = 20, coins = 6, reach = 5, aggro = 50, hip = 5, respawn = 15,
+		root = Vector3.new(2, 2, 2), stepRate = 1,
+		color = Color3.fromRGB(60, 45, 70), mat = MAT.Fabric,
+		parts = {
+			{ name = "Body", shape = Ball, size = 1.8, pos = Vector3.zero },
+			{ name = "Belly", parent = "Body", shape = Ball, size = 1.3, pos = Vector3.new(0, -0.2, -0.4), color = Color3.fromRGB(105, 85, 105) },
+			{ name = "Head", parent = "Body", shape = Ball, size = 1.4, pos = Vector3.new(0, 1.1, -0.3), joint = Vector3.new(0, 0.6, -0.2) },
+			{ name = "EarL", parent = "Head", size = Vector3.new(0.35, 1, 0.35), pos = Vector3.new(-0.45, 1.95, -0.3), rot = CFrame.Angles(0, 0, math.rad(15)) },
+			{ name = "EarR", parent = "Head", size = Vector3.new(0.35, 1, 0.35), pos = Vector3.new(0.45, 1.95, -0.3), rot = CFrame.Angles(0, 0, math.rad(-15)) },
+			{ name = "EarInL", parent = "Head", size = Vector3.new(0.15, 0.7, 0.1), pos = Vector3.new(-0.45, 1.9, -0.5), rot = CFrame.Angles(0, 0, math.rad(15)), color = Color3.fromRGB(230, 130, 160), mat = MAT.SmoothPlastic },
+			{ name = "EarInR", parent = "Head", size = Vector3.new(0.15, 0.7, 0.1), pos = Vector3.new(0.45, 1.9, -0.5), rot = CFrame.Angles(0, 0, math.rad(-15)), color = Color3.fromRGB(230, 130, 160), mat = MAT.SmoothPlastic },
+			{ name = "EyeL", parent = "Head", shape = Ball, size = 0.3, pos = Vector3.new(-0.3, 1.25, -0.9), color = Color3.fromRGB(255, 40, 40), mat = MAT.Neon },
+			{ name = "EyeR", parent = "Head", shape = Ball, size = 0.3, pos = Vector3.new(0.3, 1.25, -0.9), color = Color3.fromRGB(255, 40, 40), mat = MAT.Neon },
+			{ name = "Nose", parent = "Head", shape = Ball, size = 0.25, pos = Vector3.new(0, 1.0, -1), color = Color3.fromRGB(230, 130, 160), mat = MAT.SmoothPlastic },
+			{ name = "FangL", parent = "Head", size = Vector3.new(0.1, 0.3, 0.1), pos = Vector3.new(-0.15, 0.7, -0.88), color = Color3.new(1, 1, 1), mat = MAT.SmoothPlastic },
+			{ name = "FangR", parent = "Head", size = Vector3.new(0.1, 0.3, 0.1), pos = Vector3.new(0.15, 0.7, -0.88), color = Color3.new(1, 1, 1), mat = MAT.SmoothPlastic },
+			-- ปีก 2 ท่อนต่อข้าง: ท่อนในติดตัว ท่อนนอกติดท่อนใน
+			{ name = "WingL1", parent = "Body", size = Vector3.new(2.3, 0.1, 1.7), pos = Vector3.new(-1.9, 0.3, 0), joint = Vector3.new(-0.8, 0.3, 0), color = Color3.fromRGB(45, 30, 55), transparency = 0.1 },
+			{ name = "WingBoneL", parent = "WingL1", size = Vector3.new(4.4, 0.2, 0.2), pos = Vector3.new(-3, 0.35, -0.8), color = Color3.fromRGB(80, 60, 90) },
+			{ name = "WingL2", parent = "WingL1", size = Vector3.new(2.2, 0.08, 1.4), pos = Vector3.new(-4.1, 0.3, 0.1), joint = Vector3.new(-3, 0.3, 0), color = Color3.fromRGB(45, 30, 55), transparency = 0.1 },
+			{ name = "WingR1", parent = "Body", size = Vector3.new(2.3, 0.1, 1.7), pos = Vector3.new(1.9, 0.3, 0), joint = Vector3.new(0.8, 0.3, 0), color = Color3.fromRGB(45, 30, 55), transparency = 0.1 },
+			{ name = "WingBoneR", parent = "WingR1", size = Vector3.new(4.4, 0.2, 0.2), pos = Vector3.new(3, 0.35, -0.8), color = Color3.fromRGB(80, 60, 90) },
+			{ name = "WingR2", parent = "WingR1", size = Vector3.new(2.2, 0.08, 1.4), pos = Vector3.new(4.1, 0.3, 0.1), joint = Vector3.new(3, 0.3, 0), color = Color3.fromRGB(45, 30, 55), transparency = 0.1 },
+			{ name = "FootL", parent = "Body", size = Vector3.new(0.25, 0.5, 0.25), pos = Vector3.new(-0.35, -1.1, 0.2), color = Color3.fromRGB(40, 30, 45) },
+			{ name = "FootR", parent = "Body", size = Vector3.new(0.25, 0.5, 0.25), pos = Vector3.new(0.35, -1.1, 0.2), color = Color3.fromRGB(40, 30, 45) },
+		},
+		animate = function(pose, phase, walk, atk, now)
+			local flap = sin(now * 16) * 0.7
+			local tip = sin(now * 16 - 0.6) * 0.45
+			pose("WingL1", CFrame.Angles(0, 0, flap))
+			pose("WingR1", CFrame.Angles(0, 0, -flap))
+			pose("WingL2", CFrame.Angles(0, 0, tip))
+			pose("WingR2", CFrame.Angles(0, 0, -tip))
+			-- บินขึ้นลงเบา ๆ และโฉบลงกัดตอนโจมตี
+			pose("Body", CFrame.new(0, sin(now * 4) * 0.4 - atk * 2.5, -atk * 1.5) * CFrame.Angles(-atk * 0.6 - walk * 0.2, 0, 0))
+			pose("Head", CFrame.Angles(0, sin(now * 1.3) * 0.3, 0))
 		end,
 	},
 
