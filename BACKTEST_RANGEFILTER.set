@@ -1,0 +1,72 @@
+; ========================================================================
+;  BACKTEST preset — Metasit EA v2.27-rangefilter
+;  ใช้กับไฟล์: Metasit_XAUUSD_Donchian_EA_RANGEFILTER_TEST.mq5
+;  ไม่มีข้อ 4 (after-loss) ปนอยู่ในไฟล์นี้เลย
+;
+;  ปิด "กันชน" ทุกตัว ให้ EA เทรดยาวตลอดช่วงทดสอบ
+;  ⚠️ ห้ามใช้กับบัญชีจริง
+; ========================================================================
+
+; ============ 🔴 กันชน = ปิดหมด ============
+InpProfitTargetPercent=0.0
+InpMaxTotalLossPercent=0.0
+InpPeakDDStopPercent=0.0
+InpMaxDD_Percent=0.0
+InpMaxDD_ResumeBuffer=2.0
+InpMaxDD_ResumeDays=2
+InpDailyDD_Percent=0.0
+InpMaxRiskCapPercent=0.0
+InpStartBalanceOverride=0.0
+
+; ============ 🔴 ปิดเพื่อความเร็ว ============
+InpEnableNotifications=false
+InpStatusReport=false
+InpEnableNewsFilter=false
+InpUseFFNews=false
+InpFFCloseBeforeNews=false
+InpNoWeekendHold=false
+
+; ============ 🧪 ตัวแปรที่ทดสอบ (ค่าเริ่มต้น = ปิดทั้งคู่ = baseline) ============
+;  A: กรอบต้องกว้าง >= k x ATR       -> กรอง "range ที่บีบตัว"
+;  B: กรอบต้องกว้างกว่า N แท่งก่อน   -> กรอง "range ที่นิ่ง ไม่ทำ extreme ใหม่"
+;  แนะนำ Optimization:
+;     รอบ A:  InpMinChannelATR     0.0 -> 2.5  step 0.25   (B ปิดไว้)
+;     รอบ B:  InpChannelExpandBars 0   -> 20   step 2      (A ปิดไว้)
+;     รอบ C:  เอาค่าที่ดีสุดของ A กับ B มาใช้ร่วมกัน
+InpMinChannelATR=0.0
+InpChannelExpandBars=0
+InpChannelExpandRatio=1.0
+
+; ============ ⚪ Entry + Exit = ค่าที่ผ่าน forward test (ห้ามแก้) ============
+InpDonchianPeriod=20
+InpUseMomentumFilter=true
+InpMomentumPct=30.0
+InpADXMin=20.0
+InpSL_ATRMult=1.5
+InpRiskPercent=1.0
+InpMaxPositions=1
+InpReentryCooldownBars=1
+InpBreakEvenR=0.25
+InpUseBE_ATR=true
+InpBE_TriggerATR=1.0
+InpBE_BufferPts=200.0
+InpPartialR=2.0
+InpPartialPercent=40.0
+InpLockTrailUntilPartial=true
+InpUseFixedTP=false
+InpFixedTP_R=2.0
+InpUseStagedCloses=true
+InpStagedMinProfitR=1.0
+InpStrongMoveSLPercent=60.0
+InpMiniMoveClosePercent=70.0
+InpStagedMomentumPct=30.0
+InpTrailWidest=true
+InpLetWinnersRun=false
+InpRunTrailWiden=1.5
+InpEnableConfidence=false
+
+; ============ ⚪ Session gate = เปิด (ตรงกับของจริง) ============
+InpBlockMarketOpen=true
+InpTradeStartHourTH=8
+InpThaiGMTOffset=7
+InpGateMondayOnly=true
