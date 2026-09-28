@@ -1,0 +1,74 @@
+; ========================================================================
+;  BACKTEST preset — Metasit EA v2.27-noflip  (ตัวทดสอบ NO-FLIP)
+;  ใช้กับไฟล์: Metasit_XAUUSD_Donchian_EA_NOFLIP_TEST.mq5
+;
+;  เป้าหมาย: ให้ EA เทรดยาวตลอดช่วงทดสอบ ไม่หยุดกลางคัน
+;            ปิด "กันชน" ทุกตัวที่ทำให้ EA พัก/หยุด/ข้ามไม้
+;
+;  ⚠️ ห้ามใช้ไฟล์นี้กับบัญชีจริง — ไม่มีเกราะป้องกันเหลือเลยสักชั้น
+; ========================================================================
+
+; ============ 🔴 กันชนทั้งหมด = ปิด (0 = off ทุกตัวใน v2.27) ============
+; ถ้าไม่ปิด EA จะหยุดกลางทางแล้วผลทดสอบจะสั้นกว่าความจริง
+InpProfitTargetPercent=0.0     ; ถึงเป้าแล้วหยุด      -> ปิด (ตัวนี้สำคัญสุด! ไม่ปิดจะจบเทสเร็วมาก)
+InpMaxTotalLossPercent=0.0     ; เบรกฉุกเฉิน ปิดหมด   -> ปิด
+InpPeakDDStopPercent=0.0       ; DD Lock จาก peak     -> ปิด
+InpMaxDD_Percent=0.0           ; พัก EA เมื่อ DD สูง   -> ปิด
+InpMaxDD_ResumeBuffer=2.0      ;   (ไม่มีผลเมื่อปิด)
+InpMaxDD_ResumeDays=2          ;   (ไม่มีผลเมื่อปิด)
+InpDailyDD_Percent=0.0         ; หยุดรายวัน           -> ปิด
+InpMaxRiskCapPercent=0.0       ; ข้ามไม้ที่เสี่ยงเกิน  -> ปิด (ไม่งั้นบางไม้หายไปจากผลทดสอบ)
+InpStartBalanceOverride=0.0    ; ใช้ balance ของ tester
+
+; ============ 🔴 ปิดสิ่งที่ทำให้เทสช้า/เพี้ยน ============
+; status report ยิงทุกแท่ง H4 = ~13,000 Print ใน 6 ปี ทำให้เทสช้าและ log บวม
+InpEnableNotifications=false
+InpStatusReport=false
+; ปฏิทิน MT5 ว่างเปล่าใน tester อยู่แล้ว ปิดให้ชัดเจนกันสับสน
+InpEnableNewsFilter=false
+InpUseFFNews=false
+InpFFCloseBeforeNews=false
+; ไม่ปิดไม้ทิ้งวันศุกร์
+InpNoWeekendHold=false
+
+; ============ 🧪 ตัวแปรที่จะทดสอบ ============
+; รอบ 1: false = baseline (พฤติกรรมเดิมเป๊ะ)
+; รอบ 2: true  = เปิด no-flip
+; หรือใช้โหมด Optimization: InpNoFlipAfterLoss = true, แล้ว step InpNoFlipBars 1..5
+InpNoFlipAfterLoss=false
+InpNoFlipBars=2
+
+; ============ ⚪ Entry + Exit = ค่าเดิมที่ผ่าน forward test (ห้ามแก้) ============
+InpUseMomentumFilter=true
+InpMomentumPct=30.0
+InpADXMin=20.0
+InpSL_ATRMult=1.5
+InpRiskPercent=1.0
+InpMaxPositions=1
+InpReentryCooldownBars=1
+InpBreakEvenR=0.25
+InpUseBE_ATR=true
+InpBE_TriggerATR=1.0
+InpBE_BufferPts=200.0
+InpPartialR=2.0
+InpPartialPercent=40.0
+InpLockTrailUntilPartial=true
+InpUseFixedTP=false
+InpFixedTP_R=2.0
+InpUseStagedCloses=true
+InpStagedMinProfitR=1.0
+InpStrongMoveSLPercent=60.0
+InpMiniMoveClosePercent=70.0
+InpStagedMomentumPct=30.0
+InpTrailWidest=true
+InpLetWinnersRun=false
+InpRunTrailWiden=1.5
+InpEnableConfidence=false
+
+; ============ ⚪ Session gate = เปิดไว้ (ตรงกับของจริง) ============
+; ไม่ใช่ "กันชน" ไม่ได้หยุด EA แค่กรองเช้าวันจันทร์ และเหมือนกันทั้ง 2 รอบ A/B
+; ถ้าอยากให้ EA เทรดทุกแท่งจริงๆ เปลี่ยนเป็น InpBlockMarketOpen=false
+InpBlockMarketOpen=true
+InpTradeStartHourTH=8
+InpThaiGMTOffset=7
+InpGateMondayOnly=true
