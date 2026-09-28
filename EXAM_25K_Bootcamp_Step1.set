@@ -1,16 +1,16 @@
 ; ========================================================================
-;  Metasit XAUUSD EA v2.27 — 100K  The5ers 1-Step Growth (Summer Plan)
-;  เป้า 10% (110,000) | Max Loss $6,000 = 6% (เส้นตาย 94,000)
-;  Daily Loss 3% | Leverage 1:100 | Consistency 50% | Time Limit ไม่จำกัด
+;  Metasit XAUUSD EA v2.27 — 25K  The5ers 3-Step Bootcamp (Step 1)
+;  เป้า 6% (26,500) | Max Loss $1,250 = 5% (เส้นตาย 23,750)
+;  ไม่มีกฎ Daily Loss | Leverage 1:30 | Time Limit ไม่จำกัด | Profit Split 100%
 ;
-;  สถานะบัญชี: เล่นต่อ  balance 96,981.55 (-3.02%)
-;  ต้องทำอีก +13.42%  |  buffer ถึงเส้นตาย $2,981 (แพ้ติดได้ 3 ไม้ @risk 1%)
+;  สถานะบัญชี: เล่นต่อ  balance 25,635.22 (+2.54% กำไรอยู่)
+;  ต้องทำอีก +3.37%  |  buffer ถึงเส้นตาย $1,885 (แพ้ติดได้ 7.5 ไม้ @risk 1%)
 ;
-;  โหมด: RUN — ปิดตัวพักภายใน ให้ EA เทรดต่อเนื่อง
+;  โหมด: RUN — ปิดตัวพักภายในทั้งหมด ให้ EA เทรดต่อเนื่อง
 ; ========================================================================
 
 ; ---- ⚠️ ยอดเริ่มสอบจริง (ถ้าไม่ตั้ง เกราะกับเป้าจะเลื่อนผิด) ----
-InpStartBalanceOverride=100000.0
+InpStartBalanceOverride=25000.0
 
 ; ---- Entry (ค่าที่พิสูจน์แล้ว ห้ามแก้) ----
 InpUseMomentumFilter=true
@@ -71,15 +71,15 @@ InpEnableConfidence=false
 InpEnableNotifications=true
 InpStatusReport=true
 
-; ---- เกราะ: เหลือ 2 ชั้น ตามที่สั่งให้รันต่อ ----
-; MaxDD pause  = ปิด (ตัวนี้แหละที่แช่แข็ง EA)
-; Daily DD     = 2.5% — เก็บไว้เพราะกฎจริง 3% ถ้าทะลุคือตกทันที
-;                ตัวนี้ "รีเซ็ตเองทุกวัน" แช่แข็งถาวรไม่ได้ / ไม่อยากได้ใส่ 0
-; เบรกฉุกเฉิน  = 5.5% จาก 100,000 -> ปิดหมดที่ 94,500 (เหนือเส้นตาย $500)
+; ---- เกราะ: เหลือชั้นเดียว ตามที่สั่งให้รันต่อ ----
+; MaxDD pause  = ปิด (ตัวนี้แหละที่แช่แข็ง EA 4 บัญชี)
+; Daily DD     = ปิด (Bootcamp ไม่มีกฎ daily loss)
+; เบรกฉุกเฉิน  = 4.5% จาก 25,000 -> ปิดหมดที่ 23,875 (เหนือเส้นตาย $125)
+;                เก็บไว้เพื่อไม่ให้โบรกเป็นคนปิดเอง ถ้าไม่อยากได้เลย ใส่ 0
 InpMaxDD_Percent=0.0
 InpMaxDD_ResumeBuffer=2.0
 InpMaxDD_ResumeDays=2
-InpDailyDD_Percent=2.5
-InpProfitTargetPercent=10.0
-InpMaxTotalLossPercent=5.5
+InpDailyDD_Percent=0.0
+InpProfitTargetPercent=6.0
+InpMaxTotalLossPercent=4.5
 InpPeakDDStopPercent=0.0

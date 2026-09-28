@@ -49,6 +49,7 @@
 //|      + challenge baseline now survives a restart                  |
 //|  *** v2.25 : session gate narrowed to MONDAY only ***             |
 //|  *** v2.26 : every no-trade reason alerts - no silent exit ***    |
+//|  *** v2.27 : MaxDD / DailyDD can now be turned off with 0 ***    |
 //|                                                                  |
 //|  Strategy summary                                                |
 //|  - Market / TF : XAUUSD, signals on H4, trailing managed on M30  |
@@ -70,10 +71,10 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "Metasit XAUUSD Donchian EA - prop-safe build"
-#property version   "2.26"
+#property version   "2.27"
 #property strict
 
-#define EA_VERSION "2.26"
+#define EA_VERSION "2.27"
 
 #include <Trade\Trade.mqh>
 
@@ -494,7 +495,10 @@ void CheckDrawdownProtection()
    if(gPeakEquity > 0.0)
       ddPct = (gPeakEquity - equity) / gPeakEquity * 100.0;
 
-   if(!gMaxDDPaused && ddPct >= InpMaxDD_Percent)
+   // 0 or less = feature off. Without this guard 0 means "pause whenever
+   // drawdown >= 0", which is true on the very first tick - the EA would
+   // freeze immediately and look like a dead terminal.
+   if(InpMaxDD_Percent > 0.0 && !gMaxDDPaused && ddPct >= InpMaxDD_Percent)
    {
       gMaxDDPaused      = true;
       gMaxDDPausedSince = TimeCurrent();
@@ -539,7 +543,8 @@ void CheckDrawdownProtection()
    if(!gDailyStopped && gDayStartEquity > 0.0)
    {
       double dailyLoss = (gDayStartEquity - equity) / gDayStartEquity * 100.0;
-      if(dailyLoss >= InpDailyDD_Percent)
+      // 0 or less = feature off, same trap as InpMaxDD_Percent above.
+      if(InpDailyDD_Percent > 0.0 && dailyLoss >= InpDailyDD_Percent)
       {
          gDailyStopped = true;
          Notify(StringFormat("🛑 DAILY DRAWDOWN %.2f%% >= %.2f%% -> trading stopped for today",
