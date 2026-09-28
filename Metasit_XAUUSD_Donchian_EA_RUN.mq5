@@ -319,7 +319,15 @@ int OnInit()
    if(hMA==INVALID_HANDLE || hADX==INVALID_HANDLE || hATRslBuf==INVALID_HANDLE ||
       hATR1==INVALID_HANDLE || hATR2==INVALID_HANDLE || hATR3==INVALID_HANDLE)
    {
-      Print("Failed to create one or more indicator handles");
+      // INIT_FAILED = the EA does not run at all: no status reports, no alerts.
+      // Without this push it looks identical to a quiet market from the phone.
+      Notify(StringFormat("🛑 EA เริ่มไม่ได้! สร้าง indicator ไม่สำเร็จ (SMA %s / ADX %s / ATR-SL %s / ATR1 %s / ATR2 %s / ATR3 %s) - EA ไม่ทำงานเลย",
+                          hMA      ==INVALID_HANDLE ? "FAIL" : "ok",
+                          hADX     ==INVALID_HANDLE ? "FAIL" : "ok",
+                          hATRslBuf==INVALID_HANDLE ? "FAIL" : "ok",
+                          hATR1    ==INVALID_HANDLE ? "FAIL" : "ok",
+                          hATR2    ==INVALID_HANDLE ? "FAIL" : "ok",
+                          hATR3    ==INVALID_HANDLE ? "FAIL" : "ok"));
       return(INIT_FAILED);
    }
 
@@ -440,6 +448,12 @@ void OnTick()
 //==================================================================
 double StartBalanceBaseline()
 {
+   // Never persist while testing: a stored value leaking between runs (or from
+   // a live account into a backtest) would silently shift the brake and target.
+   if(MQLInfoInteger(MQL_TESTER))
+      return (InpStartBalanceOverride > 0.0 ? InpStartBalanceOverride
+                                            : AccountInfoDouble(ACCOUNT_BALANCE));
+
    string key = StringFormat("MetasitEA_start_%I64d_%I64d",
                              AccountInfoInteger(ACCOUNT_LOGIN), InpMagic);
 
