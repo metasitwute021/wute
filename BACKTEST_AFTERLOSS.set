@@ -7,14 +7,20 @@
 ; ========================================================================
 
 ; ============ 🔴 กันชน = ปิดหมด (0 = off ทุกตัวใน v2.27) ============
-InpProfitTargetPercent=0.0     ; ถึงเป้าแล้วหยุด -> ปิด (สำคัญสุด ไม่งั้นเทสจบเร็ว)
-InpMaxTotalLossPercent=0.0     ; เบรกฉุกเฉิน
-InpPeakDDStopPercent=0.0       ; DD Lock
-InpMaxDD_Percent=0.0           ; พัก EA ตอน DD สูง
+; ถึงเป้าแล้วหยุด -> ปิด (สำคัญสุด ไม่งั้นเทสจบเร็ว)
+InpProfitTargetPercent=0.0
+; เบรกฉุกเฉิน
+InpMaxTotalLossPercent=0.0
+; DD Lock
+InpPeakDDStopPercent=0.0
+; พัก EA ตอน DD สูง
+InpMaxDD_Percent=0.0
 InpMaxDD_ResumeBuffer=2.0
 InpMaxDD_ResumeDays=2
-InpDailyDD_Percent=0.0         ; หยุดรายวัน
-InpMaxRiskCapPercent=0.0       ; ข้ามไม้เสี่ยงเกิน -> ปิด (ไม่งั้นกลุ่มตัวอย่างไม่ครบ)
+; หยุดรายวัน
+InpDailyDD_Percent=0.0
+; ข้ามไม้เสี่ยงเกิน -> ปิด (ไม่งั้นกลุ่มตัวอย่างไม่ครบ)
+InpMaxRiskCapPercent=0.0
 InpStartBalanceOverride=0.0
 
 ; ============ 🔴 ปิดเพื่อความเร็ว ============
