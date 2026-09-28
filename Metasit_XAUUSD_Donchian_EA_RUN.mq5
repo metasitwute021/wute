@@ -38,6 +38,7 @@
 //|  *** v2.22 : weekend holding ALLOWED (InpNoWeekendHold now OFF) ***|
 //|  *** v2.23 : status report now names EVERY block reason      ***|
 //|  *** v2.24 : DD pause could never end - froze 4 accounts     ***|
+//|  *** v2.25 : session gate narrowed to MONDAY only            ***|
 //|      + challenge baseline survives a restart                 |
 //|      (it used to check only 4 of 11 gates and print          |
 //|       "path clear" while the EA was silently refusing)       |
@@ -65,10 +66,10 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "Metasit XAUUSD Donchian EA - prop-safe build"
-#property version   "2.24"
+#property version   "2.25"
 #property strict
 
-#define EA_VERSION "2.24"
+#define EA_VERSION "2.25"
 
 #include <Trade\Trade.mqh>
 
@@ -190,6 +191,7 @@ input group "🕗  DAILY SESSION GATE (no market-open entries)"
 input bool     InpBlockMarketOpen    = true;       // ✅ Block new entries around the daily market open
 input int      InpTradeStartHourTH   = 8;          // ↳ Entries allowed only from this hour (Thailand, GMT+7)
 input int      InpThaiGMTOffset      = 7;          // ↳ Thailand offset from GMT (normally 7)
+input bool     InpGateMondayOnly     = true;       // ✅ Apply the gate on MONDAY only (weekend-stale signal); false = every day
 
 input group "📅  WEEKEND GUARD"
 input bool     InpNoWeekendHold      = false;      // OFF = hold positions through the weekend (ON = close + block Friday late)
@@ -824,22 +826,31 @@ void CheckPeakDDStop()
 //  Only NEW ENTRIES are blocked; trailing / BE / partial keep running,
 //  so an open trade is still managed through the open.
 //==================================================================
-int ThaiHourNow()
+void ThaiNow(MqlDateTime &dt)
 {
    datetime gmt = TimeGMT();
    if(gmt <= 0) gmt = TimeCurrent();          // fallback if GMT is unavailable
-   MqlDateTime dt;
    TimeToStruct((datetime)((long)gmt + (long)InpThaiGMTOffset * 3600), dt);
-   return dt.hour;
 }
 
-// True while new entries are blocked by the daily session gate.
+// True while new entries are blocked by the session gate.
+//   InpGateMondayOnly = true  -> Monday morning only. That is where the bug
+//     actually bit: the weekend break leaves bar[1] holding Friday's closed
+//     bar, so the first tick after the Monday open fires on a signal two days
+//     old, priced through the gap. Every other day the previous bar closed
+//     only hours earlier, and blocking those mornings just threw away a real
+//     H4 signal per day - expensive in a trend.
+//   false -> block every morning (old behaviour).
 bool IsBeforeSessionStart()
 {
    if(!InpBlockMarketOpen) return false;
    int h = InpTradeStartHourTH;
    if(h <= 0 || h > 23) return false;         // 0 or out of range = gate off
-   return (ThaiHourNow() < h);
+
+   MqlDateTime dt;
+   ThaiNow(dt);
+   if(InpGateMondayOnly && dt.day_of_week != 1) return false;   // 1 = Monday
+   return (dt.hour < h);
 }
 
 //==================================================================
