@@ -1,0 +1,91 @@
+; ========================================================================
+;  Metasit XAUUSD EA v2.26 — EXAM preset: 100K 1-Step  [เล่นต่อจากของเดิม]
+;  The5ers 1-Step 100K | เป้า 10% ($110,000) | Max Loss 6% (เส้นตาย $94,000)
+;  Daily Loss 3% ($3,000) | Leverage 1:100 | Consistency 50%
+;
+;  *** ไฟล์นี้ตั้งมาสำหรับบัญชีที่เสียไปแล้ว 3.02% (balance ~96,981) ***
+;  buffer เหลือจริงถึงเส้นตาย = $2,981 (2.98% ของยอดเริ่ม)
+;  ถ้าเป็นบัญชีใหม่ balance เต็ม 100,000 -> อย่าใช้ไฟล์นี้ ขอไฟล์ใหม่
+;
+;  โหลด: หน้า Inputs -> ปุ่ม Load -> เลือกไฟล์นี้
+; ========================================================================
+
+; ---- ⚠️ สำคัญที่สุด: ยอดเริ่มสอบจริง ----
+; ถ้าไม่ตั้ง EA จะนับ 96,981 เป็นฐาน -> เบรกฉุกเฉินกับเป้าจะเลื่อนผิดทั้งคู่
+InpStartBalanceOverride=100000.0
+
+; ---- Entry (ค่าที่พิสูจน์แล้ว ห้ามแก้) ----
+InpUseMomentumFilter=true
+InpMomentumPct=30.0
+InpADXMin=20.0
+InpSL_ATRMult=1.5
+
+; ---- Risk: ลดจาก 1.0 -> 0.5 เพราะ buffer เหลือน้อย ----
+; @1.0% แพ้ติด 3 ไม้ = จบ | @0.5% แพ้ติด 6 ไม้ถึงจะถึงเส้นตาย
+InpRiskPercent=0.5
+InpMaxPositions=1
+InpReentryCooldownBars=1
+InpMaxRiskCapPercent=0.9
+
+; ---- Break-even + Staged closes (BANK-EARLY, ห้ามแก้) ----
+InpBreakEvenR=0.25
+InpUseBE_ATR=true
+InpBE_TriggerATR=1.0
+InpBE_BufferPts=200.0
+InpPartialR=2.0
+InpPartialPercent=40.0
+InpLockTrailUntilPartial=true
+InpUseFixedTP=false
+InpFixedTP_R=2.0
+InpUseStagedCloses=true
+InpStagedMinProfitR=1.0
+InpStrongMoveSLPercent=60.0
+InpMiniMoveClosePercent=70.0
+InpStagedMomentumPct=30.0
+InpTrailWidest=true
+InpLetWinnersRun=false
+InpRunTrailWiden=1.5
+
+; ---- เกราะ 3 ชั้น (คำนวณจากยอดเริ่ม 100,000 / เส้นตาย 94,000) ----
+; ชั้น 1  พัก 2 วัน  DD 1.0% จาก peak ตอน EA เริ่ม  -> ~96,012  (แพ้ติด 2 ไม้)
+; ชั้น 2  หยุดวันนี้ Daily 1.5%                       -> (กติกาจริง 3%)
+; ชั้น 3  ปิดหมด+หยุด 4.5% จาก 100,000               -> 95,500  (ห่างเส้นตาย $1,500)
+; หมายเหตุ: ค่าเดิม InpMaxDD_Percent=3.5 ใช้ไม่ได้แล้ว เพราะ 3.5% จาก
+;           peak 96,981 = 93,587 ซึ่งต่ำกว่าเส้นตาย 94,000 -> พักช้าเกินไป
+InpMaxDD_Percent=1.0
+InpMaxDD_ResumeBuffer=0.5
+InpMaxDD_ResumeDays=2
+InpDailyDD_Percent=1.5
+InpProfitTargetPercent=10.0
+InpMaxTotalLossPercent=4.5
+InpPeakDDStopPercent=0.0
+
+; ---- Session gate: บล็อกเฉพาะเช้าวันจันทร์ ----
+InpBlockMarketOpen=true
+InpTradeStartHourTH=8
+InpThaiGMTOffset=7
+InpGateMondayOnly=true
+
+; ---- Weekend: ถือข้ามได้ตามที่เลือกไว้ ----
+; ⚠️ buffer เหลือ $1,500 ถึงเบรก - gap วันจันทร์กินหมดได้ในไม้เดียว
+;    ถ้าอยากปลอดภัยกว่านี้ เปลี่ยนเป็น true
+InpNoWeekendHold=false
+InpWeekendCloseHour=20
+
+; ---- News filter (LIVE ใช้ปฏิทิน MT5 อัตโนมัติ) ----
+InpEnableNewsFilter=true
+InpNewsMinutesBefore=90
+InpNewsMinutesAfter=30
+InpNewsCurrencies=USD
+InpUseFFNews=false
+InpFFNewsFile=ff_news.csv
+InpFFBlockImpact=High
+InpFFTimeOffsetHours=0
+InpFFCloseBeforeNews=false
+
+; ---- Confidence scaling OFF ----
+InpEnableConfidence=false
+
+; ---- แจ้งเตือน: เปิดให้ครบ (v2.26 บอกทุกสาเหตุที่ไม่เปิดไม้) ----
+InpEnableNotifications=true
+InpStatusReport=true
