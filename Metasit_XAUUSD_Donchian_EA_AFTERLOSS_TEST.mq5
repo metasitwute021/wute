@@ -51,16 +51,24 @@
 //|  *** v2.26 : every no-trade reason alerts - no silent exit ***    |
 //|  *** v2.27 : MaxDD / DailyDD can now be turned off with 0 ***    |
 //|                                                                  |
-//|  ### TEST BUILD - NO-FLIP-AFTER-LOSS ###                         |
-//|  Identical to v2.27 except for InpNoFlipAfterLoss.               |
-//|  Hypothesis: in a range the EA loses, immediately takes the      |
-//|  OPPOSITE breakout and loses again - the BUY/SELL/BUY whipsaw    |
-//|  seen on the Sep 2026 chart. After a LOSING trade, block the     |
-//|  opposite direction for InpNoFlipBars entry-TF bars. Same-       |
-//|  direction re-entry stays allowed (a trend that stopped us out   |
-//|  once may still resume).                                         |
-//|  A/B TEST: run THIS ONE FILE twice - InpNoFlipAfterLoss false,   |
-//|  then true - so nothing else can differ between the two runs.    |
+//|  ### TEST BUILD - AFTER-LOSS ENTRY BLOCK ###                     |
+//|  Identical to v2.27 except for InpAfterLossBlock.                |
+//|                                                                  |
+//|  Sep 2026, both live accounts: three consecutive losses, and all |
+//|  three were SELL - the EA kept re-selling the same breakdown in  |
+//|  a range that kept bouncing. It was NOT a direction flip-flop.   |
+//|  So blocking only the opposite side would have stopped none of   |
+//|  them; the same-side repeat is what actually cost the money.     |
+//|                                                                  |
+//|  Rather than guess, make the direction a parameter and let the   |
+//|  Strategy Tester choose:                                         |
+//|    0 NONE     - baseline, no block                               |
+//|    1 OPPOSITE - after a loss, block the other side (flip-flop)   |
+//|    2 SAME     - after a loss, block the same side (Sep 2026)     |
+//|    3 BOTH     - after a loss, block everything (long cooldown)   |
+//|  Sweep InpAfterLossBlock 0..3 x InpAfterLossBars 1..5 in one     |
+//|  optimization run; a setting that only wins at one isolated      |
+//|  value is curve fit, not an edge.                                |
 //|                                                                  |
 //|  Strategy summary                                                |
 //|  - Market / TF : XAUUSD, signals on H4, trailing managed on M30  |
@@ -82,12 +90,21 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "Metasit XAUUSD Donchian EA - prop-safe build"
-#property version   "2.27-noflip"
+#property version   "2.27-afterloss"
 #property strict
 
-#define EA_VERSION "2.27-noflip"
+#define EA_VERSION "2.27-afterloss"
 
 #include <Trade\Trade.mqh>
+
+// TEST build: which direction to block after a losing trade
+enum ENUM_AFTERLOSS_BLOCK
+{
+   AL_NONE     = 0,   // 0 ไม่บล็อก (baseline)
+   AL_OPPOSITE = 1,   // 1 ห้ามพลิกทาง (แพ้ BUY -> ห้าม SELL)
+   AL_SAME     = 2,   // 2 ห้ามเข้าทางเดิมซ้ำ (แพ้ SELL -> ห้าม SELL)
+   AL_BOTH     = 3    // 3 ห้ามทั้งสองทาง (= cooldown ยาวขึ้น)
+};
 
 //==================================================================
 //  Enums for account / lot configuration (Risk Management group)
@@ -157,9 +174,9 @@ input double          InpLotStepOverride = 0.0;         // Force lot step (0 = a
 input int             InpMaxPositions= 1;               // Max open positions
 input int             InpReentryCooldownBars = 1;       // Cooldown bars after close (anti-whipsaw)
 
-input group "🧪  TEST: NO-FLIP AFTER LOSS"
-input bool     InpNoFlipAfterLoss    = true;       // 🧪 After a LOSS, block the OPPOSITE direction for a while
-input int      InpNoFlipBars         = 2;          // ↳ block it for this many entry-TF bars
+input group "🧪  TEST: AFTER-LOSS ENTRY BLOCK"
+input ENUM_AFTERLOSS_BLOCK InpAfterLossBlock = AL_NONE;  // 🧪 แพ้แล้วบล็อกทางไหน (0=ปิด 1=ตรงข้าม 2=ทางเดิม 3=ทั้งคู่)
+input int      InpAfterLossBars      = 2;          // ↳ บล็อกกี่แท่ง entry-TF
 input double          InpMaxRiskCapPercent = 1.7;       // 🚧 Skip trade if risk > this % (0 = off; prop guard)
 
 input group "🔧  TRADE MGMT — Break-even / Partial"
@@ -272,10 +289,10 @@ datetime gPosStagedBar[];    // staged close: last trail-TF bar already evaluate
 double   gPeakEquity     = 0.0;
 datetime gMaxDDPausedSince = 0;   // when the max-DD pause latched (0 = not paused)
 
-// no-flip-after-loss state (TEST build)
-int      gLastOpenDir    = 0;   // +1 = last opened BUY, -1 = last opened SELL, 0 = none
-int      gLastLossDir    = 0;   // direction of the last LOSING trade
-int      gNoFlipBarsLeft = 0;   // entry-TF bars still blocking the opposite direction
+// after-loss entry block state (TEST build)
+int      gLastOpenDir      = 0;   // +1 = last opened BUY, -1 = last opened SELL
+int      gLastLossDir      = 0;   // direction of the last LOSING trade
+int      gAfterLossBarsLeft = 0;  // entry-TF bars still blocking
 bool     gMaxDDPaused    = false;
 datetime gDayStart       = 0;
 double   gDayStartEquity = 0.0;
@@ -354,9 +371,9 @@ int OnInit()
 
    gPeakEquity     = AccountInfoDouble(ACCOUNT_EQUITY);
    gMaxDDPausedSince = 0;
-   gLastOpenDir    = 0;
-   gLastLossDir    = 0;
-   gNoFlipBarsLeft = 0;
+   gLastOpenDir       = 0;
+   gLastLossDir       = 0;
+   gAfterLossBarsLeft = 0;
    gDayStart       = 0;
    gDayStartEquity = AccountInfoDouble(ACCOUNT_EQUITY);
    gConfidence     = 1.0;
@@ -447,9 +464,9 @@ void OnTick()
 
    SendSignalStatus();   // report entry-condition state each bar (proves EA is alive)
 
-   // TEST: no-flip counts the same entry-TF bars as the cooldown, and is
-   // decremented before the cooldown's early return so the two stay in step.
-   if(gNoFlipBarsLeft > 0) gNoFlipBarsLeft--;
+   // TEST: counts the same entry-TF bars as the cooldown, decremented before
+   // the cooldown's early return so the two stay in step.
+   if(gAfterLossBarsLeft > 0) gAfterLossBarsLeft--;
 
    // Re-entry cooldown: after a full close, skip whole entry-TF bars before
    // trading again. Skipping a bar also forces the signal to be RECALCULATED
@@ -1026,8 +1043,8 @@ void SendSignalStatus()
    // is the path open? cooldown + every reason TradingAllowed() can refuse
    string block = "";
    if(gCooldownBarsLeft > 0) block += "cooldown ";
-   if(InpNoFlipAfterLoss && gNoFlipBarsLeft > 0)
-      block += StringFormat("noflip(%s,%d) ", gLastLossDir==1 ? "no-SELL" : "no-BUY", gNoFlipBarsLeft);
+   if(InpAfterLossBlock != AL_NONE && gAfterLossBarsLeft > 0)
+      block += StringFormat("afterloss(m%d,%d) ", (int)InpAfterLossBlock, gAfterLossBarsLeft);
    block += TradingBlockReason();
    bool pathOpen = (block == "");
 
@@ -1107,18 +1124,25 @@ void TryEnter()
    //   Long  : close in the TOP    InpMomentumPct% of the candle range
    //   Short : close in the BOTTOM InpMomentumPct% of the candle range
    // Filters out weak/indecisive breakouts that spike then close mid-range.
-   // ---- TEST: no flip straight after a loss ----
-   if(InpNoFlipAfterLoss && gNoFlipBarsLeft > 0 && gLastLossDir != 0)
+   // ---- TEST: after-loss entry block ----
+   if(InpAfterLossBlock != AL_NONE && gAfterLossBarsLeft > 0 && gLastLossDir != 0)
    {
-      if(buySignal && gLastLossDir == -1)      // last SELL lost -> do not flip to BUY yet
+      bool blockBuy = false, blockSell = false;
+      if(InpAfterLossBlock == AL_BOTH)          { blockBuy = true; blockSell = true; }
+      else if(InpAfterLossBlock == AL_OPPOSITE) { if(gLastLossDir==1) blockSell = true; else blockBuy  = true; }
+      else if(InpAfterLossBlock == AL_SAME)     { if(gLastLossDir==1) blockBuy  = true; else blockSell = true; }
+
+      if(buySignal && blockBuy)
       {
          buySignal = false;
-         Notify(StringFormat("🚧 NO-FLIP: ข้าม BUY (SELL เพิ่งแพ้ เหลืออีก %d แท่ง)", gNoFlipBarsLeft));
+         Notify(StringFormat("🚧 AFTER-LOSS: ข้าม BUY (โหมด %d, เหลืออีก %d แท่ง)",
+                             (int)InpAfterLossBlock, gAfterLossBarsLeft));
       }
-      if(sellSignal && gLastLossDir == 1)      // last BUY lost -> do not flip to SELL yet
+      if(sellSignal && blockSell)
       {
          sellSignal = false;
-         Notify(StringFormat("🚧 NO-FLIP: ข้าม SELL (BUY เพิ่งแพ้ เหลืออีก %d แท่ง)", gNoFlipBarsLeft));
+         Notify(StringFormat("🚧 AFTER-LOSS: ข้าม SELL (โหมด %d, เหลืออีก %d แท่ง)",
+                             (int)InpAfterLossBlock, gAfterLossBarsLeft));
       }
    }
 
@@ -1200,7 +1224,7 @@ void OpenTrade(const ENUM_ORDER_TYPE type, const double entry, const double sl)
    bool ok = (type==ORDER_TYPE_BUY)
              ? trade.Buy (lots, _Symbol, entry, sl, tp, "Donchian-SL")
              : trade.Sell(lots, _Symbol, entry, sl, tp, "Donchian-SL");
-   if(ok) gLastOpenDir = (type==ORDER_TYPE_BUY) ? 1 : -1;   // TEST: remember side for no-flip
+   if(ok) gLastOpenDir = (type==ORDER_TYPE_BUY) ? 1 : -1;   // TEST: remember side
    if(!ok)
    {
       Notify(StringFormat("❌ ส่งคำสั่งไม่สำเร็จ! โบรกปฏิเสธ: [%d] %s (lot %.2f, entry %.2f, SL %.2f)",
@@ -1782,16 +1806,15 @@ void AccumulateAndMaybeFinalize(const ulong posId, const double profit)
       PushClosedTrade(total);
       gCooldownBarsLeft = InpReentryCooldownBars;   // start re-entry cooldown after a full close
 
-      // TEST: a losing trade arms the no-flip block against the OPPOSITE side.
+      // TEST: a losing trade arms the after-loss block.
       // InpMaxPositions is 1, so gLastOpenDir is the side that just lost.
-      if(total < 0.0 && InpNoFlipAfterLoss && InpNoFlipBars > 0)
+      if(total < 0.0 && InpAfterLossBlock != AL_NONE && InpAfterLossBars > 0)
       {
-         gLastLossDir    = gLastOpenDir;
-         gNoFlipBarsLeft = InpNoFlipBars;
-         Notify(StringFormat("🚧 NO-FLIP: %s แพ้ -> ห้ามเข้า %s อีก %d แท่ง",
+         gLastLossDir       = gLastOpenDir;
+         gAfterLossBarsLeft = InpAfterLossBars;
+         Notify(StringFormat("🚧 AFTER-LOSS: %s แพ้ -> บล็อกโหมด %d อีก %d แท่ง",
                              gLastLossDir==1 ? "BUY" : "SELL",
-                             gLastLossDir==1 ? "SELL" : "BUY",
-                             InpNoFlipBars));
+                             (int)InpAfterLossBlock, InpAfterLossBars));
       }
       // remove accumulator entry
       int n = ArraySize(gAccPos);
