@@ -36,6 +36,9 @@
 //|  *** v2.08 : KRV V19 Momentum Candle Filter (close near extreme) ***|
 //|  *** v2.21 : DAILY SESSION GATE - no entries before 08:00 Thai ***|
 //|  *** v2.22 : weekend holding ALLOWED (InpNoWeekendHold now OFF) ***|
+//|  *** v2.23 : status report now names EVERY block reason      ***|
+//|      (it used to check only 4 of 11 gates and print          |
+//|       "path clear" while the EA was silently refusing)       |
 //|      (daily open ~05:00 TH re-opened the bar and fired the EA on  |
 //|       the previous session's stale bar, straight into the gap)    |
 //|      (drop X% from PEAK equity -> close all + stop; protects gains)|
@@ -60,10 +63,10 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "Metasit XAUUSD Donchian EA - prop-safe build"
-#property version   "2.22"
+#property version   "2.23"
 #property strict
 
-#define EA_VERSION "2.22"
+#define EA_VERSION "2.23"
 
 #include <Trade\Trade.mqh>
 
@@ -341,6 +344,12 @@ int OnInit()
    string mode = InpLetWinnersRun ? "🏃 LET-RUN mode" : "💰 BANK-EARLY mode";
    Notify("🚀 EA v" + EA_VERSION + " [" + mode + "] started on " + _Symbol + " (entry " + EnumToString(InpEntryTF) +
           ", trail " + EnumToString(InpTrailTF) + ", SLmode " + EnumToString(InpSLMode) + ")");
+
+   // AutoTrading off is invisible on mobile and silently blocks every entry - say it out loud.
+   if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED) || !MQLInfoInteger(MQL_TRADE_ALLOWED))
+      Notify(StringFormat("⛔ ALGO TRADING ปิดอยู่! (ปุ่ม AutoTrading: %s, EA: %s) - EA จะไม่เปิดไม้จนกว่าจะเปิด",
+                          TerminalInfoInteger(TERMINAL_TRADE_ALLOWED) ? "เปิด" : "ปิด",
+                          MQLInfoInteger(MQL_TRADE_ALLOWED)          ? "เปิด" : "ปิด"));
    return(INIT_SUCCEEDED);
 }
 
@@ -771,22 +780,59 @@ bool IsBeforeSessionStart()
 }
 
 //==================================================================
+//  Momentum candle filter (KRV V19) - shared by the entry logic and
+//  the status report so both always judge the candle the same way.
+//  Returns where the bar closed inside its own range:
+//    0.0 = at the low, 1.0 = at the high, -1.0 = no range / n.a.
+//==================================================================
+double MomentumClosePos(const int shift)
+{
+   double h = iHigh (_Symbol, InpEntryTF, shift);
+   double l = iLow  (_Symbol, InpEntryTF, shift);
+   double c = iClose(_Symbol, InpEntryTF, shift);
+   double rng = h - l;
+   if(rng <= 0.0) return -1.0;
+   return (c - l) / rng;
+}
+
+// Does that close position satisfy the filter for this direction?
+bool MomentumOK(const bool isBuy, const double pos)
+{
+   if(!InpUseMomentumFilter) return true;
+   if(pos < 0.0)             return true;   // no range -> do not block on it
+   double thr = InpMomentumPct / 100.0;
+   return isBuy ? (pos >= (1.0 - thr)) : (pos <= thr);
+}
+
+//==================================================================
+//  One place that decides -- and NAMES -- why entries are blocked.
+//  TradingAllowed() and the status report both read this, so the
+//  report can never again say "path clear" while the EA is refusing
+//  to trade (that mismatch hid a silent block for days).
+//==================================================================
+string TradingBlockReason()
+{
+   string b = "";
+   if(gTargetReached)                                b += "target ";
+   if(gLossStopReached)                              b += "brake ";
+   if(gPeakDDStopReached)                            b += "ddlock ";
+   if(gMaxDDPaused)                                  b += "ddpause ";
+   if(gDailyStopped)                                 b += "dailystop ";
+   if(gInNews)                                       b += "news ";
+   if(IsWeekendBlockTime())                          b += "weekend ";
+   if(IsBeforeSessionStart())                        b += "premarket ";
+   if(CountMyPositions() >= InpMaxPositions)         b += "maxpos ";
+   if(!MQLInfoInteger(MQL_TRADE_ALLOWED))            b += "algo-off(EA) ";
+   if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))  b += "autotrade-off ";
+   return b;
+}
+
+//==================================================================
 //  Trading gate
 //==================================================================
 bool TradingAllowed()
 {
-   if(gTargetReached) return false;
-   if(gLossStopReached) return false;
-   if(gPeakDDStopReached) return false;
-   if(gMaxDDPaused)  return false;
-   if(gDailyStopped) return false;
-   if(gInNews)       return false;
-   if(IsWeekendBlockTime()) return false;   // WEEKEND GUARD: no new entries Friday-late
-   if(IsBeforeSessionStart()) return false;  // SESSION GATE: no entries before start hour
-   if(CountMyPositions() >= InpMaxPositions) return false;
-   if(!MQLInfoInteger(MQL_TRADE_ALLOWED)) return false;
-   if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED)) return false;
-   return true;
+   return (TradingBlockReason() == "");
 }
 
 int CountMyPositions()
@@ -831,27 +877,39 @@ void SendSignalStatus()
    double target     = trendUp ? upper : lower;
    double distPts    = MathAbs(target - close1) / _Point;
 
-   // is the path open? (news / weekend / cooldown / max positions)
+   // Momentum filter is a real entry gate too - report it, do not hide it.
+   double momPos = MomentumClosePos(1);         // 0 = at low, 1 = at high, -1 = n/a
+   bool   momOK  = MomentumOK(trendUp, momPos);
+
+   // is the path open? cooldown + every reason TradingAllowed() can refuse
    string block = "";
-   if(gCooldownBarsLeft > 0)                        block += "cooldown ";
-   if(IsWeekendBlockTime())                         block += "weekend ";
-   if(IsBeforeSessionStart())                        block += "premarket ";
-   if(gInNews)                                      block += "news ";
-   if(CountMyPositions() >= InpMaxPositions)        block += "maxpos ";
+   if(gCooldownBarsLeft > 0) block += "cooldown ";
+   block += TradingBlockReason();
    bool pathOpen = (block == "");
 
-   int met = (adxOK?1:0) + (breakoutOK?1:0) + (pathOpen?1:0);   // out of 3 gates
+   int met = (adxOK?1:0) + (breakoutOK?1:0) + (momOK?1:0) + (pathOpen?1:0);   // out of 4 gates
+
+   string momTxt;
+   if(!InpUseMomentumFilter || momPos < 0.0)
+      momTxt = "ปิดใช้งาน";
+   else
+      momTxt = StringFormat("close อยู่ที่ %.0f%% ของแท่ง (ต้อง %s %.0f%%)",
+                            momPos * 100.0,
+                            trendUp ? "≥" : "≤",
+                            trendUp ? (100.0 - InpMomentumPct) : InpMomentumPct);
 
    string txt = StringFormat(
-      "📊 EA ยังไม่เข้าไม้ (ผ่าน %d/3)\n"
+      "📊 EA ยังไม่เข้าไม้ (ผ่าน %d/4)\n"
       "%s ADX %.1f / %.0f\n"
       "%s Breakout(%s): %s\n"
+      "%s Momentum: %s\n"
       "%s ทางเปิด: %s",
       met,
       adxOK?"✅":"❌", adx, InpADXMin,
       breakoutOK?"✅":"⏳", side,
       breakoutOK ? "ทะลุแล้ว!" :
                    StringFormat("รอราคา %s %.2f (ห่าง %.0f จุด)", trendUp?">":"<", target, distPts),
+      momOK?"✅":"❌", momTxt,
       pathOpen?"✅":"⛔", pathOpen ? "ว่าง" : block);
    Notify(txt);
 }
@@ -879,7 +937,11 @@ void TryEnter()
 
    // --- ATR(16) on the entry TF, used by both SL modes ---
    double atrSL;
-   if(!BufVal(hATRslBuf, 0, 1, atrSL) || atrSL <= 0.0) return;
+   if(!BufVal(hATRslBuf, 0, 1, atrSL) || atrSL <= 0.0)
+   {
+      Notify("⚠️ อ่านค่า ATR ไม่ได้ - ข้ามแท่งนี้ (ไม่สามารถคำนวณ SL)");
+      return;
+   }
 
    bool buySignal  = (close1 > upper) && (close1 > ma);
    bool sellSignal = (close1 < lower) && (close1 < ma);
@@ -889,32 +951,40 @@ void TryEnter()
    //   Long  : close in the TOP    InpMomentumPct% of the candle range
    //   Short : close in the BOTTOM InpMomentumPct% of the candle range
    // Filters out weak/indecisive breakouts that spike then close mid-range.
-   if(InpUseMomentumFilter)
+   double momPos = MomentumClosePos(1);
+   if(buySignal && !MomentumOK(true, momPos))
    {
-      double h1 = iHigh(_Symbol, InpEntryTF, 1);
-      double l1 = iLow (_Symbol, InpEntryTF, 1);
-      double rng = h1 - l1;
-      if(rng > 0.0)
-      {
-         double pos = (close1 - l1) / rng;          // 0 = at low, 1 = at high
-         double thr = InpMomentumPct / 100.0;       // e.g. 0.30
-         if(buySignal  && pos < (1.0 - thr)) buySignal  = false;  // not in top X%
-         if(sellSignal && pos > thr)         sellSignal = false;  // not in bottom X%
-      }
+      buySignal = false;
+      Notify(StringFormat("⚠️ BUY breakout ปัดทิ้ง - Momentum: close อยู่ที่ %.0f%% ของแท่ง (ต้อง ≥ %.0f%%)",
+                          momPos * 100.0, 100.0 - InpMomentumPct));
+   }
+   if(sellSignal && !MomentumOK(false, momPos))
+   {
+      sellSignal = false;
+      Notify(StringFormat("⚠️ SELL breakout ปัดทิ้ง - Momentum: close อยู่ที่ %.0f%% ของแท่ง (ต้อง ≤ %.0f%%)",
+                          momPos * 100.0, InpMomentumPct));
    }
 
    if(buySignal)
    {
       double entry = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       double sl    = ComputeInitialSL(true, entry, lower, atrSL);
-      if(sl >= entry) return;                    // sanity: SL must be below entry
+      if(sl >= entry)                            // sanity: SL must be below entry
+      {
+         Notify(StringFormat("⚠️ BUY ยกเลิก - SL %.2f ไม่ต่ำกว่าราคาเข้า %.2f", sl, entry));
+         return;
+      }
       OpenTrade(ORDER_TYPE_BUY, entry, sl);
    }
    else if(sellSignal)
    {
       double entry = SymbolInfoDouble(_Symbol, SYMBOL_BID);
       double sl    = ComputeInitialSL(false, entry, upper, atrSL);
-      if(sl <= entry) return;                    // sanity: SL must be above entry
+      if(sl <= entry)                            // sanity: SL must be above entry
+      {
+         Notify(StringFormat("⚠️ SELL ยกเลิก - SL %.2f ไม่สูงกว่าราคาเข้า %.2f", sl, entry));
+         return;
+      }
       OpenTrade(ORDER_TYPE_SELL, entry, sl);
    }
 }
@@ -942,7 +1012,7 @@ void OpenTrade(const ENUM_ORDER_TYPE type, const double entry, const double sl)
    double lots = CalcLotSize(type, entry, sl);
    if(lots <= 0.0)
    {
-      Print("Lot size computed as 0 - skipping entry");
+      Notify("⚠️ คำนวณ lot ได้ 0 - ไม่เปิดไม้ (ดูรายละเอียดในแท็บ Experts)");
       return;
    }
 
