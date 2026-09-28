@@ -39,6 +39,7 @@
 //|  *** v2.23 : status report now names EVERY block reason      ***|
 //|  *** v2.24 : DD pause could never end - froze 4 accounts     ***|
 //|  *** v2.25 : session gate narrowed to MONDAY only            ***|
+//|  *** v2.26 : EVERY no-trade reason now alerts (no silent exit)***|
 //|      + challenge baseline survives a restart                 |
 //|      (it used to check only 4 of 11 gates and print          |
 //|       "path clear" while the EA was silently refusing)       |
@@ -66,10 +67,10 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "Metasit XAUUSD Donchian EA - prop-safe build"
-#property version   "2.25"
+#property version   "2.26"
 #property strict
 
-#define EA_VERSION "2.25"
+#define EA_VERSION "2.26"
 
 #include <Trade\Trade.mqh>
 
@@ -930,18 +931,34 @@ int CountMyPositions()
 //==================================================================
 void SendSignalStatus()
 {
-   if(!InpStatusReport)          return;
-   if(CountMyPositions() > 0)     return;   // trade running -> user already gets trade alerts
+   if(!InpStatusReport) return;
+   if(CountMyPositions() > 0)
+   {
+      // Not silence: "holding a trade" is itself a reason no new order opens.
+      Notify(StringFormat("📊 ไม่เปิดไม้ใหม่: ถือไม้อยู่ %d/%d (maxpos) - ไม้เดิมยังถูกจัดการปกติ",
+                          CountMyPositions(), InpMaxPositions));
+      return;
+   }
 
    int upIdx = iHighest(_Symbol, InpEntryTF, MODE_HIGH, InpDonchianPeriod, 2);
    int loIdx = iLowest (_Symbol, InpEntryTF, MODE_LOW,  InpDonchianPeriod, 2);
-   if(upIdx < 0 || loIdx < 0)     return;
+   if(upIdx < 0 || loIdx < 0)
+   {
+      Notify("⚠️ ไม่เปิดไม้: ประวัติแท่งไม่พอสำหรับคำนวณ Donchian");
+      return;
+   }
    double upper  = iHigh (_Symbol, InpEntryTF, upIdx);
    double lower  = iLow  (_Symbol, InpEntryTF, loIdx);
    double close1 = iClose(_Symbol, InpEntryTF, 1);
    double ma=0, adx=0;
-   BufVal(hMA, 0, 1, ma);
-   BufVal(hADX,0, 1, adx);
+   bool maOK  = BufVal(hMA, 0, 1, ma);
+   bool adxRd = BufVal(hADX,0, 1, adx);
+   if(!maOK || !adxRd)
+   {
+      Notify(StringFormat("⚠️ ไม่เปิดไม้: อ่าน indicator ไม่ได้ (SMA50 %s / ADX %s)",
+                          maOK ? "ok" : "FAIL", adxRd ? "ok" : "FAIL"));
+      return;
+   }
 
    bool   trendUp = (close1 > ma);            // which side the SMA allows
    string side    = trendUp ? "BUY" : "SELL";
@@ -997,7 +1014,11 @@ void TryEnter()
    int upIdx = iHighest(_Symbol, InpEntryTF, MODE_HIGH, InpDonchianPeriod, 2);
    int loIdx = iLowest (_Symbol, InpEntryTF, MODE_LOW,  InpDonchianPeriod, 2);
    if(upIdx < 0 || loIdx < 0)
+   {
+      Notify(StringFormat("⚠️ ไม่เปิดไม้: อ่านกรอบ Donchian ไม่ได้ - ประวัติแท่ง %s ไม่พอ (ต้อง %d แท่ง)",
+                          EnumToString(InpEntryTF), InpDonchianPeriod + 2));
       return;
+   }
 
    double upper  = iHigh (_Symbol, InpEntryTF, upIdx);
    double lower  = iLow  (_Symbol, InpEntryTF, loIdx);
@@ -1005,9 +1026,17 @@ void TryEnter()
 
    // --- filters: trend (SMA50) + ADX ---
    double ma, adx;
-   if(!BufVal(hMA, 0, 1, ma))  return;
-   if(!BufVal(hADX,0, 1, adx)) return;   // buffer 0 = main ADX line
-   if(adx < InpADXMin)         return;
+   if(!BufVal(hMA, 0, 1, ma))
+   {
+      Notify("⚠️ ไม่เปิดไม้: อ่านค่า SMA50 ไม่ได้ (indicator ยังไม่พร้อม)");
+      return;
+   }
+   if(!BufVal(hADX,0, 1, adx))           // buffer 0 = main ADX line
+   {
+      Notify("⚠️ ไม่เปิดไม้: อ่านค่า ADX ไม่ได้ (indicator ยังไม่พร้อม)");
+      return;
+   }
+   if(adx < InpADXMin) return;           // normal "no signal yet" - the status report covers it
 
    // --- ATR(16) on the entry TF, used by both SL modes ---
    double atrSL;
@@ -1081,7 +1110,10 @@ void OpenTrade(const ENUM_ORDER_TYPE type, const double entry, const double sl)
 {
    double riskDist = MathAbs(entry - sl);
    if(riskDist <= 0.0)
+   {
+      Notify(StringFormat("⚠️ ไม่เปิดไม้: ระยะ SL เป็น 0 (entry %.2f = SL %.2f)", entry, sl));
       return;
+   }
 
    double lots = CalcLotSize(type, entry, sl);
    if(lots <= 0.0)
@@ -1102,8 +1134,9 @@ void OpenTrade(const ENUM_ORDER_TYPE type, const double entry, const double sl)
              : trade.Sell(lots, _Symbol, entry, sl, tp, "Donchian-SL");
    if(!ok)
    {
-      Print("Order send failed: ", trade.ResultRetcode(), " ",
-            trade.ResultRetcodeDescription());
+      Notify(StringFormat("❌ ส่งคำสั่งไม่สำเร็จ! โบรกปฏิเสธ: [%d] %s (lot %.2f, entry %.2f, SL %.2f)",
+                          trade.ResultRetcode(), trade.ResultRetcodeDescription(),
+                          lots, entry, sl));
       return;
    }
    // notification handled in OnTradeTransaction (DEAL_ENTRY_IN)
@@ -1140,7 +1173,11 @@ double CalcLotSize(const ENUM_ORDER_TYPE type, const double entry, const double 
    double riskMoney = balance * (InpRiskPercent / 100.0);
    double riskDist  = MathAbs(entry - sl);
    if(riskDist <= 0.0 || riskMoney <= 0.0)
+   {
+      Notify(StringFormat("⚠️ ไม่เปิดไม้: คำนวณ lot ไม่ได้ (ระยะ SL %.2f, เงินเสี่ยง %.2f, balance %.2f)",
+                          riskDist, riskMoney, balance));
       return 0.0;
+   }
 
    // Loss (in ACCOUNT currency) for 1.0 lot if the SL is hit.
    // OrderCalcProfit() accounts for contract size and cent-account currency
@@ -1149,12 +1186,16 @@ double CalcLotSize(const ENUM_ORDER_TYPE type, const double entry, const double 
    double lossPerLot = 0.0;
    if(!OrderCalcProfit(type, _Symbol, 1.0, entry, sl, lossPerLot))
    {
-      Print("OrderCalcProfit failed - cannot size lot");
+      Notify(StringFormat("⚠️ ไม่เปิดไม้: OrderCalcProfit ล้มเหลว - คำนวณ lot ไม่ได้ (error %d)",
+                          GetLastError()));
       return 0.0;
    }
    lossPerLot = MathAbs(lossPerLot);
    if(lossPerLot <= 0.0)
+   {
+      Notify("⚠️ ไม่เปิดไม้: โบรกคืนค่าขาดทุนต่อ 1 lot = 0 - คำนวณ lot ไม่ได้");
       return 0.0;
+   }
 
    double rawLots   = riskMoney / lossPerLot;
    double k         = GetLotCoefficient();                 // 1.0 by default
