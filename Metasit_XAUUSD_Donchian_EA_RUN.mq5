@@ -37,6 +37,8 @@
 //|  *** v2.21 : DAILY SESSION GATE - no entries before 08:00 Thai ***|
 //|  *** v2.22 : weekend holding ALLOWED (InpNoWeekendHold now OFF) ***|
 //|  *** v2.23 : status report now names EVERY block reason      ***|
+//|  *** v2.24 : DD pause could never end - froze 4 accounts     ***|
+//|      + challenge baseline survives a restart                 |
 //|      (it used to check only 4 of 11 gates and print          |
 //|       "path clear" while the EA was silently refusing)       |
 //|      (daily open ~05:00 TH re-opened the bar and fired the EA on  |
@@ -63,10 +65,10 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "Metasit XAUUSD Donchian EA - prop-safe build"
-#property version   "2.23"
+#property version   "2.24"
 #property strict
 
-#define EA_VERSION "2.23"
+#define EA_VERSION "2.24"
 
 #include <Trade\Trade.mqh>
 
@@ -177,6 +179,8 @@ input double   InpRunTrailWiden      = 1.5;        // ↳ widen trailing ATR mul
 input group "🛡️  DRAWDOWN PROTECTION (PROP)"
 input double   InpMaxDD_Percent      = 3.0;        // Max DD -> pause EA (%)
 input double   InpMaxDD_ResumeBuffer = 2.0;        // Resume when DD < (Max - this)
+input int      InpMaxDD_ResumeDays   = 2;          // ⏳ DEADLOCK GUARD: paused this many days -> re-baseline & resume (0 = off)
+input double   InpStartBalanceOverride = 0.0;      // 🏁 Challenge start balance (0 = use balance at first start)
 input double   InpDailyDD_Percent    = 1.5;        // Daily DD -> stop for the day (%)
 input double   InpProfitTargetPercent = 6.0;       // 🎯 +this % profit -> close all + STOP (0 = off)
 input double   InpMaxTotalLossPercent = 3.5;       // 🚨 EMERGENCY BRAKE: -this % -> close all + STOP (0 = off)
@@ -244,6 +248,7 @@ datetime gPosStagedBar[];    // staged close: last trail-TF bar already evaluate
 
 // drawdown / protection state
 double   gPeakEquity     = 0.0;
+datetime gMaxDDPausedSince = 0;   // when the max-DD pause latched (0 = not paused)
 bool     gMaxDDPaused    = false;
 datetime gDayStart       = 0;
 double   gDayStartEquity = 0.0;
@@ -313,11 +318,17 @@ int OnInit()
    }
 
    gPeakEquity     = AccountInfoDouble(ACCOUNT_EQUITY);
+   gMaxDDPausedSince = 0;
    gDayStart       = 0;
    gDayStartEquity = AccountInfoDouble(ACCOUNT_EQUITY);
    gConfidence     = 1.0;
    gCooldownBarsLeft = 0;
-   gStartBalance   = AccountInfoDouble(ACCOUNT_BALANCE);
+   // Challenge baseline for the profit target and the emergency brake.
+   // It must NOT follow a restart: re-capturing it after a loss would quietly
+   // re-arm the brake from the lower equity and let the real loss run past the
+   // challenge limit. Order: explicit input > value stored for this account >
+   // current balance (first ever start).
+   gStartBalance = StartBalanceBaseline();
    gTargetReached  = false;
    gLossStopReached = false;
    gPeakDDStopReached = false;
@@ -414,6 +425,41 @@ void OnTick()
 }
 
 //==================================================================
+//  Challenge start balance, anchored across restarts.
+//  Stored per account+magic in a terminal GlobalVariable so reloading
+//  the EA mid-challenge cannot silently move the emergency brake and
+//  the profit target onto a new, lower baseline.
+//  Deploying mid-challenge? Set InpStartBalanceOverride to the real
+//  starting balance (e.g. 100000) so both are measured from it.
+//==================================================================
+double StartBalanceBaseline()
+{
+   string key = StringFormat("MetasitEA_start_%I64d_%d",
+                             AccountInfoInteger(ACCOUNT_LOGIN), InpMagic);
+
+   if(InpStartBalanceOverride > 0.0)
+   {
+      GlobalVariableSet(key, InpStartBalanceOverride);
+      Notify(StringFormat("🏁 Challenge baseline ตั้งเป็น %.2f (จาก input)", InpStartBalanceOverride));
+      return InpStartBalanceOverride;
+   }
+
+   if(GlobalVariableCheck(key))
+   {
+      double stored = GlobalVariableGet(key);
+      if(stored > 0.0)
+      {
+         Notify(StringFormat("🏁 Challenge baseline %.2f (จำไว้จากรอบก่อน - restart ไม่ทำให้เกราะเลื่อน)", stored));
+         return stored;
+      }
+   }
+
+   double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+   GlobalVariableSet(key, bal);
+   return bal;
+}
+
+//==================================================================
 //  Protection: drawdown
 //==================================================================
 void CheckDrawdownProtection()
@@ -430,14 +476,31 @@ void CheckDrawdownProtection()
 
    if(!gMaxDDPaused && ddPct >= InpMaxDD_Percent)
    {
-      gMaxDDPaused = true;
-      Notify(StringFormat("🚨 MAX DRAWDOWN %.2f%% >= %.2f%% -> EA PAUSED",
-                          ddPct, InpMaxDD_Percent));
+      gMaxDDPaused      = true;
+      gMaxDDPausedSince = TimeCurrent();
+      Notify(StringFormat("🚨 MAX DRAWDOWN %.2f%% >= %.2f%% -> EA PAUSED (จะกลับมาเองใน %d วัน ถ้าไม่ฟื้นก่อน)",
+                          ddPct, InpMaxDD_Percent, InpMaxDD_ResumeDays));
    }
    else if(gMaxDDPaused && ddPct <= (InpMaxDD_Percent - InpMaxDD_ResumeBuffer))
    {
-      gMaxDDPaused = false;
+      gMaxDDPaused      = false;
+      gMaxDDPausedSince = 0;
       Notify(StringFormat("✅ Drawdown recovered to %.2f%% -> EA RESUMED", ddPct));
+   }
+   else if(gMaxDDPaused && InpMaxDD_ResumeDays > 0 && gMaxDDPausedSince > 0 &&
+           (TimeCurrent() - gMaxDDPausedSince) >= (datetime)(InpMaxDD_ResumeDays * 86400))
+   {
+      // DEADLOCK GUARD. gPeakEquity only ever rises, and a paused EA cannot
+      // open a trade - so while flat, equity never moves and the recovery
+      // threshold can never be reached. Without this the pause is permanent:
+      // it froze four live challenge accounts for over a week, while the
+      // status report still said the path was clear.
+      // Re-baseline the peak to the current equity and let it trade again.
+      gMaxDDPaused      = false;
+      gPeakEquity       = equity;
+      gMaxDDPausedSince = 0;
+      Notify(StringFormat("♻️ พัก DD ครบ %d วัน -> ตั้ง peak ใหม่ที่ %.2f และกลับมาเทรด (DD เดิม %.2f%% ฟื้นเองไม่ได้เพราะ EA เปิดไม้ไม่ได้)",
+                          InpMaxDD_ResumeDays, equity, ddPct));
    }
 
    // ----- Daily drawdown -----
