@@ -34,18 +34,21 @@
 //|  *** v2.06 : KRV confidence gate (no scale-up on weak streak) ***  |
 //|  *** v2.07 : live-ready - Weekend Guard ON, conf OFF, Partial 2R ***|
 //|  *** v2.08 : KRV V19 Momentum Candle Filter (close near extreme) ***|
-//|  *** v2.21 : DAILY SESSION GATE - no entries before 08:00 Thai ***|
-//|  *** v2.22 : weekend holding ALLOWED (InpNoWeekendHold now OFF) ***|
-//|  *** v2.23 : status report now names EVERY block reason      ***|
-//|  *** v2.24 : DD pause could never end - froze 4 accounts     ***|
-//|  *** v2.25 : session gate narrowed to MONDAY only            ***|
-//|  *** v2.26 : EVERY no-trade reason now alerts (no silent exit)***|
-//|      + challenge baseline survives a restart                 |
-//|      (it used to check only 4 of 11 gates and print          |
-//|       "path clear" while the EA was silently refusing)       |
-//|      (daily open ~05:00 TH re-opened the bar and fired the EA on  |
-//|       the previous session's stale bar, straight into the gap)    |
 //|      (drop X% from PEAK equity -> close all + stop; protects gains)|
+//|                                                                  |
+//|  *** v2.21 : SESSION GATE - no entries before 08:00 Thai ***      |
+//|      (the market open re-opened the bar and fired the EA on the   |
+//|       previous session's stale signal, straight into the gap)     |
+//|  *** v2.22 : weekend holding ALLOWED (InpNoWeekendHold now OFF) ***|
+//|  *** v2.23 : status report now names EVERY block reason ***       |
+//|      (it checked only 4 of 11 gates and printed "path clear"      |
+//|       while the EA was silently refusing to trade)                |
+//|  *** v2.24 : DD pause could never end - froze 4 live accounts *** |
+//|      (peak equity only rises + a paused EA cannot earn, so the    |
+//|       recovery threshold was unreachable while flat)              |
+//|      + challenge baseline now survives a restart                  |
+//|  *** v2.25 : session gate narrowed to MONDAY only ***             |
+//|  *** v2.26 : every no-trade reason alerts - no silent exit ***    |
 //|                                                                  |
 //|  Strategy summary                                                |
 //|  - Market / TF : XAUUSD, signals on H4, trailing managed on M30  |
@@ -437,7 +440,7 @@ void OnTick()
 //==================================================================
 double StartBalanceBaseline()
 {
-   string key = StringFormat("MetasitEA_start_%I64d_%d",
+   string key = StringFormat("MetasitEA_start_%I64d_%I64d",
                              AccountInfoInteger(ACCOUNT_LOGIN), InpMagic);
 
    if(InpStartBalanceOverride > 0.0)
@@ -491,7 +494,7 @@ void CheckDrawdownProtection()
       Notify(StringFormat("✅ Drawdown recovered to %.2f%% -> EA RESUMED", ddPct));
    }
    else if(gMaxDDPaused && InpMaxDD_ResumeDays > 0 && gMaxDDPausedSince > 0 &&
-           (TimeCurrent() - gMaxDDPausedSince) >= (datetime)(InpMaxDD_ResumeDays * 86400))
+           ((long)TimeCurrent() - (long)gMaxDDPausedSince) >= ((long)InpMaxDD_ResumeDays * 86400))
    {
       // DEADLOCK GUARD. gPeakEquity only ever rises, and a paused EA cannot
       // open a trade - so while flat, equity never moves and the recovery
@@ -818,12 +821,14 @@ void CheckPeakDDStop()
 }
 
 //==================================================================
-//  DAILY SESSION GATE
-//  The daily market open (roughly 05:00 Thai time) reopens the chart
-//  with a fresh entry-TF bar, so the EA would fire instantly on the
-//  LAST closed bar of the previous session - a stale signal, priced
-//  through the open gap. Blocking every entry until InpTradeStartHourTH
-//  Thailand time kills that case on Monday and on every other day.
+//  SESSION GATE
+//  A market open reopens the chart with a fresh entry-TF bar, so the
+//  first tick after it would fire on the LAST closed bar of the
+//  PREVIOUS session - and after the weekend that bar is two days old,
+//  filled at a post-gap price. Entries are held back until
+//  InpTradeStartHourTH Thailand time; by default only on Monday
+//  (InpGateMondayOnly), because on other days the previous bar closed
+//  only hours earlier and its signal is still current.
 //  Only NEW ENTRIES are blocked; trailing / BE / partial keep running,
 //  so an open trade is still managed through the open.
 //==================================================================
