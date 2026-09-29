@@ -61,6 +61,12 @@
 //|     Donchian channel stops widening.                             |
 //|  B  InpAfterLossBlock - judge the TRADE HISTORY: after a loss,   |
 //|     hold off on the same side, the other side, or both.          |
+//|  C  InpMtfPosMode - judge a LOWER TIMEFRAME: where price sits    |
+//|     inside the last N bars of the trail TF. At the moment of an  |
+//|     H4 Donchian break, price is pinned to the H4 extreme, so the |
+//|     same test on H4 can never block anything; on M30 the window  |
+//|     covers only the last few hours, so a break that stalled      |
+//|     inside its own candle still reads mid-range.                 |
 //|                                                                  |
 //|  XAUUSD baseline to beat (2020-2026, real ticks, guards off):    |
 //|     net +26,488  PF 1.18  maxDD 20.94%  Sharpe 1.01  RF 1.08     |
@@ -87,14 +93,22 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "Metasit XAUUSD Donchian EA - prop-safe build"
-#property version   "2.27-combo"
+#property version   "2.27-combo2"
 #property strict
 
-#define EA_VERSION "2.27-combo"
+#define EA_VERSION "2.27-combo2"
 
 #include <Trade\Trade.mqh>
 
 // TEST build: which direction to block after a losing trade
+// TEST C: how to use the lower-TF range position
+enum ENUM_MTF_POS_MODE
+{
+   MP_OFF         = 0,   // 0 ปิด
+   MP_REGIME      = 1,   // 1 อยู่กลางกรอบ = sideway -> ไม่เทรดทั้งสองทาง
+   MP_DIRECTIONAL = 2    // 2 BUY ต้องอยู่ครึ่งบน / SELL ต้องอยู่ครึ่งล่าง
+};
+
 enum ENUM_AFTERLOSS_BLOCK
 {
    AL_NONE     = 0,   // 0 ไม่บล็อก (baseline)
@@ -175,6 +189,13 @@ input ENUM_K_MODE     InpKParameter  = K_CENT;          // Lot coefficient (K)
 input double          InpLotStepOverride = 0.0;         // Force lot step (0 = auto/broker)
 input int             InpMaxPositions= 1;               // Max open positions
 input int             InpReentryCooldownBars = 1;       // Cooldown bars after close (anti-whipsaw)
+
+input group "🧪  TEST C: LOWER-TF RANGE POSITION (M30 trend/sideway)"
+input ENUM_MTF_POS_MODE InpMtfPosMode = MP_OFF;    // 🧪 C: 0=ปิด 1=กลางกรอบไม่เทรด 2=ต้องถูกทาง
+input ENUM_TIMEFRAMES   InpMtfPosTF   = PERIOD_M30;// ↳ C: TF ที่ใช้วัด (M30 = trail TF)
+input int      InpMtfPosBars         = 6;          // ↳ C: ย้อนหลังกี่แท่ง (6 x M30 = 3 ชม.)
+input double   InpMtfPosBand         = 40.0;       // ↳ C: กรอบกลางกว้างกี่ % = sideway
+input int      InpMtfPosShift        = 1;          // ↳ C: เริ่มนับที่แท่งไหน (1 = แท่งที่ปิดล่าสุด)
 
 input group "🧪  TEST B: AFTER-LOSS ENTRY BLOCK"
 input ENUM_AFTERLOSS_BLOCK InpAfterLossBlock = AL_NONE;  // 🧪 B: แพ้แล้วบล็อกทางไหน (0=ปิด 1=ตรงข้าม 2=ทางเดิม 3=ทั้งคู่)
@@ -925,6 +946,53 @@ bool IsBeforeSessionStart()
 }
 
 //==================================================================
+//  TEST C - LOWER-TF RANGE POSITION
+//  Where the close sits inside the high/low of the last N bars of
+//  InpMtfPosTF: 0.0 at the low, 1.0 at the high, -1.0 when unusable.
+//  Same formula the momentum filter already uses on a single candle,
+//  and the same one the staged closes use on the trail TF - widened
+//  to a window of bars.
+//==================================================================
+double MtfRangePos()
+{
+   int bars = InpMtfPosBars, sh = InpMtfPosShift;
+   if(bars < 2 || sh < 0) return -1.0;
+   int up = iHighest(_Symbol, InpMtfPosTF, MODE_HIGH, bars, sh);
+   int lo = iLowest (_Symbol, InpMtfPosTF, MODE_LOW,  bars, sh);
+   if(up < 0 || lo < 0) return -1.0;
+   double hi = iHigh(_Symbol, InpMtfPosTF, up);
+   double ll = iLow (_Symbol, InpMtfPosTF, lo);
+   double rng = hi - ll;
+   if(rng <= 0.0) return -1.0;
+   return (iClose(_Symbol, InpMtfPosTF, sh) - ll) / rng;
+}
+
+// "" = this direction may trade, otherwise why it may not.
+string MtfPosReason(const bool isBuy, const double pos)
+{
+   if(InpMtfPosMode == MP_OFF) return "";
+   if(pos < 0.0)               return "";     // cannot judge -> do not block
+
+   double half = (InpMtfPosBand / 100.0) / 2.0;
+   double lowEdge = 0.5 - half, highEdge = 0.5 + half;
+
+   if(InpMtfPosMode == MP_REGIME)
+   {
+      if(pos >= lowEdge && pos <= highEdge)
+         return StringFormat("sideway %.0f%% (กรอบกลาง %.0f-%.0f%%)",
+                             pos*100.0, lowEdge*100.0, highEdge*100.0);
+      return "";
+   }
+
+   // MP_DIRECTIONAL
+   if(isBuy  && pos <= highEdge) return StringFormat("BUY แต่ %s อยู่ %.0f%% (ต้อง > %.0f%%)",
+                                                     EnumToString(InpMtfPosTF), pos*100.0, highEdge*100.0);
+   if(!isBuy && pos >= lowEdge)  return StringFormat("SELL แต่ %s อยู่ %.0f%% (ต้อง < %.0f%%)",
+                                                     EnumToString(InpMtfPosTF), pos*100.0, lowEdge*100.0);
+   return "";
+}
+
+//==================================================================
 //  TEST A - RANGE / REGIME FILTER
 //  Donchian width over the same window the entry uses, ending `shift`
 //  bars back. shift=2 is the live channel; a larger shift is the channel
@@ -1083,6 +1151,16 @@ void SendSignalStatus()
    string rangeWhy = RangeFilterReason(atrRep);
    bool   rangeOK  = (rangeWhy == "");
 
+   // TEST C: judged for the side the SMA currently allows
+   double mtfPos  = MtfRangePos();
+   string mtfWhy  = MtfPosReason(trendUp, mtfPos);
+   bool   mtfOK   = (mtfWhy == "");
+   string mtfTxt  = (InpMtfPosMode == MP_OFF || mtfPos < 0.0)
+                    ? "ปิดใช้งาน"
+                    : (mtfOK ? StringFormat("%s อยู่ %.0f%% ของกรอบ %d แท่ง",
+                               EnumToString(InpMtfPosTF), mtfPos*100.0, InpMtfPosBars)
+                             : mtfWhy);
+
    // is the path open? cooldown + every reason TradingAllowed() can refuse
    string block = "";
    if(gCooldownBarsLeft > 0) block += "cooldown ";
@@ -1091,7 +1169,7 @@ void SendSignalStatus()
    block += TradingBlockReason();
    bool pathOpen = (block == "");
 
-   int met = (adxOK?1:0) + (breakoutOK?1:0) + (momOK?1:0) + (rangeOK?1:0) + (pathOpen?1:0);   // out of 5 gates
+   int met = (adxOK?1:0) + (breakoutOK?1:0) + (momOK?1:0) + (rangeOK?1:0) + (mtfOK?1:0) + (pathOpen?1:0);   // out of 6 gates
 
    string momTxt;
    if(!InpUseMomentumFilter || momPos < 0.0)
@@ -1103,11 +1181,12 @@ void SendSignalStatus()
                             trendUp ? (100.0 - InpMomentumPct) : InpMomentumPct);
 
    string txt = StringFormat(
-      "📊 EA ยังไม่เข้าไม้ (ผ่าน %d/5)\n"
+      "📊 EA ยังไม่เข้าไม้ (ผ่าน %d/6)\n"
       "%s ADX %.1f / %.0f\n"
       "%s Breakout(%s): %s\n"
       "%s Momentum: %s\n"
       "%s Range: %s\n"
+      "%s MTF pos: %s\n"
       "%s ทางเปิด: %s",
       met,
       adxOK?"✅":"❌", adx, InpADXMin,
@@ -1116,6 +1195,7 @@ void SendSignalStatus()
                    StringFormat("รอราคา %s %.2f (ห่าง %.0f จุด)", trendUp?">":"<", target, distPts),
       momOK?"✅":"❌", momTxt,
       rangeOK?"✅":"❌", rangeOK ? "ผ่าน" : rangeWhy,
+      mtfOK?"✅":"❌", mtfTxt,
       pathOpen?"✅":"⛔", pathOpen ? "ว่าง" : block);
    Notify(txt);
 }
@@ -1176,6 +1256,19 @@ void TryEnter()
       Notify(StringFormat("🧪 RANGE FILTER: ข้ามสัญญาณ - ตลาดออกข้าง [%s]", rangeWhy));
       buySignal  = false;
       sellSignal = false;
+   }
+
+   // ---- TEST C: lower-TF range position (judge the M30 picture) ----
+   double mtfPos = MtfRangePos();
+   if(buySignal)
+   {
+      string why = MtfPosReason(true, mtfPos);
+      if(why != "") { buySignal = false;  Notify("🧪 MTF POS: ข้าม BUY - "  + why); }
+   }
+   if(sellSignal)
+   {
+      string why = MtfPosReason(false, mtfPos);
+      if(why != "") { sellSignal = false; Notify("🧪 MTF POS: ข้าม SELL - " + why); }
    }
 
    // ---- TEST B: after-loss entry block (judge the trade history) ----

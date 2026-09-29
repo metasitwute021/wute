@@ -38,6 +38,15 @@ InpChannelExpandRatio=1.0
 InpAfterLossBlock=0
 InpAfterLossBars=2
 
+; ============ 🧪 C: LOWER-TF RANGE POSITION (M30) — ปิดไว้ = baseline ============
+;  0=ปิด  1=กลางกรอบไม่เทรด(regime)  2=ต้องถูกทาง(directional)
+;  InpMtfPosTF   : 16385=M30 ตามค่า default (ไม่ต้องใส่ก็ได้)
+;  InpMtfPosBars : 6 = 3 ชม. | 12 = 6 ชม. | 48 = 1 วัน
+InpMtfPosMode=0
+InpMtfPosBars=6
+InpMtfPosBand=40.0
+InpMtfPosShift=1
+
 ; ============ Entry + Exit = ค่าที่ผ่าน forward test (ห้ามแก้) ============
 InpDonchianPeriod=20
 InpUseMomentumFilter=true
