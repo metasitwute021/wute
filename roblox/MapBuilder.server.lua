@@ -37,9 +37,9 @@ local CONFIG = {
 	WorldHalfSize = 1536,    -- ครึ่งหนึ่งของความกว้างโลก (โลกกว้าง 3072 studs)
 	ClearTerrain = true,     -- ล้าง Terrain เดิมก่อนสร้าง
 	RemoveBaseplate = true,  -- ลบ Baseplate เดิมของเทมเพลต
-	TreeCount = 1300,        -- ต้นไม้ทั่วเกาะ
-	ForestTreeCount = 260,   -- ต้นไม้เพิ่มเติมในป่ามหัศจรรย์
-	ElderwoodTreeCount = 380, -- ต้นไม้ยักษ์ในป่าโบราณรอบต้นไม้โลก
+	TreeCount = 750,         -- ต้นไม้ทั่วเกาะ
+	ForestTreeCount = 220,   -- ต้นไม้เพิ่มเติมในป่ามหัศจรรย์
+	ElderwoodTreeCount = 260, -- ต้นไม้ยักษ์ในป่าโบราณรอบต้นไม้โลก
 	RockCount = 180,
 	DarkTheme = true,        -- ธีมภาพมืด หมอก แสงเงา (false = สว่างสดใส)
 	LeafDetail = 2,          -- ความละเอียดพุ่มใบ 1 = เบาเครื่อง, 2 = ปกติ, 3 = ละเอียดมาก
@@ -243,13 +243,13 @@ local function placeCustom(template, parent, pos, height, yaw)
 end
 
 -- พุ่มใบ: ก้อนใบไม้หลายชิ้นวางเอียงคละกัน (แทนลูกบอลกลมเรียบ)
-local function leafClump(parent, center, size, colorA, colorB, collide)
+local function leafClump(parent, center, size, colorA, colorB, collide, pieces)
 	local tpl = customTemplate("LeafCluster")
 	if tpl then
 		return placeCustom(tpl, parent, center - Vector3.new(0, size / 2, 0), size)
 	end
-	local count = math.clamp(math.floor(size / 4), 3, 12)
-	count = math.max(3, math.floor(count * CONFIG.LeafDetail / 2 + 0.5))
+	local count = pieces or math.clamp(math.floor(size / 4), 3, 12)
+	count = math.max(2, math.floor(count * CONFIG.LeafDetail / 2 + 0.5))
 	for i = 1, count do
 		local s = size * rng:NextNumber(0.38, 0.58)
 		local dir = Vector3.new(rng:NextNumber(-1, 1), rng:NextNumber(-0.6, 0.8), rng:NextNumber(-1, 1))
@@ -1489,6 +1489,61 @@ local function limb(parent, a, b, dia, color, material, name)
 	})
 end
 
+-- 🌿 กิ่งไม้แตกแขนงแบบธรรมชาติ: กิ่งใหญ่แตกเป็นกิ่งเล็กลงเรื่อย ๆ ปลายกิ่งมีพุ่มใบ
+--   opt = { bark, leafA, leafB, tuft = ขนาดพุ่มใบ, pieces, depth, firstSplit, lift = แรงชี้ขึ้นฟ้า }
+local function growBranch(parent, p, dir, len, dia, depth, opt)
+	local q = p + dir * len
+	limb(parent, p, q, dia, opt.bark, MAT.Wood, "Branch")
+	if depth <= 0 then
+		leafClump(parent, q + dir * opt.tuft * 0.2, opt.tuft * rng:NextNumber(0.85, 1.15), opt.leafA, opt.leafB, false, opt.pieces)
+		return
+	end
+	local n = (depth == opt.depth) and opt.firstSplit or 2
+	local u = dir:Cross((math.abs(dir.Y) < 0.95) and Vector3.new(0, 1, 0) or Vector3.new(1, 0, 0)).Unit
+	local v = dir:Cross(u)
+	local spin = rng:NextNumber(0, math.pi * 2)
+	for k = 1, n do
+		local phi = spin + k / n * math.pi * 2 + rng:NextNumber(-0.4, 0.4)
+		local spread = math.rad(rng:NextNumber(28, 50))
+		local side = u * math.cos(phi) + v * math.sin(phi)
+		local nd = (dir * math.cos(spread) + side * math.sin(spread) + Vector3.new(0, opt.lift, 0)).Unit
+		growBranch(parent, q, nd, len * rng:NextNumber(0.65, 0.8), dia * 0.65, depth - 1, opt)
+	end
+	-- พุ่มใบเล็กตามข้อกิ่ง ให้ทรงพุ่มดูเต็ม
+	if depth == 1 and (opt.nodeTufts or CONFIG.LeafDetail >= 3) then
+		leafClump(parent, q, opt.tuft * 0.7, opt.leafA, opt.leafB, false, opt.pieces)
+	end
+end
+
+-- ต้นไม้ทรงธรรมชาติ: ลำต้นเอียงคดเล็กน้อย รากแผ่ แตกกิ่งเป็นทอด ๆ
+local function naturalTree(parent, name, pos, cfg)
+	local tree = model(name, parent)
+	local h = rng:NextNumber(cfg.height[1], cfg.height[2])
+	local d = rng:NextNumber(cfg.width[1], cfg.width[2])
+	local lean = Vector3.new(rng:NextNumber(-0.12, 0.12), 1, rng:NextNumber(-0.12, 0.12)).Unit
+	local mid = pos + lean * h * 0.55
+	local bend = (lean + Vector3.new(rng:NextNumber(-0.18, 0.18), 0, rng:NextNumber(-0.18, 0.18))).Unit
+	local top = mid + bend * h * 0.45
+	limb(tree, pos - Vector3.new(0, 1.5, 0), mid, d, cfg.bark, MAT.Wood, "Trunk")
+	limb(tree, mid, top, d * 0.78, cfg.bark, MAT.Wood, "Trunk")
+	for k = 1, cfg.roots or 0 do
+		local a = k / cfg.roots * math.pi * 2 + rng:NextNumber(-0.3, 0.3)
+		limb(tree, pos + Vector3.new(0, d * 0.9, 0), pos + Vector3.new(math.cos(a) * d * 1.5, -0.5, math.sin(a) * d * 1.5), d * 0.42, cfg.bark, MAT.Wood, "Root")
+	end
+	-- LeafDetail = 1: แตกกิ่งน้อยลงหนึ่งทอด แต่พุ่มใบใหญ่ขึ้น (เบาเครื่อง)
+	local depth = (CONFIG.LeafDetail <= 1) and math.max(1, cfg.depth - 1) or cfg.depth
+	local tuft = (depth < cfg.depth) and cfg.tuft * 1.4 or cfg.tuft
+	local opt = { bark = cfg.bark, leafA = cfg.leafA, leafB = cfg.leafB, tuft = tuft, pieces = cfg.pieces, depth = depth, firstSplit = 3, lift = 0.35 }
+	-- กิ่งข้างกลางลำต้น
+	if CONFIG.LeafDetail >= 3 then
+		local a = rng:NextNumber(0, math.pi * 2)
+		local sideDir = (Vector3.new(math.cos(a), 0.9, math.sin(a))).Unit
+		growBranch(tree, mid, sideDir, h * 0.28, d * 0.45, 1, opt)
+	end
+	growBranch(tree, top, bend, h * 0.25, d * 0.6, depth, opt)
+	return tree
+end
+
 -- เส้นเชือก/คานสี่เหลี่ยมบาง ๆ เชื่อมจุด a ไป b
 local function rope(parent, a, b, thick, color)
 	return part({
@@ -1704,12 +1759,8 @@ local function buildWorldTree()
 			end
 			p = q
 		end
-		-- พุ่มใบปลายกิ่ง (เดินทะลุได้)
-		for k = 1, 3 do
-			local off = Vector3.new(rng:NextNumber(-10, 10), rng:NextNumber(-2, 10), rng:NextNumber(-10, 10))
-			local s = rng:NextNumber(26, 38)
-			leafClump(tree, p + off - dir * (k - 1) * 12, s, LEAF_A, LEAF_B, false)
-		end
+		-- ปลายกิ่งแตกแขนงต่อ แล้วมีพุ่มใบที่ปลายกิ่งย่อย (เดินทะลุได้)
+		growBranch(tree, p, (dir + Vector3.new(0, 0.35, 0)).Unit, 16, 3.6, 2, { bark = BARK, leafA = LEAF_A, leafB = LEAF_B, tuft = 20, depth = 2, firstSplit = 3, lift = 0.3, nodeTufts = true })
 		for _ = 1, 4 do
 			part({ Name = "SpiritLight", Shape = Enum.PartType.Ball, Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(p + Vector3.new(rng:NextNumber(-14, 14), rng:NextNumber(-12, 0), rng:NextNumber(-14, 14))), Color = ELF_GLOW, Material = MAT.Neon, CanCollide = false, Parent = tree })
 		end
@@ -2244,23 +2295,17 @@ local function roundTree(parent, pos)
 		placeCustom(tpl, parent, pos - Vector3.new(0, 0.5, 0), rng:NextNumber(16, 26))
 		return
 	end
-	local tree = model("Tree", parent)
-	local h = rng:NextNumber(10, 18)
-	local trunk = Color3.fromRGB(95, 62, 42)
-	cylinder({ Name = "Trunk", Position = pos + Vector3.new(0, h / 2 - 1, 0), Height = h, Diameter = 1.8, Color = trunk, Material = MAT.Wood, Parent = tree })
-	-- กิ่งแตกออก 2 กิ่ง
-	for _ = 1, 2 do
-		local a = rng:NextNumber(0, math.pi * 2)
-		local from = pos + Vector3.new(0, h * rng:NextNumber(0.55, 0.75), 0)
-		limb(tree, from, from + Vector3.new(math.cos(a) * 3.5, 3, math.sin(a) * 3.5), 0.8, trunk, MAT.Wood, "Branch")
-	end
-	local green, green2 = Color3.fromRGB(50, 120, 50), Color3.fromRGB(120, 170, 60)
+	local leafA, leafB = Color3.fromRGB(50, 120, 50), Color3.fromRGB(120, 170, 60)
 	if CONFIG.DarkTheme then
-		green, green2 = Color3.fromRGB(35, 85, 50), Color3.fromRGB(75, 125, 60)
+		leafA, leafB = Color3.fromRGB(35, 85, 50), Color3.fromRGB(75, 125, 60)
 	end
-	leafClump(tree, pos + Vector3.new(0, h + 1, 0), rng:NextNumber(10, 15), green, green2, true)
+	naturalTree(parent, "Tree", pos, {
+		height = { 11, 18 }, width = { 1.4, 2.2 }, bark = Color3.fromRGB(95, 62, 42),
+		leafA = leafA, leafB = leafB, tuft = 9, pieces = 2, depth = 2,
+	})
 end
 
+-- ต้นสน: กิ่งแผ่เป็นชั้นรอบลำต้น ปลายกิ่งห้อยลง ชั้นล่างกว้าง ชั้นบนแคบ
 local function pineTree(parent, pos)
 	local tpl = customTemplate("PineTree")
 	if tpl then
@@ -2268,13 +2313,32 @@ local function pineTree(parent, pos)
 		return
 	end
 	local tree = model("PineTree", parent)
-	local s = rng:NextNumber(0.8, 1.3)
-	cylinder({ Name = "Trunk", Position = pos + Vector3.new(0, 5 * s - 1, 0), Height = 10 * s, Diameter = 1.5, Color = Color3.fromRGB(80, 55, 40), Material = MAT.Wood, Parent = tree })
-	local tiers = (CONFIG.LeafDetail >= 3) and 4 or 3
-	for i = 0, tiers - 1 do
-		local t = i / tiers
-		pineTier(tree, pos + Vector3.new(0, (5 + i * 13 / tiers + 2.5) * s, 0), (12 - t * 8) * s, 6 * s, Color3.fromRGB(28, 80, 48):Lerp(Color3.fromRGB(45, 105, 60), t))
+	local h = rng:NextNumber(18, 30)
+	cylinder({ Name = "Trunk", Position = pos + Vector3.new(0, h / 2 - 1, 0), Height = h + 1, Diameter = h * 0.06 + 0.4, Color = Color3.fromRGB(80, 55, 40), Material = MAT.Wood, Parent = tree })
+	local whorls = ({ 4, 5, 7 })[CONFIG.LeafDetail] or 5
+	local dark, light = Color3.fromRGB(24, 70, 44), Color3.fromRGB(48, 102, 60)
+	for i = 1, whorls do
+		local t = (i - 1) / whorls
+		local y = h * (0.2 + t * 0.7)
+		local len = h * 0.34 * (1 - t * 0.85) + 1.5
+		local spin = rng:NextNumber(0, math.pi * 2)
+		for k = 1, 4 do
+			local a = spin + k * math.pi / 2 + rng:NextNumber(-0.25, 0.25)
+			local dir = Vector3.new(math.cos(a), 0, math.sin(a))
+			local c = pos + Vector3.new(0, y, 0) + dir * (len / 2)
+			part({
+				ClassName = (k % 2 == 0) and "WedgePart" or "Part",
+				Name = "Needles",
+				Size = Vector3.new(len * 0.6, 0.9, len),
+				CFrame = CFrame.lookAt(c, c + dir) * CFrame.Angles(math.rad(-rng:NextNumber(12, 24)), 0, 0),
+				Color = dark:Lerp(light, rng:NextNumber() * 0.6 + t * 0.4),
+				Material = MAT.LeafyGrass,
+				CanCollide = false,
+				Parent = tree,
+			})
+		end
 	end
+	pineTier(tree, pos + Vector3.new(0, h + 0.5, 0), 3.2, 4, light)
 end
 
 local function giantMushroom(parent, pos)
@@ -2416,15 +2480,10 @@ local function buildNature()
 				placeCustom(tpl, elder, p - Vector3.new(0, 1, 0), h + 12)
 				continue
 			end
-			local t = model("AncientTree", elder)
-			cylinder({ Name = "Trunk", Position = p + Vector3.new(0, h / 2 - 1, 0), Height = h, Diameter = w, Color = Color3.fromRGB(58, 44, 38), Material = MAT.Wood, Parent = t })
-			for k = 1, 3 do
-				local a = rng:NextNumber(0, math.pi * 2)
-				limb(t, p + Vector3.new(0, 3, 0), p + Vector3.new(math.cos(a) * w * 1.6, -0.5, math.sin(a) * w * 1.6), w * 0.35, Color3.fromRGB(58, 44, 38), MAT.Wood, "Root")
-			end
-			for k = 1, 2 do
-				leafClump(t, p + Vector3.new(rng:NextNumber(-5, 5), h - 1 + k * 4, rng:NextNumber(-5, 5)), rng:NextNumber(18, 26), Color3.fromRGB(26, 58, 44), Color3.fromRGB(48, 88, 56), true)
-			end
+			local t = naturalTree(elder, "AncientTree", p, {
+				height = { h * 0.85, h }, width = { w, w }, bark = Color3.fromRGB(58, 44, 38),
+				leafA = Color3.fromRGB(26, 58, 44), leafB = Color3.fromRGB(48, 88, 56), tuft = 15, pieces = 3, depth = 2, roots = 4,
+			})
 			if rng:NextNumber() < 0.15 then
 				local g = part({ Name = "GlowShroom", Shape = Enum.PartType.Ball, Size = Vector3.new(1.4, 1.4, 1.4), CFrame = CFrame.new(p + Vector3.new(w * 0.7, 0.6, 0)), Color = Color3.fromRGB(90, 220, 255), Material = MAT.Neon, CanCollide = false, Parent = t })
 				pointLight(g, Color3.fromRGB(90, 220, 255), 10, 0.8)
