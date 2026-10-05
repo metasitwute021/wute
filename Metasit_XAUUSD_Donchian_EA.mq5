@@ -50,6 +50,10 @@
 //|  *** v2.25 : session gate narrowed to MONDAY only ***             |
 //|  *** v2.26 : every no-trade reason alerts - no silent exit ***    |
 //|  *** v2.27 : MaxDD / DailyDD can now be turned off with 0 ***    |
+//|  *** v2.28 : block the stale signal itself, not a clock hour ***  |
+//|      (the wall-clock gate needs TimeGMT() to be right on the VPS;|
+//|       bar age needs no clock at all and fires exactly once, on   |
+//|       the first bar after the weekend)                           |
 //|                                                                  |
 //|  Strategy summary                                                |
 //|  - Market / TF : XAUUSD, signals on H4, trailing managed on M30  |
@@ -71,10 +75,10 @@
 //|  - Alerts      : push notifications on every event               |
 //+------------------------------------------------------------------+
 #property copyright "Metasit XAUUSD Donchian EA - prop-safe build"
-#property version   "2.27"
+#property version   "2.28"
 #property strict
 
-#define EA_VERSION "2.27"
+#define EA_VERSION "2.28"
 
 #include <Trade\Trade.mqh>
 
@@ -193,7 +197,8 @@ input double   InpMaxTotalLossPercent = 3.5;       // 🚨 EMERGENCY BRAKE: -thi
 input double   InpPeakDDStopPercent  = 0.0;        // DD LOCK from peak equity (0 = off)
 
 input group "🕗  DAILY SESSION GATE (no market-open entries)"
-input bool     InpBlockMarketOpen    = true;       // ✅ Block new entries around the daily market open
+input double   InpMaxSignalAgeBars   = 1.5;        // ⭐ บล็อกถ้าแท่งสัญญาณปิดไปเกินกี่ "แท่ง TF" (0 = ปิด) — ไม่ใช้นาฬิกา
+input bool     InpBlockMarketOpen    = false;      // (ทางเลือก) เกตตามนาฬิกา - ต้องให้ TimeGMT() บน VPS ถูกต้อง
 input int      InpTradeStartHourTH   = 8;          // ↳ Entries allowed only from this hour (Thailand, GMT+7)
 input int      InpThaiGMTOffset      = 7;          // ↳ Thailand offset from GMT (normally 7)
 input bool     InpGateMondayOnly     = true;       // ✅ Apply the gate on MONDAY only (weekend-stale signal); false = every day
@@ -370,6 +375,16 @@ int OnInit()
    string mode = InpLetWinnersRun ? "🏃 LET-RUN mode" : "💰 BANK-EARLY mode";
    Notify("🚀 EA v" + EA_VERSION + " [" + mode + "] started on " + _Symbol + " (entry " + EnumToString(InpEntryTF) +
           ", trail " + EnumToString(InpTrailTF) + ", SLmode " + EnumToString(InpSLMode) + ")");
+
+   // Show the clock the gate relies on, so a wrong VPS timezone is visible
+   // instead of silently shifting the session gate by hours.
+   {
+      MqlDateTime th; ThaiNow(th);
+      Notify(StringFormat("🕐 นาฬิกา: server %s | GMT %s | ไทย(คำนวณ) %02d:%02d วัน %d",
+                          TimeToString(TimeCurrent(), TIME_DATE|TIME_MINUTES),
+                          TimeToString(TimeGMT(),     TIME_DATE|TIME_MINUTES),
+                          th.hour, th.min, th.day_of_week));
+   }
 
    // AutoTrading off is invisible on mobile and silently blocks every entry - say it out loud.
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED) || !MQLInfoInteger(MQL_TRADE_ALLOWED))
@@ -858,6 +873,34 @@ void ThaiNow(MqlDateTime &dt)
    TimeToStruct((datetime)((long)gmt + (long)InpThaiGMTOffset * 3600), dt);
 }
 
+//==================================================================
+//  STALE-SIGNAL GUARD  (v2.28) - the reliable half of the session gate
+//  TryEnter() reads bar[1], the last CLOSED entry-TF bar. Normally that
+//  bar closed the instant bar[0] opened, so its age is ~0. After a market
+//  break it is the last bar of the PREVIOUS session - two days old after
+//  a weekend - and acting on it means trading a stale signal at a
+//  post-gap price. Measuring that age needs no clock, no timezone and no
+//  hour setting, and it trips exactly once: on the first bar back.
+//    weekend break  ~49h on H4 = ~12 bars  -> blocked
+//    daily break    ~1h  on H4 = 0.25 bars -> not blocked
+//==================================================================
+double SignalBarAge()
+{
+   int ps = PeriodSeconds(InpEntryTF);
+   if(ps <= 0) return 0.0;
+   datetime bar1 = (datetime)iTime(_Symbol, InpEntryTF, 1);
+   if(bar1 <= 0) return 0.0;
+   long age = (long)TimeCurrent() - ((long)bar1 + (long)ps);   // seconds since bar[1] closed
+   if(age < 0) age = 0;
+   return (double)age / (double)ps;
+}
+
+bool IsSignalStale()
+{
+   if(InpMaxSignalAgeBars <= 0.0) return false;
+   return (SignalBarAge() > InpMaxSignalAgeBars);
+}
+
 // True while new entries are blocked by the session gate.
 //   InpGateMondayOnly = true  -> Monday morning only. That is where the bug
 //     actually bit: the weekend break leaves bar[1] holding Friday's closed
@@ -919,6 +962,7 @@ string TradingBlockReason()
    if(gDailyStopped)                                 b += "dailystop ";
    if(gInNews)                                       b += "news ";
    if(IsWeekendBlockTime())                          b += "weekend ";
+   if(IsSignalStale())                               b += StringFormat("stale(%.1f แท่ง) ", SignalBarAge());
    if(IsBeforeSessionStart())                        b += "premarket ";
    if(CountMyPositions() >= InpMaxPositions)         b += "maxpos ";
    if(!MQLInfoInteger(MQL_TRADE_ALLOWED))            b += "algo-off(EA) ";
