@@ -22,7 +22,7 @@
 //|                  max spread, optional news filter                |
 //+------------------------------------------------------------------+
 #property copyright "Metasit - Body Break EA"
-#property version   "1.20"
+#property version   "1.21"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -83,7 +83,7 @@ input double   InpChandATRMult       = 3.0;         // Chandelier ATR multiplier
 input group "=== Risk Management ==="
 input double   InpRiskPercent        = 1.0;         // Risk per trade (% balance)
 input double   InpLotStepOverride    = 0.0;         // Force lot step (0 = broker)
-input int      InpMaxPositions       = 5;           // Max open positions at once (0 = unlimited)
+input int      InpMaxPositions       = 1;           // Max open positions at once (0 = unlimited)
 
 input group "=== Account Guards (prop-firm style) ==="
 input double   InpDailyDDPct         = 4.0;         // Daily loss limit % (0 = off)
