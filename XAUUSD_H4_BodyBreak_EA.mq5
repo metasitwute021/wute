@@ -19,10 +19,10 @@
 //|                  older trades to close (capped by max positions) |
 //|  - Sizing      : risk % of balance via OrderCalcProfit (Cent OK) |
 //|  - Guards      : daily DD / max DD (prop-firm exam style),       |
-//|                  max spread, optional news filter                |
+//|                  max spread, news filter (CSV - works in tester) |
 //+------------------------------------------------------------------+
 #property copyright "Metasit - Body Break EA"
-#property version   "1.21"
+#property version   "1.30"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -93,10 +93,20 @@ input bool     InpCloseOnGuard       = true;        // Close positions when a gu
 
 input group "=== Filters ==="
 input int      InpMaxSpreadPoints    = 100;         // Skip entry if spread > this (0 = off)
-input bool     InpEnableNewsFilter   = false;       // Avoid entries around news (live only)
-input int      InpNewsMinutesBefore  = 60;          // Block window before news (min)
-input int      InpNewsMinutesAfter   = 60;          // Block window after news (min)
+
+input group "=== News Filter (CSV works in Strategy Tester) ==="
+input bool     InpUseFFNews          = false;       // Use news CSV file (works in tester + live)
+input string   InpFFNewsFile         = "ff_news.csv"; // CSV in COMMON\Files: Date,Time,Currency,Impact
+input string   InpFFBlockImpact      = "High";      // Impacts to use (High  or  High,Medium)
+input int      InpFFTimeOffsetHours  = 0;           // Shift CSV times to server time (+/- hours)
+input bool     InpEnableNewsFilter   = false;       // Also use MT5 calendar (live only)
 input string   InpNewsCurrencies     = "USD";       // Currencies to watch (comma sep.)
+input bool     InpNewsBlockEntry     = true;        // [1] No new entry near news
+input int      InpNewsMinutesBefore  = 60;          //     ...minutes before news
+input int      InpNewsMinutesAfter   = 60;          //     ...minutes after news
+input bool     InpNewsSkipSignalBar  = false;       // [2] Skip signal if the signal bar had news
+input bool     InpNewsClosePositions = false;       // [3] Close open trades before news
+input int      InpNewsCloseMinutes   = 30;          //     ...this many minutes before news
 
 //==================================================================
 //  Globals
@@ -111,6 +121,13 @@ double   gDayStartBal = 0.0;
 double   gStartBal    = 0.0;
 bool     gDailyHit    = false;
 bool     gMaxDDHit    = false;
+
+// news events loaded from CSV (server time, sorted ascending)
+datetime gFFTime[];
+string   gFFCcy[];
+string   gFFImp[];
+int      gFFCount     = 0;
+datetime gLastNewsClose = 0;   // event time we already closed positions for
 
 //==================================================================
 //  Helpers
@@ -155,6 +172,8 @@ int OnInit()
    hATR = iATR(_Symbol, InpSignalTF, InpATRPeriod);
    if(hATR == INVALID_HANDLE) { Print("ATR handle failed"); return INIT_FAILED; }
 
+   LoadFFNews();
+
    if(InpUseBias)
    {
       hBiasMA = iMA(_Symbol, InpBiasTF, InpBiasSMA, 0, MODE_SMA, PRICE_CLOSE);
@@ -181,6 +200,7 @@ void OnDeinit(const int reason)
 void OnTick()
 {
    UpdateGuards();
+   ManageNewsClose();
 
    datetime barTime = iTime(_Symbol, InpSignalTF, 0);
    if(barTime == 0 || barTime == gLastBarTime) return;
@@ -234,7 +254,7 @@ bool TradingAllowed()
       PrintFormat("Skip: spread %d > %d", (int)SymbolInfoInteger(_Symbol, SYMBOL_SPREAD), InpMaxSpreadPoints);
       return false;
    }
-   if(IsNewsBlocking())
+   if(InpNewsBlockEntry && IsNewsBlocking())
    {
       Print("Skip: news window");
       return false;
@@ -301,6 +321,13 @@ void TryEnter()
    MqlRates sig;
    int dir = GetSignal(sig);
    if(dir == 0) return;
+
+   if(InpNewsSkipSignalBar &&
+      FFNewsInRange(sig.time, sig.time + PeriodSeconds(InpSignalTF) - 1))
+   {
+      Print("Skip: signal bar was a news candle");
+      return;
+   }
 
    if(InpUseBias)
    {
@@ -428,14 +455,14 @@ int CountMyPositions()
    return n;
 }
 
-void CloseAllMine()
+void CloseAllMine(const string why = "guard")
 {
    for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
       ulong ticket = PositionGetTicket(i);
       if(ticket == 0 || !IsMine()) continue;
       if(trade.PositionClose(ticket))
-         Notify(StringFormat("CLOSE #%I64u by guard", ticket));
+         Notify(StringFormat("CLOSE #%I64u by %s", ticket, why));
    }
 }
 
@@ -546,28 +573,133 @@ void DrawTrade(const int dir, const datetime sigTime, const double entry,
 }
 
 //==================================================================
-//  News filter (MT5 economic calendar - LIVE only, empty in tester)
+//  News filter
+//  - CSV file (Common\Files, e.g. from FF_News_Exporter): works in tester
+//  - MT5 economic calendar: live only (empty in tester)
 //==================================================================
 bool IsWatchedCurrency(const string ccy)
 {
+   return InList(InpNewsCurrencies, ccy);
+}
+
+// True if 'val' is in a comma-separated list (case-insensitive).
+bool InList(const string list, const string val)
+{
    string parts[];
-   int n = StringSplit(InpNewsCurrencies, ',', parts);
+   int n = StringSplit(list, ',', parts);
    for(int i = 0; i < n; i++)
    {
       string p = parts[i];
       StringTrimLeft(p); StringTrimRight(p);
-      if(StringCompare(p, ccy, false) == 0) return true;
+      if(StringCompare(p, val, false) == 0) return true;
    }
    return false;
 }
 
+// "yyyy.mm.dd" + "HH:MM" -> server time (with offset). 0 = header / bad row.
+datetime ParseNewsTime(string dateStr, string timeStr)
+{
+   StringTrimLeft(dateStr); StringTrimRight(dateStr);
+   StringTrimLeft(timeStr); StringTrimRight(timeStr);
+   if(StringLen(dateStr) < 8) return 0;
+   if(StringLen(timeStr) < 4) timeStr = "00:00";   // all-day / tentative
+   datetime t = StringToTime(dateStr + " " + timeStr);
+   if(t <= 0) return 0;
+   return t + (datetime)(InpFFTimeOffsetHours * 3600);
+}
+
+void LoadFFNews()
+{
+   gFFCount = 0;
+   ArrayResize(gFFTime, 0); ArrayResize(gFFCcy, 0); ArrayResize(gFFImp, 0);
+   if(!InpUseFFNews) return;
+
+   // FILE_COMMON: the tester sandbox and the live terminal both see Common\Files
+   int fh = FileOpen(InpFFNewsFile, FILE_READ | FILE_CSV | FILE_ANSI | FILE_SHARE_READ | FILE_COMMON, ',');
+   if(fh == INVALID_HANDLE)
+   {
+      Notify("NEWS file NOT found: " + InpFFNewsFile + " (put it in Common\\Files) - CSV news OFF");
+      return;
+   }
+
+   while(!FileIsEnding(fh))
+   {
+      string c1 = FileReadString(fh);
+      if(c1 == "" && FileIsLineEnding(fh)) continue;
+      string c2 = FileReadString(fh);
+      string c3 = FileReadString(fh);
+      string c4 = FileReadString(fh);
+      while(!FileIsLineEnding(fh) && !FileIsEnding(fh)) FileReadString(fh); // extra cols (Title)
+
+      datetime t = ParseNewsTime(c1, c2);
+      if(t <= 0) continue;
+      StringTrimLeft(c3); StringTrimRight(c3);
+      StringTrimLeft(c4); StringTrimRight(c4);
+      if(!IsWatchedCurrency(c3) || !InList(InpFFBlockImpact, c4)) continue;
+
+      int n = gFFCount;
+      ArrayResize(gFFTime, n + 1); ArrayResize(gFFCcy, n + 1); ArrayResize(gFFImp, n + 1);
+      gFFTime[n] = t; gFFCcy[n] = c3; gFFImp[n] = c4;
+      gFFCount = n + 1;
+   }
+   FileClose(fh);
+
+   // insertion sort by time (file is usually sorted already -> fast)
+   for(int i = 1; i < gFFCount; i++)
+   {
+      datetime kt = gFFTime[i]; string kc = gFFCcy[i]; string ki = gFFImp[i];
+      int j = i - 1;
+      while(j >= 0 && gFFTime[j] > kt)
+      {
+         gFFTime[j + 1] = gFFTime[j]; gFFCcy[j + 1] = gFFCcy[j]; gFFImp[j + 1] = gFFImp[j];
+         j--;
+      }
+      gFFTime[j + 1] = kt; gFFCcy[j + 1] = kc; gFFImp[j + 1] = ki;
+   }
+
+   if(gFFCount > 0)
+      Notify(StringFormat("NEWS loaded: %d events (%s) from %s | %s -> %s",
+                          gFFCount, InpFFBlockImpact, InpFFNewsFile,
+                          TimeToString(gFFTime[0], TIME_DATE),
+                          TimeToString(gFFTime[gFFCount - 1], TIME_DATE)));
+   else
+      Notify("NEWS file loaded but 0 matching events - check currency/impact columns");
+}
+
+// Index of the first loaded event with time >= t (binary search).
+int FFLowerBound(const datetime t)
+{
+   int lo = 0, hi = gFFCount;
+   while(lo < hi)
+   {
+      int mid = (lo + hi) / 2;
+      if(gFFTime[mid] < t) lo = mid + 1; else hi = mid;
+   }
+   return lo;
+}
+
+// First loaded event time in [from, to], or 0 if none.
+datetime FFNewsAt(const datetime from, const datetime to)
+{
+   if(gFFCount == 0) return 0;
+   int i = FFLowerBound(from);
+   if(i < gFFCount && gFFTime[i] <= to) return gFFTime[i];
+   return 0;
+}
+
+bool FFNewsInRange(const datetime from, const datetime to)
+{
+   return (FFNewsAt(from, to) > 0);
+}
+
 bool IsNewsBlocking()
 {
-   if(!InpEnableNewsFilter || MQLInfoInteger(MQL_TESTER)) return false;
-
-   datetime now  = TimeCurrent();
+   datetime now = TimeCurrent();
    datetime from = now - (datetime)(InpNewsMinutesAfter  * 60);
    datetime to   = now + (datetime)(InpNewsMinutesBefore * 60);
+
+   if(FFNewsInRange(from, to)) return true;
+   if(!InpEnableNewsFilter || MQLInfoInteger(MQL_TESTER)) return false;
 
    MqlCalendarValue values[];
    int total = CalendarValueHistory(values, from, to, NULL, NULL);
@@ -583,5 +715,19 @@ bool IsNewsBlocking()
       return true;
    }
    return false;
+}
+
+// [3] Close open trades shortly before a CSV news event (checked every tick).
+void ManageNewsClose()
+{
+   if(!InpNewsClosePositions || gFFCount == 0) return;
+   datetime now = TimeCurrent();
+   datetime ev  = FFNewsAt(now, now + (datetime)(InpNewsCloseMinutes * 60));
+   if(ev == 0 || ev == gLastNewsClose) return;
+   gLastNewsClose = ev;
+   if(CountMyPositions() == 0) return;
+
+   Notify(StringFormat("NEWS at %s - closing open trades", TimeToString(ev, TIME_DATE | TIME_MINUTES)));
+   CloseAllMine("news");
 }
 //+------------------------------------------------------------------+

@@ -1,0 +1,16 @@
+; Body Break EA v1.30+ : NEWS1_BlockEntry
+; ไฟล์ข่าว ff_news.csv ต้องอยู่ใน Common\Files (ดู คู่มือเทสข่าว_BodyBreak.md)
+InpUseFFNews=true
+InpFFNewsFile=ff_news.csv
+InpFFBlockImpact=High
+InpFFTimeOffsetHours=0
+InpNewsCurrencies=USD
+InpMaxPositions=1
+InpRiskPercent=1.0
+InpTP_R=1.5
+InpExitMode=0
+InpNewsBlockEntry=true
+InpNewsMinutesBefore=60
+InpNewsMinutesAfter=60
+InpNewsSkipSignalBar=false
+InpNewsClosePositions=false
