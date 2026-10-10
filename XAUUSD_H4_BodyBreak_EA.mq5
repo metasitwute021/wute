@@ -15,12 +15,13 @@
 //|  - Take Profit : fixed 1.5R (clip: 1.5R is the sweet spot,       |
 //|                  3R = higher return but ~32% win rate)           |
 //|  - Exit option : Chandelier exit trailing (clip: "best SL")      |
+//|                  + optional break-even and R-distance trailing   |
 //|  - Sizing      : risk % of balance via OrderCalcProfit (Cent OK) |
 //|  - Guards      : daily DD / max DD (prop-firm exam style),       |
 //|                  max spread, optional news filter                |
 //+------------------------------------------------------------------+
 #property copyright "Metasit - Body Break EA"
-#property version   "1.00"
+#property version   "1.10"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -77,6 +78,15 @@ input group "=== Exit Mode ==="
 input ENUM_EXIT_MODE InpExitMode     = EXIT_FIXED_TP; // Exit mode
 input int      InpChandPeriod        = 22;          // Chandelier lookback (bars)
 input double   InpChandATRMult       = 3.0;         // Chandelier ATR multiplier
+
+input group "=== Break-even / R Trailing (every tick) ==="
+input bool     InpUseBreakEven       = false;       // Move SL to break-even
+input double   InpBE_TriggerR        = 1.0;         // ...when profit reaches this R
+input double   InpBE_LockR           = 0.1;         // SL = entry + this R (covers spread)
+input bool     InpUseRTrail          = false;       // Trail SL by R distance
+input double   InpRTrail_StartR      = 1.0;         // Start trailing when profit reaches this R
+input double   InpRTrail_DistR       = 1.0;         // Keep SL this many R behind price
+input double   InpTrailStepR         = 0.1;         // Min SL move per modify (R)
 
 input group "=== Risk Management ==="
 input double   InpRiskPercent        = 1.0;         // Risk per trade (% balance)
@@ -179,6 +189,7 @@ void OnDeinit(const int reason)
 void OnTick()
 {
    UpdateGuards();
+   ManageTickStops();
 
    datetime barTime = iTime(_Symbol, InpSignalTF, 0);
    if(barTime == 0 || barTime == gLastBarTime) return;
@@ -347,8 +358,10 @@ void TryEnter()
    double lots = CalcLotSize(type, entry, sl);
    if(lots <= 0.0) { Print("Skip: lot size 0"); return; }
 
-   bool ok = (dir > 0 ? trade.Buy(lots, _Symbol, 0.0, sl, tp, "BodyBreak")
-                      : trade.Sell(lots, _Symbol, 0.0, sl, tp, "BodyBreak"));
+   // initial risk is stored in the comment so BE / R-trailing survive restarts
+   string cmt = StringFormat("BB R=%.2f", dist);
+   bool ok = (dir > 0 ? trade.Buy(lots, _Symbol, 0.0, sl, tp, cmt)
+                      : trade.Sell(lots, _Symbol, 0.0, sl, tp, cmt));
    if(!ok)
    {
       Notify(StringFormat("OPEN FAILED %s: %d %s", (dir > 0 ? "BUY" : "SELL"),
@@ -400,6 +413,74 @@ void ManageChandelier()
 
       if(trade.PositionModify(ticket, newSL, curTP))
          Notify(StringFormat("TRAIL #%I64u SL %.2f -> %.2f", ticket, curSL, newSL));
+   }
+}
+
+//==================================================================
+//  Break-even + R trailing (runs every tick)
+//==================================================================
+// Initial risk (price distance) of the selected position: from the "R=" comment,
+// else from the current SL while it is still on the losing side of entry.
+double InitialRisk(const double open, const double curSL, const bool isBuy)
+{
+   string cmt = PositionGetString(POSITION_COMMENT);
+   int pos = StringFind(cmt, "R=");
+   if(pos >= 0)
+   {
+      double r = StringToDouble(StringSubstr(cmt, pos + 2));
+      if(r > 0.0) return r;
+   }
+   if(curSL > 0.0 && (isBuy ? curSL < open : curSL > open))
+      return MathAbs(open - curSL);
+   return 0.0;
+}
+
+void ManageTickStops()
+{
+   if(!InpUseBreakEven && !InpUseRTrail) return;
+
+   int    digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+   double stopLv = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) * _Point;
+   double bid    = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask    = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0 || !IsMine()) continue;
+
+      bool   isBuy = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
+      double open  = PositionGetDouble(POSITION_PRICE_OPEN);
+      double curSL = PositionGetDouble(POSITION_SL);
+      double curTP = PositionGetDouble(POSITION_TP);
+      double risk  = InitialRisk(open, curSL, isBuy);
+      if(risk <= 0.0) continue;
+
+      double price   = (isBuy ? bid : ask);
+      double profitR = (isBuy ? price - open : open - price) / risk;
+      double newSL   = curSL;
+      string why     = "";
+
+      if(InpUseBreakEven && profitR >= InpBE_TriggerR)
+      {
+         double be = (isBuy ? open + InpBE_LockR * risk : open - InpBE_LockR * risk);
+         if(newSL == 0.0 || (isBuy ? be > newSL : be < newSL)) { newSL = be; why = "BE"; }
+      }
+      if(InpUseRTrail && profitR >= InpRTrail_StartR)
+      {
+         double tr = (isBuy ? price - InpRTrail_DistR * risk : price + InpRTrail_DistR * risk);
+         if(newSL == 0.0 || (isBuy ? tr > newSL : tr < newSL)) { newSL = tr; why = "TRAIL"; }
+      }
+      if(why == "") continue;
+
+      newSL = NormalizeDouble(newSL, digits);
+      double gain = (curSL == 0.0 ? DBL_MAX : (isBuy ? newSL - curSL : curSL - newSL));
+      if(gain < MathMax(InpTrailStepR * risk, _Point)) continue;
+      if(isBuy ? newSL >= bid - stopLv : newSL <= ask + stopLv) continue;
+
+      if(trade.PositionModify(ticket, newSL, curTP))
+         Notify(StringFormat("%s #%I64u SL %.2f -> %.2f (profit %.2fR)",
+                             why, ticket, curSL, newSL, profitR));
    }
 }
 
