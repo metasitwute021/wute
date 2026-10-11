@@ -294,7 +294,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
   const spikeMat = new THREE.MeshStandardMaterial({ color: 0x6a35e8, flatShading: true, metalness: 0.55, roughness: 0.12, emissive: 0x2a0a80, emissiveIntensity: 0.55, transparent: true, opacity: 0.95 });
   const goldMat = new THREE.MeshStandardMaterial({ color: 0xffcf7a, flatShading: true, metalness: 0.6, roughness: 0.25, emissive: 0xb07a20, emissiveIntensity: 0.9 });
   const frameMat = new THREE.MeshStandardMaterial({ color: 0x3a3548, flatShading: true, metalness: 0.75, roughness: 0.38 });
-  const CRY_SPACING = { body: 1.35, limb: 1.05, head: 0.36 };
+  const CRY_SPACING = { body: 1.35, limb: 1.05, neck: 0.55, head: 0.36 };
   const CRY_COLORS = [[0.36, 0x6a2ee0], [0.66, 0x3a16b0], [0.8, 0x2633c8], [0.88, 0xa865ff], [1.01, 0x1e1640]];
   const crystalData = new Map();
   function ellipsoidArea(a, b, c) {
@@ -336,7 +336,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       const fl = f.clone().addScaledVector(n, 0.18).normalize();
       const x = fl.clone().cross(n).normalize();
       const nz = x.clone().cross(fl);
-      const L = sp * rr(1.1, 1.7), w = sp * rr(0.9, 1.3), t = sp * (isHead ? rr(0.28, 0.4) : rr(0.45, 0.7));
+      const L = sp * rr(1.1, 1.7), w = sp * rr(0.9, 1.3), t = sp * (isHead || style === "neck" ? rr(0.25, 0.38) : rr(0.45, 0.7));
       const pos = p.clone().addScaledVector(n, t * 0.15).addScaledVector(fl, L * 0.3);
       d.mats.push(mul(toNode, Tv(pos), new THREE.Matrix4().makeBasis(x, fl, nz), new THREE.Matrix4().makeScale(w, L, t)));
       const roll = rnd();
@@ -703,10 +703,10 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     for (let j = 1; j <= 3; j++) {
       const next = pos.clone().add(dir.clone().multiplyScalar(2.7));
       const w = NECK_W[j - 1];
-      const seg = bone("Neck" + j + "_" + n.key, pos, next, w, prev);
+      const seg = bone("Neck" + j + "_" + n.key, pos, next, w, prev, { pix: "neck" });
       voxels(seg, 6);
       // throat plate and neck spike
-      decor(seg, [w * 0.62, w * 0.2, 2.3], mul(seg.W, T(0, -w * 0.48, 0)), { kind: "neon", color: 0xe6d8ff, opacity: 0.7 });
+      decor(seg, [w * 0.62, w * 0.2, 2.3], mul(seg.W, T(0, -w * 0.48, 0)), { kind: "crystal" });
       spike(seg, posOf(mul(seg.W, T(0, w * 0.45, 0))), rotVec(seg.W, V(0, 1, 0.7)), 1.6, 0.55, C.gold);
       [-1, 1].forEach((sd) => spike(seg, posOf(mul(seg.W, T(sd * w * 0.48, w * 0.1, 0.3))), rotVec(seg.W, V(sd, 0.4, 0.8)), 1.0, 0.36, C.accent));
       prev = seg; pos = next;

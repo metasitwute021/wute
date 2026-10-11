@@ -454,13 +454,13 @@ for _, n in ipairs(NECKS) do
 	for j = 1, 3 do
 		local w = NECK_WIDTH[j]
 		local nextPos = pos + dir * 2.7
-		local seg = bone("Neck" .. j .. "_" .. key, pos, nextPos, w, prev)
+		local seg = tag(bone("Neck" .. j .. "_" .. key, pos, nextPos, w, prev), "neck")
 		voxels(seg, 6)
 		-- เกล็ดใต้คอ + หนามหลังคอ
 		decor(seg, "ThroatPlate", Vector3.new(w * 0.62, w * 0.2, 2.3), seg.CFrame * CFrame.new(0, -w * 0.48, 0), {
-			material = Enum.Material.Neon,
-			color = Color3.fromRGB(230, 216, 255),
-			transparency = 0.3,
+			material = Enum.Material.Glass,
+			color = Color3.fromRGB(106, 53, 232),
+			transparency = 0.05,
 		})
 		spike(seg, pt(seg.CFrame, 0, w * 0.45, 0), seg.CFrame:VectorToWorldSpace(Vector3.new(0, 1, 0.7)), 1.6, 0.55)
 		for _, sd in ipairs({ -1, 1 }) do
@@ -823,7 +823,7 @@ local function pixelShell(part)
 end
 
 -- เกล็ดคริสตัล: แผ่นเหลี่ยมซ้อนกันชี้ลงและไปทางหาง คลุมผิวทั้งชิ้น
-local CRY_SPACING = { body = 1, limb = 0.78, head = 0.27 }
+local CRY_SPACING = { body = 1, limb = 0.78, neck = 0.41, head = 0.27 }
 local CRY_COLORS = {
 	{ 0.36, Color3.fromRGB(106, 46, 224) }, { 0.66, Color3.fromRGB(58, 22, 176) },
 	{ 0.8, Color3.fromRGB(38, 51, 200) }, { 0.88, Color3.fromRGB(168, 101, 255) }, { 1.01, Color3.fromRGB(30, 22, 64) },
@@ -874,7 +874,7 @@ local function crystalShell(part)
 		local fl = (f.Unit + n * 0.18).Unit
 		local x = fl:Cross(n).Unit
 		local up = x:Cross(fl)
-		local L, w, t = sp * rng:NextNumber(1.1, 1.7), sp * rng:NextNumber(0.9, 1.3), sp * (isHead and rng:NextNumber(0.2, 0.3) or rng:NextNumber(0.3, 0.45))
+		local L, w, t = sp * rng:NextNumber(1.1, 1.7), sp * rng:NextNumber(0.9, 1.3), sp * ((isHead or style == "neck") and rng:NextNumber(0.2, 0.3) or rng:NextNumber(0.3, 0.45))
 		local pos = p + n * (t * 0.15) + fl * (L * 0.3)
 		local roll = rng:NextNumber()
 		local color
