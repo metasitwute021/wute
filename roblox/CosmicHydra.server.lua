@@ -443,7 +443,7 @@ local NECKS = {
 	{ key = "C", base = Vector3.new(0, 21.5, -2), dir = Vector3.new(0, 1, -0.45) },
 	{ key = "R", base = Vector3.new(3.2, 21, -1.5), dir = Vector3.new(0.75, 1, -0.35) },
 }
-local NECK_WIDTH = { 3.1, 2.6, 2.2 }
+local NECK_WIDTH = { 2.6, 2.2, 1.9 }
 
 for _, n in ipairs(NECKS) do
 	local key = n.key
@@ -470,63 +470,74 @@ for _, n in ipairs(NECKS) do
 		dir = (dir + Vector3.new(0, 0, -0.22)).Unit
 	end
 
-	-- หัว
+	-- หัวทรงเพรียว: กะโหลกแคบ ปากยาวแหลม กรามบาง
 	local headCF = lookAt(pos, pos + Vector3.new(n.dir.X * 0.5, -0.15, -1))
-	local head = tag(ellipsoid("Head_" .. key, Vector3.new(2.8, 2.2, 4.2), headCF * CFrame.new(0, 0.3, -1.7)), "head")
+	local head = tag(ellipsoid("Head_" .. key, Vector3.new(2.0, 1.55, 4.4), headCF * CFrame.new(0, 0.25, -1.9)), "head")
 	motor(prev, head, headCF)
 	local hcf = head.CFrame
-	tag(decor(head, "Skull", Vector3.new(2.6, 2, 2.6), hcf * CFrame.new(0, 0.15, 0.3)), "head")
-	tag(decor(head, "Snout", Vector3.new(2.1, 1.35, 2.8), hcf * CFrame.new(0, -0.15, -2.9)), "head")
+	tag(decor(head, "Skull", Vector3.new(1.85, 1.4, 2.0), hcf * CFrame.new(0, 0.15, 0.6)), "head")
+	tag(decor(head, "Snout", Vector3.new(1.3, 0.9, 2.6), hcf * CFrame.new(0, -0.1, -2.9)), "head")
+	tag(decor(head, "SnoutTip", Vector3.new(0.85, 0.65, 1.2), hcf * CFrame.new(0, -0.15, -4.5) * A(rad(6), 0, 0)), "head")
+	local WHITE = Color3.fromRGB(245, 240, 255)
 
 	for _, s in ipairs({ -1, 1 }) do
-		decorEllipsoid(head, "Eye", Vector3.new(0.65, 0.5, 0.75), hcf * CFrame.new(s * 1.12, 0.5, -1), {
+		decor(head, "Eye", Vector3.new(0.5, 0.26, 0.85), hcf * CFrame.new(s * 0.78, 0.42, -1.2) * A(0, s * rad(-15), s * rad(-12)), {
 			material = Enum.Material.Neon,
 			color = CONFIG.EyeColor,
 			transparency = 0,
 		})
-		decor(head, "Nostril", Vector3.new(0.32, 0.22, 0.32), hcf * CFrame.new(s * 0.55, 0.52, -4.1), {
+		decor(head, "Nostril", Vector3.new(0.22, 0.16, 0.3), hcf * CFrame.new(s * 0.28, 0.2, -4.95), {
 			material = Enum.Material.SmoothPlastic,
 			color = Color3.fromRGB(10, 5, 25),
 			transparency = 0,
 		})
-		bar(head, pt(hcf, s * 0.55, 0.95, -2), pt(hcf, s * 1.35, 1.25, -0.3), 0.36, CONFIG.AccentColor) -- คิ้ว
-		spike(head, pt(hcf, s * 1.25, -0.3, 0.6), hcf:VectorToWorldSpace(Vector3.new(s * 0.8, -0.1, 1)), 1.7, 0.42, CONFIG.AccentColor) -- แก้ม
-		spike(head, pt(hcf, s * 1.05, 0.2, 1.3), hcf:VectorToWorldSpace(Vector3.new(s, 0.3, 0.8)), 1.2, 0.32)
+		bar(head, pt(hcf, s * 0.45, 0.75, -2), pt(hcf, s * 1.0, 0.95, -0.6), 0.26, CONFIG.AccentColor) -- คิ้ว
+		spike(head, pt(hcf, s * 0.9, -0.25, 0.4), hcf:VectorToWorldSpace(Vector3.new(s * 0.7, -0.1, 1)), 1.8, 0.34, Color3.fromRGB(150, 90, 255)) -- แก้ม
+		spike(head, pt(hcf, s * 0.8, 0.1, 1.2), hcf:VectorToWorldSpace(Vector3.new(s, 0.3, 0.9)), 1.3, 0.28)
 		-- เขา 2 ท่อน
-		local hornBase = pt(hcf, s * 0.9, 1.1, 1)
-		local hornMid = hornBase + hcf:VectorToWorldSpace(Vector3.new(s * 0.5, 1.1, 1.4))
-		local hornTip = hornMid + hcf:VectorToWorldSpace(Vector3.new(s * 0.2, 0.2, 1.3))
-		claw(head, hornBase, hornMid, 0.55)
-		claw(head, hornMid, hornTip, 0.35)
+		local hornBase = pt(hcf, s * 0.6, 0.8, 1)
+		local hornMid = hornBase + hcf:VectorToWorldSpace(Vector3.new(s * 0.4, 1, 1.5))
+		local hornTip = hornMid + hcf:VectorToWorldSpace(Vector3.new(s * 0.15, 0.2, 1.3))
+		claw(head, hornBase, hornMid, 0.45)
+		claw(head, hornMid, hornTip, 0.3)
+		-- ฟันบน
+		for t = 0, 4 do
+			decor(head, "Tooth", Vector3.new(0.18, 0.4, 0.18), hcf * CFrame.new(s * 0.45, -0.62, -2.3 - t * 0.6), {
+				material = Enum.Material.Neon, color = WHITE, transparency = 0,
+			})
+		end
 	end
 
-	-- มงกุฎหนามทอง
+	-- มงกุฎหนามทองกวาดไปด้านหลัง + หนามเล็กบนสันจมูก
 	for c = -2, 2 do
-		spike(head, pt(hcf, c * 0.5, 0.95, 0.7 + math.abs(c) * 0.3), hcf:VectorToWorldSpace(Vector3.new(c * 0.4, 1, 1.1)), 1.8 - math.abs(c) * 0.3, 0.42)
+		spike(head, pt(hcf, c * 0.35, 0.7, 0.8 + math.abs(c) * 0.3), hcf:VectorToWorldSpace(Vector3.new(c * 0.35, 0.8, 1.3)), 2 - math.abs(c) * 0.3, 0.36)
 	end
+	spike(head, pt(hcf, 0, 0.35, -2.4), hcf:VectorToWorldSpace(Vector3.new(0, 1, 0.6)), 0.7, 0.25)
+	spike(head, pt(hcf, 0, 0.3, -3.4), hcf:VectorToWorldSpace(Vector3.new(0, 1, 0.5)), 0.5, 0.2)
 	-- ในปากเรืองแสงชมพู
-	decor(head, "MouthGlow", Vector3.new(1.5, 0.35, 3), hcf * CFrame.new(0, -0.72, -2.3), {
+	decor(head, "MouthGlow", Vector3.new(0.9, 0.25, 4.2), hcf * CFrame.new(0, -0.55, -3), {
 		material = Enum.Material.Neon,
 		color = Color3.fromRGB(255, 79, 216),
 		transparency = 0,
 	})
 
 	-- กราม (ขยับอ้าปากได้)
-	local jawCF = headCF * CFrame.new(0, -0.6, -0.4)
-	local jaw = tag(newPart("Jaw_" .. key, Vector3.new(2.1, 0.7, 4.3), jawCF * CFrame.new(0, -0.35, -2.15)), "head")
+	local jawCF = headCF * CFrame.new(0, -0.45, -0.6)
+	local jaw = tag(newPart("Jaw_" .. key, Vector3.new(1.2, 0.5, 5.6), jawCF * CFrame.new(0, -0.25, -2.8)), "head")
 	motor(head, jaw, jawCF)
-	spike(jaw, pt(jaw.CFrame, 0, -0.3, 1.2), jaw.CFrame:VectorToWorldSpace(Vector3.new(0, -0.6, 1)), 1.1, 0.35, CONFIG.AccentColor)
-	decor(jaw, "MouthGlow", Vector3.new(1.5, 0.3, 3.3), jaw.CFrame * CFrame.new(0, 0.3, -0.2), {
+	spike(jaw, pt(jaw.CFrame, 0, -0.2, 2), jaw.CFrame:VectorToWorldSpace(Vector3.new(0, -0.5, 1)), 1, 0.3, CONFIG.AccentColor)
+	for _, s in ipairs({ -1, 1 }) do
+		spike(jaw, pt(jaw.CFrame, s * 0.6, 0, 1.6), jaw.CFrame:VectorToWorldSpace(Vector3.new(s * 0.6, -0.3, 1)), 1, 0.28, CONFIG.AccentColor)
+	end
+	decor(jaw, "MouthGlow", Vector3.new(0.9, 0.25, 4.4), jaw.CFrame * CFrame.new(0, 0.25, -0.3), {
 		material = Enum.Material.Neon,
 		color = Color3.fromRGB(255, 79, 216),
 		transparency = 0,
 	})
-	for t = 0, 4 do
+	for t = 0, 5 do
 		for _, s in ipairs({ -1, 1 }) do
-			decor(jaw, "Tooth", Vector3.new(0.25, 0.45, 0.25), jaw.CFrame * CFrame.new(s * 0.8, 0.5, -1.9 + t * 0.6), {
-				material = Enum.Material.Neon,
-				color = Color3.fromRGB(245, 240, 255),
-				transparency = 0,
+			decor(jaw, "Tooth", Vector3.new(0.18, 0.4, 0.18), jaw.CFrame * CFrame.new(s * 0.45, 0.42, -2.4 + t * 0.7), {
+				material = Enum.Material.Neon, color = WHITE, transparency = 0,
 			})
 		end
 	end
@@ -802,7 +813,7 @@ local function pixelShell(part)
 end
 
 -- เกล็ดคริสตัล: แผ่นเหลี่ยมซ้อนกันชี้ลงและไปทางหาง คลุมผิวทั้งชิ้น
-local CRY_SPACING = { body = 1, limb = 0.78, head = 0.5 }
+local CRY_SPACING = { body = 1, limb = 0.78, head = 0.33 }
 local CRY_COLORS = {
 	{ 0.36, Color3.fromRGB(106, 46, 224) }, { 0.66, Color3.fromRGB(58, 22, 176) },
 	{ 0.8, Color3.fromRGB(38, 51, 200) }, { 0.88, Color3.fromRGB(168, 101, 255) }, { 1.01, Color3.fromRGB(30, 22, 64) },
@@ -822,7 +833,9 @@ local function crystalShell(part)
 		area = 2 * (fx + fy + fz)
 	end
 	local count = math.clamp(math.floor(area / (sp * sp) * 1.05 + 0.5), 4, 250)
-	local flowLocal = round and Vector3.new(0, -0.8, 0.6) or Vector3.new(0, -0.2, 1)
+	local isHead = style == "head"
+	-- เกล็ดบนหัวกวาดตรงไปด้านหลังหาคอ
+	local flowLocal = isHead and Vector3.new(0, 0.15, 1) or round and Vector3.new(0, -0.8, 0.6) or Vector3.new(0, -0.2, 1)
 	for _ = 1, count do
 		local p, n
 		if round then
@@ -851,7 +864,7 @@ local function crystalShell(part)
 		local fl = (f.Unit + n * 0.18).Unit
 		local x = fl:Cross(n).Unit
 		local up = x:Cross(fl)
-		local L, w, t = sp * rng:NextNumber(1.1, 1.7), sp * rng:NextNumber(0.9, 1.3), sp * rng:NextNumber(0.3, 0.45)
+		local L, w, t = sp * rng:NextNumber(1.1, 1.7), sp * rng:NextNumber(0.9, 1.3), sp * (isHead and rng:NextNumber(0.2, 0.3) or rng:NextNumber(0.3, 0.45))
 		local pos = p + n * (t * 0.15) + fl * (L * 0.3)
 		local roll = rng:NextNumber()
 		local color
@@ -885,7 +898,7 @@ local function skinParts()
 	local list = {}
 	for _, d in ipairs(model:GetDescendants()) do
 		if d:IsA("Part") and d.Material == CONFIG.BodyMaterial and d.Transparency < 1
-			and math.min(d.Size.X, d.Size.Y, d.Size.Z) >= (d:GetAttribute("PixelStyle") == "head" and 0.6 or 0.9) then
+			and math.min(d.Size.X, d.Size.Y, d.Size.Z) >= (d:GetAttribute("PixelStyle") == "head" and 0.45 or 0.9) then
 			table.insert(list, d)
 		end
 	end
@@ -902,7 +915,7 @@ if CONFIG.SkinStyle == "Pixel" then
 	local bodyParts = {}
 	for _, d in ipairs(model:GetDescendants()) do
 		if d:IsA("Part") and d.Material == CONFIG.BodyMaterial and d.Transparency < 1
-			and math.min(d.Size.X, d.Size.Y, d.Size.Z) >= (d:GetAttribute("PixelStyle") == "head" and 0.6 or 0.9) then
+			and math.min(d.Size.X, d.Size.Y, d.Size.Z) >= (d:GetAttribute("PixelStyle") == "head" and 0.45 or 0.9) then
 			table.insert(bodyParts, d)
 		end
 	end

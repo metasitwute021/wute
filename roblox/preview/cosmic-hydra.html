@@ -294,7 +294,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
   const spikeMat = new THREE.MeshStandardMaterial({ color: 0x6a35e8, flatShading: true, metalness: 0.55, roughness: 0.12, emissive: 0x2a0a80, emissiveIntensity: 0.55, transparent: true, opacity: 0.95 });
   const goldMat = new THREE.MeshStandardMaterial({ color: 0xffcf7a, flatShading: true, metalness: 0.6, roughness: 0.25, emissive: 0xb07a20, emissiveIntensity: 0.9 });
   const frameMat = new THREE.MeshStandardMaterial({ color: 0x3a3548, flatShading: true, metalness: 0.75, roughness: 0.38 });
-  const CRY_SPACING = { body: 1.35, limb: 1.05, head: 0.68 };
+  const CRY_SPACING = { body: 1.35, limb: 1.05, head: 0.45 };
   const CRY_COLORS = [[0.36, 0x6a2ee0], [0.66, 0x3a16b0], [0.8, 0x2633c8], [0.88, 0xa865ff], [1.01, 0x1e1640]];
   const crystalData = new Map();
   function ellipsoidArea(a, b, c) {
@@ -309,7 +309,9 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     const area = round ? ellipsoidArea(h.x, h.y, h.z) : 2 * (faces[0][1] + faces[1][1] + faces[2][1]);
     const count = Math.min(500, Math.max(4, Math.round((area / (sp * sp)) * 1.05)));
     // scales point down and back; along a bone they point back toward its root
-    const flowLocal = round ? V(0, -0.8, 0.6) : V(0, -0.2, 1);
+    const isHead = style === "head";
+    // head scales sweep straight back toward the neck
+    const flowLocal = isHead ? V(0, 0.15, 1) : round ? V(0, -0.8, 0.6) : V(0, -0.2, 1);
     let d = crystalData.get(owner.node);
     if (!d) crystalData.set(owner.node, (d = { mats: [], cols: [] }));
     const toNode = owner.J.clone().invert().multiply(W);
@@ -334,7 +336,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       const fl = f.clone().addScaledVector(n, 0.18).normalize();
       const x = fl.clone().cross(n).normalize();
       const nz = x.clone().cross(fl);
-      const L = sp * rr(1.1, 1.7), w = sp * rr(0.9, 1.3), t = sp * rr(0.45, 0.7);
+      const L = sp * rr(1.1, 1.7), w = sp * rr(0.9, 1.3), t = sp * (isHead ? rr(0.28, 0.4) : rr(0.45, 0.7));
       const pos = p.clone().addScaledVector(n, t * 0.15).addScaledVector(fl, L * 0.3);
       d.mats.push(mul(toNode, Tv(pos), new THREE.Matrix4().makeBasis(x, fl, nz), new THREE.Matrix4().makeScale(w, L, t)));
       const roll = rnd();
@@ -379,7 +381,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       skin.matrix.copy(mesh.matrix).multiply(new THREE.Matrix4().makeScale(0.97, 0.97, 0.97));
       skin.renderOrder = -1;
       owner.node.add(skin);
-      if (Math.min(size[0], size[1], size[2]) >= (o.pix === "head" ? 0.6 : 0.9)) { pixelShell(owner, W, size, o.shape || "block", o.pix); crystalShell(owner, W, size, o.shape || "block", o.pix, o.noFront); }
+      if (Math.min(size[0], size[1], size[2]) >= (o.pix === "head" ? 0.45 : 0.9)) { pixelShell(owner, W, size, o.shape || "block", o.pix); crystalShell(owner, W, size, o.shape || "block", o.pix, o.noFront); }
     }
   }
 
@@ -693,7 +695,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     { key: "C", base: V(0, 21.5, -2), dir: V(0, 1, -0.45) },
     { key: "R", base: V(3.2, 21, -1.5), dir: V(0.75, 1, -0.35) },
   ];
-  const NECK_W = [3.1, 2.6, 2.2];
+  const NECK_W = [2.6, 2.2, 1.9];
   NECKS.forEach((n) => {
     let dir = n.dir.clone().normalize();
     let pos = n.base.clone();
@@ -711,32 +713,40 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       dir = dir.clone().add(V(0, 0, -0.22)).normalize();
     }
     const headJ = lookAtCF(pos, pos.clone().add(V(n.dir.x * 0.5, -0.15, -1)));
-    const head = rigPart("Head_" + n.key, [2.8, 2.2, 4.2], mul(headJ, T(0, 0.3, -1.7)), { shape: "ball", pix: "head" }, prev, headJ);
-    decor(head, [2.6, 2, 2.6], mul(head.W, T(0, 0.15, 0.3)), { pix: "head" });
-    decor(head, [2.1, 1.35, 2.8], mul(head.W, T(0, -0.15, -2.9)), { pix: "head" });
+    // slim, long head: narrow skull, long pointed snout, thin jaw
+    const head = rigPart("Head_" + n.key, [2.0, 1.55, 4.4], mul(headJ, T(0, 0.25, -1.9)), { shape: "ball", pix: "head" }, prev, headJ);
+    decor(head, [1.85, 1.4, 2.0], mul(head.W, T(0, 0.15, 0.6)), { pix: "head" });
+    decor(head, [1.3, 0.9, 2.6], mul(head.W, T(0, -0.1, -2.9)), { pix: "head" });
+    decor(head, [0.85, 0.65, 1.2], mul(head.W, T(0, -0.15, -4.5), R(rad(6), 0, 0)), { pix: "head" });
     [-1, 1].forEach((s) => {
-      decor(head, [0.65, 0.5, 0.75], mul(head.W, T(s * 1.12, 0.5, -1)), { kind: "neon", color: C.eye, shape: "ball" });
-      decor(head, [0.32, 0.22, 0.32], mul(head.W, T(s * 0.55, 0.52, -4.1)), { kind: "dark" });
-      bar(head, posOf(mul(head.W, T(s * 0.55, 0.95, -2))), posOf(mul(head.W, T(s * 1.35, 1.25, -0.3))), 0.36, C.accent);
-      spike(head, posOf(mul(head.W, T(s * 1.25, -0.3, 0.6))), rotVec(head.W, V(s * 0.8, -0.1, 1)), 1.7, 0.42, C.accent);
-      spike(head, posOf(mul(head.W, T(s * 1.05, 0.2, 1.3))), rotVec(head.W, V(s * 1, 0.3, 0.8)), 1.2, 0.32, C.gold);
-      const hb = posOf(mul(head.W, T(s * 0.9, 1.1, 1)));
-      const hm = hb.clone().add(rotVec(head.W, V(s * 0.5, 1.1, 1.4)));
-      const ht = hm.clone().add(rotVec(head.W, V(s * 0.2, 0.2, 1.3)));
-      claw(head, hb, hm, 0.55);
-      claw(head, hm, ht, 0.35);
+      decor(head, [0.5, 0.26, 0.85], mul(head.W, T(s * 0.78, 0.42, -1.2), R(0, s * rad(-15), s * rad(-12))), { kind: "neon", color: C.eye });
+      decor(head, [0.22, 0.16, 0.3], mul(head.W, T(s * 0.28, 0.2, -4.95)), { kind: "dark" });
+      bar(head, posOf(mul(head.W, T(s * 0.45, 0.75, -2.0))), posOf(mul(head.W, T(s * 1.0, 0.95, -0.6))), 0.26, C.accent);
+      spike(head, posOf(mul(head.W, T(s * 0.9, -0.25, 0.4))), rotVec(head.W, V(s * 0.7, -0.1, 1)), 1.8, 0.34, C.accent);
+      spike(head, posOf(mul(head.W, T(s * 0.8, 0.1, 1.2))), rotVec(head.W, V(s, 0.3, 0.9)), 1.3, 0.28, C.gold);
+      const hb = posOf(mul(head.W, T(s * 0.6, 0.8, 1.0)));
+      const hm = hb.clone().add(rotVec(head.W, V(s * 0.4, 1.0, 1.5)));
+      const ht = hm.clone().add(rotVec(head.W, V(s * 0.15, 0.2, 1.3)));
+      claw(head, hb, hm, 0.45);
+      claw(head, hm, ht, 0.3);
+      for (let t = 0; t < 5; t++) {
+        decor(head, [0.18, 0.4, 0.18], mul(head.W, T(s * 0.45, -0.62, -2.3 - t * 0.6)), { kind: "neon", color: 0xf5f0ff });
+      }
     });
     for (let c = -2; c <= 2; c++) {
-      spike(head, posOf(mul(head.W, T(c * 0.5, 0.95, 0.7 + Math.abs(c) * 0.3))), rotVec(head.W, V(c * 0.4, 1, 1.1)), 1.8 - Math.abs(c) * 0.3, 0.42, C.gold);
+      spike(head, posOf(mul(head.W, T(c * 0.35, 0.7, 0.8 + Math.abs(c) * 0.3))), rotVec(head.W, V(c * 0.35, 0.8, 1.3)), 2.0 - Math.abs(c) * 0.3, 0.36, C.gold);
     }
-    decor(head, [1.5, 0.35, 3.0], mul(head.W, T(0, -0.72, -2.3)), { kind: "neon", color: 0xff4fd8 });
-    const jawJ = mul(headJ, T(0, -0.6, -0.4));
-    const jaw = rigPart("Jaw_" + n.key, [2.1, 0.7, 4.3], mul(jawJ, T(0, -0.35, -2.15)), { pix: "head" }, head, jawJ);
-    spike(jaw, posOf(mul(jaw.W, T(0, -0.3, 1.2))), rotVec(jaw.W, V(0, -0.6, 1)), 1.1, 0.35, C.accent);
-    decor(jaw, [1.5, 0.3, 3.3], mul(jaw.W, T(0, 0.3, -0.2)), { kind: "neon", color: 0xff4fd8 });
-    for (let t = 0; t <= 4; t++) {
+    spike(head, posOf(mul(head.W, T(0, 0.35, -2.4))), rotVec(head.W, V(0, 1, 0.6)), 0.7, 0.25, C.gold);
+    spike(head, posOf(mul(head.W, T(0, 0.3, -3.4))), rotVec(head.W, V(0, 1, 0.5)), 0.5, 0.2, C.gold);
+    decor(head, [0.9, 0.25, 4.2], mul(head.W, T(0, -0.55, -3.0)), { kind: "neon", color: 0xff4fd8 });
+    const jawJ = mul(headJ, T(0, -0.45, -0.6));
+    const jaw = rigPart("Jaw_" + n.key, [1.2, 0.5, 5.6], mul(jawJ, T(0, -0.25, -2.8)), { pix: "head" }, head, jawJ);
+    spike(jaw, posOf(mul(jaw.W, T(0, -0.2, 2.0))), rotVec(jaw.W, V(0, -0.5, 1)), 1.0, 0.3, C.accent);
+    [-1, 1].forEach((s) => spike(jaw, posOf(mul(jaw.W, T(s * 0.6, 0, 1.6))), rotVec(jaw.W, V(s * 0.6, -0.3, 1)), 1.0, 0.28, C.accent));
+    decor(jaw, [0.9, 0.25, 4.4], mul(jaw.W, T(0, 0.25, -0.3)), { kind: "neon", color: 0xff4fd8 });
+    for (let t = 0; t < 6; t++) {
       [-1, 1].forEach((s) => {
-        decor(jaw, [0.25, 0.45, 0.25], mul(jaw.W, T(s * 0.8, 0.5, -1.9 + t * 0.6)), { kind: "neon", color: 0xf5f0ff });
+        decor(jaw, [0.18, 0.4, 0.18], mul(jaw.W, T(s * 0.45, 0.42, -2.4 + t * 0.7)), { kind: "neon", color: 0xf5f0ff });
       });
     }
   });
