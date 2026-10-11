@@ -291,7 +291,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
   scene.add(rimLight);
   const crystalMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, metalness: 0.45, roughness: 0.14, emissive: 0x160640, transparent: true, opacity: 0.94 });
   const bladeMat = new THREE.MeshStandardMaterial({ color: 0x8a4cff, flatShading: true, metalness: 0.3, roughness: 0.08, emissive: 0x4614b0, emissiveIntensity: 0.75, transparent: true, opacity: 0.74, side: THREE.DoubleSide, depthWrite: false });
-  const spikeMat = new THREE.MeshStandardMaterial({ color: 0x8a45ff, flatShading: true, metalness: 0.3, roughness: 0.12, emissive: 0x4a12b8, emissiveIntensity: 0.7, transparent: true, opacity: 0.9 });
+  const spikeMat = new THREE.MeshStandardMaterial({ color: 0x6a35e8, flatShading: true, metalness: 0.55, roughness: 0.12, emissive: 0x2a0a80, emissiveIntensity: 0.55, transparent: true, opacity: 0.95 });
   const goldMat = new THREE.MeshStandardMaterial({ color: 0xffcf7a, flatShading: true, metalness: 0.6, roughness: 0.25, emissive: 0xb07a20, emissiveIntensity: 0.9 });
   const frameMat = new THREE.MeshStandardMaterial({ color: 0x3a3548, flatShading: true, metalness: 0.75, roughness: 0.38 });
   const CRY_SPACING = { body: 1.35, limb: 1.05, head: 0.68 };
@@ -301,7 +301,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     const p = 1.6;
     return 4 * Math.PI * Math.pow((Math.pow(a * b, p) + Math.pow(a * c, p) + Math.pow(b * c, p)) / 3, 1 / p);
   }
-  function crystalShell(owner, W, size, shape, style) {
+  function crystalShell(owner, W, size, shape, style, noFront) {
     const sp = CRY_SPACING[style] || CRY_SPACING.body;
     const h = V(size[0] / 2, size[1] / 2, size[2] / 2);
     const round = shape === "ball";
@@ -326,6 +326,8 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
         n = V(0, 0, 0);
         if (ax === 0) { p.x = sign * h.x; n.x = sign; } else if (ax === 1) { p.y = sign * h.y; n.y = sign; } else { p.z = sign * h.z; n.z = sign; }
       }
+      // leave the armoured front clear so the chest plates show
+      if (noFront && n.z < -0.35 && Math.abs(p.x) < h.x * 0.75) continue;
       let f = flowLocal.clone().addScaledVector(n, -flowLocal.dot(n));
       if (f.lengthSq() < 0.01) f = V(1, 0, 0).cross(n);
       f.normalize();
@@ -377,7 +379,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       skin.matrix.copy(mesh.matrix).multiply(new THREE.Matrix4().makeScale(0.97, 0.97, 0.97));
       skin.renderOrder = -1;
       owner.node.add(skin);
-      if (Math.min(size[0], size[1], size[2]) >= (o.pix === "head" ? 0.6 : 0.9)) { pixelShell(owner, W, size, o.shape || "block", o.pix); crystalShell(owner, W, size, o.shape || "block", o.pix); }
+      if (Math.min(size[0], size[1], size[2]) >= (o.pix === "head" ? 0.6 : 0.9)) { pixelShell(owner, W, size, o.shape || "block", o.pix); crystalShell(owner, W, size, o.shape || "block", o.pix, o.noFront); }
     }
   }
 
@@ -597,19 +599,34 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
   const root = rigPart("Root", [2, 2, 2], T(0, 10, 0), { kind: "none" }, null, T(0, 10, 0));
   const hips = rigPart("Hips", [8.5, 7, 8.5], T(0, 10, 1.2), { shape: "ball", pix: "limb" }, root, T(0, 10, 0), "RootJoint");
   voxels(hips, 6);
-  const torso = rigPart("Torso", [10, 9.5, 8], T(0, 17.5, -0.6), { shape: "ball" }, hips, T(0, 12.5, 0));
+  const torso = rigPart("Torso", [9.6, 10.5, 8], T(0, 17.7, -0.6), { shape: "ball", noFront: true }, hips, T(0, 12.5, 0));
   voxels(torso, 24);
-  voxels(decor(torso, [8.6, 7.5, 7.6], T(0, 13.2, -0.1), { shape: "ball" }), 12);
+  voxels(decor(torso, [8.4, 7.4, 7.4], T(0, 13.2, -0.1), { shape: "ball", noFront: true }), 12);
   voxels(decor(torso, [8.4, 5, 6.4], T(0, 20.6, 1), { shape: "ball" }), 10);
-  decor(torso, [7.6, 3.6, 5.2], T(0, 22, -1.3), { shape: "ball" });
+  // dark mechanical frame showing at the top of the chest, under the necks
+  decor(torso, [7.6, 3.6, 5.2], T(0, 22, -1.3), { kind: "frame", shape: "ball" });
+  for (let i = 0; i < 3; i++) {
+    decor(torso, [3.6 - i * 0.45, 0.9, 2.4], T(0, 21.4 + i * 1.05, -2.9 + i * 0.25), { kind: "frame" });
+    [-1, 1].forEach((sd) => decor(torso, [0.7, 0.7, 1.8], T(sd * (2.1 - i * 0.2), 21.4 + i * 1.05, -3.1 + i * 0.25), { kind: "frame" }));
+  }
   [-1, 1].forEach((s) => voxels(decor(torso, [4.2, 4.4, 4.8], T(s * 4.6, 19.6, -0.8), { shape: "ball" }), 6));
 
   // belly plates down the front
-  for (let i = 0; i < 7; i++) {
-    const y = 9.8 + i * 1.0;
-    const w = 3.7 - Math.abs(i - 3) * 0.28;
-    decor(torso, [w, 0.78, 0.7], mul(T(0, y, -3.35 - (y - 9.8) * 0.2), R(rad(-12), 0, 0)), { kind: "crystal" });
+  // layered chevron plates pointing down the belly
+  for (let i = 0; i < 4; i++) {
+    const y = 14.3 - i * 1.55, zf = -4.35 + i * 0.3, w = 2.6 - i * 0.22;
+    [-1, 1].forEach((sd) => {
+      decor(torso, [w, 1.3, 0.55], mul(T(sd * w * 0.42, y, zf), R(rad(-10), 0, sd * rad(28))), { kind: "crystal" });
+    });
+    decor(torso, [0.75, 1.7, 0.75], mul(T(0, y - 0.6, zf - 0.3), R(0, 0, 0)), { kind: "crystal", shape: "octa" });
   }
+  // crystal plates down both flanks
+  [-1, 1].forEach((sd) => {
+    for (let j = 0; j < 4; j++) {
+      const y = 19.2 - j * 2.5;
+      decor(torso, [0.6, 2.4, 2.8], mul(T(sd * (4.75 - j * 0.15), y, -1.8 + j * 0.2), R(0, sd * rad(18), sd * rad(6))), { kind: "crystal" });
+    }
+  });
   // rib cage wrapping around the chest
   for (let i = 0; i <= 4; i++) {
     const y = 13.6 + i * 1.2, spread = 3.6 + Math.sin((i / 4) * Math.PI) * 0.9;
@@ -628,14 +645,27 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
   [[11.8, 5.1, 0.9], [9.8, 5.5, 0.8]].forEach(([y, z, k]) => spike(hips, V(0, y, z), V(0, 0.8, 1.2), 2.2 * k, 0.75 * k, C.gold));
 
   const corePos = V(0, 18, -5.2);
-  decor(torso, [3, 3, 3], Tv(corePos), { kind: "neon", color: 0x3f8cff, shape: "ball" });
-  decor(torso, [1.7, 1.7, 1.7], Tv(corePos.clone().add(V(0, 0, -0.9))), { kind: "neon", color: 0xd6f2ff, shape: "ball" });
-  decor(torso, [6, 6, 7], mul(Tv(corePos.clone().add(V(0, 0, 0.6))), R(0, 0, rad(22.5))), { kind: "frame", shape: "torus" });
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2;
-    const b = corePos.clone().add(V(Math.cos(a) * 3.1, Math.sin(a) * 3.1, 0.2));
-    spike(torso, b, V(Math.cos(a), Math.sin(a), -0.35), 1.4, 0.45, C.gold);
+  // core housing: blue orb in a glass shell, framed by a segmented crystal ring
+  const coreCF = Tv(corePos);
+  decor(torso, [3.4, 3.4, 3.4], coreCF, { kind: "neon", color: 0x3f8cff, shape: "ball" });
+  decor(torso, [1.9, 1.9, 1.9], Tv(corePos.clone().add(V(0, 0.2, -1))), { kind: "neon", color: 0xd6f2ff, shape: "ball" });
+  decor(torso, [4.5, 4.5, 4.5], coreCF, { kind: "glass", color: 0x1c3a9a, shape: "ball" });
+  decor(torso, [6, 6, 5], mul(coreCF, T(0, 0, 0.3)), { kind: "frame", shape: "torus" });
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2 + Math.PI / 12;
+    decor(torso, [1.05, 1.7, 1.2], mul(coreCF, T(0, 0, 0.2), R(0, 0, a), T(3.6, 0, 0)), i % 3 === 1 ? { kind: "neon", color: 0x7444d8, opacity: 0.95 } : { kind: "crystal" });
   }
+  decor(torso, [9.6, 9.6, 6], mul(coreCF, T(0, 0, 0.5)), { kind: "frame", shape: "torus" });
+  [90, 270].forEach((deg) => {
+    const a = rad(deg);
+    decor(torso, [0.9, 1.7, 0.9], mul(coreCF, T(Math.cos(a) * 4.5, Math.sin(a) * 4.5, -0.3)), { kind: "neon", color: 0x9a7cf0, shape: "octa" });
+  });
+  [40, 58, 122, 140, 158, 222, 318].forEach((deg) => {
+    const a = rad(deg);
+    const b = corePos.clone().add(V(Math.cos(a) * 4.3, Math.sin(a) * 4.3, 0.1));
+    spike(torso, b, V(Math.cos(a), Math.sin(a), -0.3), 1.9, 0.55, C.gold);
+  });
+  decor(torso, [10, 10, 2.4], mul(coreCF, T(0, 0, -0.6), R(rad(82), 0, rad(-6))), { kind: "neon", color: 0x9fe4ff, shape: "torus" });
   const coreLight = new THREE.PointLight(0x4a8cff, 2.2, 26);
   coreLight.position.copy(corePos.clone().add(V(0, 0, -2)).applyMatrix4(torso.J.clone().invert()));
   torso.node.add(coreLight);
@@ -656,7 +686,6 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     const a = (i / 8) * Math.PI * 2 + 0.2;
     decor(coreRing, [0.35, 0.35, 0.35], mul(ringJ, R(0, 0, a), T(3.5, 0, 0)), { kind: "neon", color: 0x6eebff });
   }
-  decor(coreRing, [8.2, 8.2, 3], mul(ringJ, R(rad(68), rad(18), 0)), { kind: "neon", color: 0x9fe4ff, shape: "torus" });
 
   // ---- three necks and heads ----
   const NECKS = [

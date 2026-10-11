@@ -265,26 +265,52 @@ local hips = tag(ellipsoid("Hips", Vector3.new(8.5, 7, 8.5), CFrame.new(0, 10, 1
 motor(root, hips, CFrame.new(0, 10, 0), "RootJoint")
 voxels(hips, 6)
 
-local torso = ellipsoid("Torso", Vector3.new(10, 9.5, 8), CFrame.new(0, 17.5, -0.6))
+local torso = ellipsoid("Torso", Vector3.new(9.6, 10.5, 8), CFrame.new(0, 17.7, -0.6))
+torso:SetAttribute("NoFront", true)
 motor(hips, torso, CFrame.new(0, 12.5, 0))
 voxels(torso, 24)
 
-voxels(decorEllipsoid(torso, "Belly", Vector3.new(8.6, 7.5, 7.6), CFrame.new(0, 13.2, -0.1)), 12)
+local belly = decorEllipsoid(torso, "Belly", Vector3.new(8.4, 7.4, 7.4), CFrame.new(0, 13.2, -0.1))
+belly:SetAttribute("NoFront", true)
+voxels(belly, 12)
 voxels(decorEllipsoid(torso, "Hump", Vector3.new(8.4, 5, 6.4), CFrame.new(0, 20.6, 1)), 10)
-decorEllipsoid(torso, "Collar", Vector3.new(7.6, 3.6, 5.2), CFrame.new(0, 22, -1.3))
+-- โครงกลไกสีเทาเข้มช่วงบนอก ใต้โคนคอ
+decorEllipsoid(torso, "Collar", Vector3.new(7.6, 3.6, 5.2), CFrame.new(0, 22, -1.3), {
+	material = Enum.Material.Metal, color = Color3.fromRGB(58, 53, 72), transparency = 0,
+})
+for i = 0, 2 do
+	decor(torso, "Frame", Vector3.new(3.6 - i * 0.45, 0.9, 2.4), CFrame.new(0, 21.4 + i * 1.05, -2.9 + i * 0.25), {
+		material = Enum.Material.Metal, color = Color3.fromRGB(58, 53, 72), transparency = 0,
+	})
+	for _, sd in ipairs({ -1, 1 }) do
+		decor(torso, "Frame", Vector3.new(0.7, 0.7, 1.8), CFrame.new(sd * (2.1 - i * 0.2), 21.4 + i * 1.05, -3.1 + i * 0.25), {
+			material = Enum.Material.Metal, color = Color3.fromRGB(58, 53, 72), transparency = 0,
+		})
+	end
+end
 for _, s in ipairs({ -1, 1 }) do
 	voxels(decorEllipsoid(torso, "ShoulderMuscle", Vector3.new(4.2, 4.4, 4.8), CFrame.new(s * 4.6, 19.6, -0.8)), 6)
 end
 
--- เกล็ดท้อง
-for i = 0, 6 do
-	local y = 9.8 + i
-	local w = 3.7 - math.abs(i - 3) * 0.28
-	decor(torso, "BellyPlate", Vector3.new(w, 0.78, 0.7), CFrame.new(0, y, -3.35 - (y - 9.8) * 0.2) * A(rad(-12), 0, 0), {
-		material = Enum.Material.Neon,
-		color = Color3.fromRGB(138, 69, 255),
-		transparency = 0.15,
-	})
+-- เกราะท้องรูปตัว V ซ้อนกันลงมา
+local ARMOR = { material = Enum.Material.Glass, color = Color3.fromRGB(106, 53, 232), transparency = 0.05 }
+local function armorPart(name, size, cf)
+	local p = decor(torso, name, size, cf, { material = ARMOR.material, color = ARMOR.color, transparency = ARMOR.transparency })
+	p.Reflectance = 0.2
+	return p
+end
+for i = 0, 3 do
+	local y, zf, w = 14.3 - i * 1.55, -4.35 + i * 0.3, 2.6 - i * 0.22
+	for _, sd in ipairs({ -1, 1 }) do
+		armorPart("Chevron", Vector3.new(w, 1.3, 0.55), CFrame.new(sd * w * 0.42, y, zf) * A(rad(-10), 0, sd * rad(28)))
+	end
+	armorPart("Keel", Vector3.new(0.6, 1.5, 0.6), CFrame.new(0, y - 0.6, zf - 0.3) * A(0, 0, rad(45)))
+end
+-- แผ่นเกราะคริสตัลข้างลำตัว
+for _, sd in ipairs({ -1, 1 }) do
+	for j = 0, 3 do
+		armorPart("SidePlate", Vector3.new(0.6, 2.4, 2.8), CFrame.new(sd * (4.75 - j * 0.15), 19.2 - j * 2.5, -1.8 + j * 0.2) * A(0, sd * rad(18), sd * rad(6)))
+	end
 end
 
 -- ซี่โครงโค้งรอบอก
@@ -312,13 +338,13 @@ spike(hips, Vector3.new(0, 9.8, 5.5), Vector3.new(0, 0.8, 1.2), 1.8, 0.6)
 
 -- แกนพลังกลางอก (ลูกพลังงานสีน้ำเงิน + เกราะวงแหวน + วงแหวนหมุน)
 local corePos = Vector3.new(0, 18, -5.2)
-local core = decor(torso, "Core", Vector3.new(3, 3, 3), CFrame.new(corePos), {
+local core = decor(torso, "Core", Vector3.new(3.4, 3.4, 3.4), CFrame.new(corePos), {
 	shape = Enum.PartType.Ball,
 	material = Enum.Material.Neon,
 	color = Color3.fromRGB(63, 140, 255),
 	transparency = 0,
 })
-decor(torso, "CoreHeart", Vector3.new(1.7, 1.7, 1.7), CFrame.new(corePos + Vector3.new(0, 0, -0.9)), {
+decor(torso, "CoreHeart", Vector3.new(1.9, 1.9, 1.9), CFrame.new(corePos + Vector3.new(0, 0.2, -1)), {
 	shape = Enum.PartType.Ball,
 	material = Enum.Material.Neon,
 	color = Color3.fromRGB(214, 242, 255),
@@ -332,10 +358,35 @@ for i = 0, 15 do
 		transparency = 0,
 	})
 end
-for i = 0, 7 do
-	local a = i / 8 * math.pi * 2
-	local b = corePos + Vector3.new(math.cos(a) * 3.1, math.sin(a) * 3.1, 0.2)
-	spike(torso, b, Vector3.new(math.cos(a), math.sin(a), -0.35), 1.4, 0.45)
+-- เปลือกแก้ว + วงแหวนเกราะคริสตัลเป็นปล้อง + กรอบนอก
+decor(torso, "CoreShell", Vector3.new(4.5, 4.5, 4.5), CFrame.new(corePos), {
+	shape = Enum.PartType.Ball, material = Enum.Material.Glass, color = Color3.fromRGB(40, 80, 200), transparency = 0.6,
+})
+for i = 0, 11 do
+	local a = i / 12 * math.pi * 2 + math.pi / 12
+	local seg = decor(torso, "CoreSegment", Vector3.new(1.05, 1.7, 1.2), CFrame.new(corePos + Vector3.new(0, 0, 0.2)) * A(0, 0, a) * CFrame.new(3.6, 0, 0), {
+		material = i % 3 == 1 and Enum.Material.Neon or Enum.Material.Glass,
+		color = i % 3 == 1 and Color3.fromRGB(116, 68, 216) or Color3.fromRGB(106, 53, 232),
+		transparency = 0.05,
+	})
+	seg.Reflectance = 0.2
+end
+for i = 0, 23 do
+	local a = i / 24 * math.pi * 2
+	decor(torso, "CoreFrame", Vector3.new(0.8, 1.3, 0.9), CFrame.new(corePos + Vector3.new(0, 0, 0.5)) * A(0, 0, a) * CFrame.new(4.75, 0, 0), {
+		material = Enum.Material.Metal, color = Color3.fromRGB(58, 53, 72), transparency = 0,
+	})
+end
+for _, deg in ipairs({ 90, 270 }) do
+	local a = rad(deg)
+	decor(torso, "CoreStud", Vector3.new(0.8, 1.6, 0.8), CFrame.new(corePos + Vector3.new(math.cos(a) * 4.5, math.sin(a) * 4.5, -0.3)) * A(0, 0, rad(45)), {
+		material = Enum.Material.Neon, color = Color3.fromRGB(154, 124, 240), transparency = 0,
+	})
+end
+for _, deg in ipairs({ 40, 58, 122, 140, 158, 222, 318 }) do
+	local a = rad(deg)
+	local b = corePos + Vector3.new(math.cos(a) * 4.3, math.sin(a) * 4.3, 0.1)
+	spike(torso, b, Vector3.new(math.cos(a), math.sin(a), -0.3), 1.9, 0.55)
 end
 local coreLight = Instance.new("PointLight")
 coreLight.Color = Color3.fromRGB(74, 140, 255)
@@ -362,9 +413,9 @@ for i = 0, 7 do
 	})
 end
 -- วงแหวนแบบดาวเสาร์เอียงรอบลูกพลังงาน
-for i = 0, 23 do
-	local a = i / 24 * math.pi * 2
-	decor(coreRing, "PlanetRing", Vector3.new(0.3, 0.3, 1.2), coreRing.CFrame * A(rad(68), rad(18), 0) * A(0, a, 0) * CFrame.new(4, 0, 0), {
+for i = 0, 31 do
+	local a = i / 32 * math.pi * 2
+	decor(torso, "PlanetRing", Vector3.new(0.3, 0.25, 1.1), CFrame.new(corePos + Vector3.new(0, 0, -0.6)) * A(rad(-8), 0, rad(-6)) * A(0, a, 0) * CFrame.new(5, 0, 0), {
 		material = Enum.Material.Neon,
 		color = Color3.fromRGB(159, 228, 255),
 		transparency = 0.1,
@@ -788,6 +839,10 @@ local function crystalShell(part)
 			else
 				p, n = Vector3.new(p.X, p.Y, sign * h.Z), Vector3.new(0, 0, sign)
 			end
+		end
+		-- เว้นด้านหน้าอกให้เห็นเกราะ
+		if part:GetAttribute("NoFront") and n.Z < -0.35 and math.abs(p.X) < h.X * 0.75 then
+			continue
 		end
 		local f = flowLocal - n * flowLocal:Dot(n)
 		if f.Magnitude < 0.1 then
