@@ -112,6 +112,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     <button id="btnAnim" type="button" aria-pressed="true">ท่าขยับ</button>
     <button id="btnSpin" type="button" aria-pressed="true">หมุนกล้อง</button>
     <button id="btnPose" type="button" aria-pressed="false">ปรับท่า</button>
+    <button id="btnStyle" type="button">ลาย: พิกเซล</button>
     <button id="btnSkin" type="button">ผิว: ชัด</button>
     <button id="btnRoar" type="button" class="roar">คำราม!</button>
   </div>
@@ -293,6 +294,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       skin.matrix.copy(mesh.matrix).multiply(new THREE.Matrix4().makeScale(0.97, 0.97, 0.97));
       skin.renderOrder = -1;
       owner.node.add(skin);
+      if (Math.min(size[0], size[1], size[2]) >= 0.9) pixelShell(owner, W, size, o.shape || "block");
     }
   }
 
@@ -354,36 +356,118 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     bar(parent, mid, base.clone().add(d.multiplyScalar(len)), w * 0.5, color || C.gold);
   }
 
-  // wing / fin membranes: triangles gathered per bone, turned into one mesh per bone
-  const membranes = new Map();
-  function tri(owner, a, b, c, ta, tb, tc) {
-    let m = membranes.get(owner.node);
-    if (!m) membranes.set(owner.node, (m = { pos: [], t: [], inv: owner.J.clone().invert() }));
-    [a, b, c].forEach((p) => { const q = p.clone().applyMatrix4(m.inv); m.pos.push(q.x, q.y, q.z); });
-    m.t.push(ta, tb, tc);
-  }
+  // ---- membranes that stretch with the bones (no tearing) ----
+  // a point is pinned to a bone, or is a weighted mix of other points
+  function pin(part, p) { return { node: part.node, local: p.clone().applyMatrix4(part.J.clone().invert()) }; }
+  function mixPt(list) { return { mix: list }; }
   const membraneMat = new THREE.ShaderMaterial({
     uniforms: { uTime, uSkin },
-    vertexShader: "attribute float aT; varying float vT; varying vec3 vW; void main(){ vT = aT; vec4 wp = modelMatrix * vec4(position,1.0); vW = wp.xyz; gl_Position = projectionMatrix * viewMatrix * wp; }",
+    vertexShader: "attribute float aT; varying float vT; varying vec3 vW; void main(){ vT = aT; vW = position; gl_Position = projectionMatrix * viewMatrix * vec4(position,1.0); }",
     fragmentShader: [
       "uniform float uTime; uniform float uSkin; varying float vT; varying vec3 vW;",
       "void main(){ vec3 deep = vec3(0.2, 0.09, 0.5); vec3 mid = vec3(0.5, 0.3, 1.0); vec3 edge = vec3(1.0, 0.58, 0.95);",
       "vec3 c = vT < 0.6 ? mix(deep, mid, vT / 0.6) : mix(mid, edge, (vT - 0.6) / 0.4);",
+      "vec3 g = abs(fract(vW * 2.2) - 0.5); float grid = smoothstep(0.42, 0.5, max(max(g.x, g.y), g.z));",
+      "c = mix(c, c * 0.45, grid * 0.6);",
       "float ripple = smoothstep(0.9, 1.0, sin(length(vW) * 2.4 - uTime * 2.5) * 0.5 + 0.5);",
       "c += vec3(0.55, 0.8, 1.0) * ripple * 0.3;",
-      "float a = mix(0.5, 0.88, vT) * mix(0.6, 1.0, uSkin);",
-      "gl_FragColor = vec4(c, a); }",
+      "gl_FragColor = vec4(c, mix(0.5, 0.88, vT)); }",
     ].join("\n"),
     transparent: true, side: THREE.DoubleSide, depthWrite: false,
   });
-  function buildMembranes() {
-    membranes.forEach((m, node) => {
-      const g = new THREE.BufferGeometry();
-      g.setAttribute("position", new THREE.Float32BufferAttribute(m.pos, 3));
-      g.setAttribute("aT", new THREE.Float32BufferAttribute(m.t, 1));
-      const mesh = new THREE.Mesh(g, membraneMat);
-      mesh.frustumCulled = false;
-      node.add(mesh);
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0xf3b8ff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
+  const sheets = [];
+  function makeSheet(points, tris, edges) {
+    const pos = new Float32Array(tris.length * 9), tt = new Float32Array(tris.length * 3);
+    tris.forEach((tr, i) => { tt[i * 3] = tr[3]; tt[i * 3 + 1] = tr[4]; tt[i * 3 + 2] = tr[5]; });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
+    g.setAttribute("aT", new THREE.BufferAttribute(tt, 1));
+    const mesh = new THREE.Mesh(g, membraneMat);
+    mesh.frustumCulled = false;
+    scene.add(mesh);
+    const eg = new THREE.BufferGeometry();
+    eg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(edges.length * 6), 3).setUsage(THREE.DynamicDrawUsage));
+    const lines = new THREE.LineSegments(eg, edgeMat);
+    lines.frustumCulled = false;
+    scene.add(lines);
+    const sheet = { points, tris, edges, mesh, lines, world: points.map(() => new THREE.Vector3()) };
+    sheets.push(sheet);
+    return sheet;
+  }
+  function updateSheets() {
+    sheets.forEach((sh) => {
+      sh.points.forEach((p, i) => {
+        if (p.node) sh.world[i].copy(p.local).applyMatrix4(p.node.matrixWorld);
+      });
+      sh.points.forEach((p, i) => {
+        if (p.mix) {
+          const w = sh.world[i].set(0, 0, 0);
+          p.mix.forEach(([j, f]) => w.addScaledVector(sh.world[j], f));
+        }
+      });
+      const pa = sh.mesh.geometry.attributes.position.array;
+      sh.tris.forEach((tr, i) => {
+        for (let k = 0; k < 3; k++) { const v = sh.world[tr[k]]; pa[i * 9 + k * 3] = v.x; pa[i * 9 + k * 3 + 1] = v.y; pa[i * 9 + k * 3 + 2] = v.z; }
+      });
+      sh.mesh.geometry.attributes.position.needsUpdate = true;
+      const ea = sh.lines.geometry.attributes.position.array;
+      sh.edges.forEach(([i, j], n) => {
+        const a = sh.world[i], b = sh.world[j];
+        ea.set([a.x, a.y, a.z, b.x, b.y, b.z], n * 6);
+      });
+      sh.lines.geometry.attributes.position.needsUpdate = true;
+    });
+  }
+
+  // ---- pixel skin: small square pixels on a grid over each body shape ----
+  const PIXEL = 0.45;
+  const pixelData = new Map();
+  const LIGHT = V(0.4, 0.8, -0.5).normalize();
+  const PIX_BASE = new THREE.Color(0x5b3cd6), PIX_LAV = new THREE.Color(0xc8b4ff), PIX_WHITE = new THREE.Color(0xf2edff), PIX_CYAN = new THREE.Color(0x7fe9ff);
+  function pixelShell(owner, W, size, shape) {
+    const n = size.map((v) => Math.max(1, Math.round(v / PIXEL)));
+    const cell = size.map((v, i) => v / n[i]);
+    const h = size.map((v) => v / 2);
+    const round = shape === "ball";
+    const inside = (i, j, k) => {
+      if (i < 0 || j < 0 || k < 0 || i >= n[0] || j >= n[1] || k >= n[2]) return false;
+      if (!round) return true;
+      const x = ((i + 0.5) * cell[0] - h[0]) / h[0], y = ((j + 0.5) * cell[1] - h[1]) / h[1], z = ((k + 0.5) * cell[2] - h[2]) / h[2];
+      return x * x + y * y + z * z <= 1;
+    };
+    let d = pixelData.get(owner.node);
+    if (!d) pixelData.set(owner.node, (d = { mats: [], cols: [] }));
+    const toNode = owner.J.clone().invert().multiply(W);
+    const rot = new THREE.Matrix4().extractRotation(W);
+    const scl = new THREE.Matrix4().makeScale(cell[0] * 0.84, cell[1] * 0.84, cell[2] * 0.84);
+    for (let i = 0; i < n[0]; i++) for (let j = 0; j < n[1]; j++) for (let k = 0; k < n[2]; k++) {
+      if (!inside(i, j, k)) continue;
+      const nb = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].filter((o) => !inside(i + o[0], j + o[1], k + o[2]));
+      if (!nb.length) continue;
+      const x = (i + 0.5) * cell[0] - h[0], y = (j + 0.5) * cell[1] - h[1], z = (k + 0.5) * cell[2] - h[2];
+      const nrm = round ? V(x / (h[0] * h[0]), y / (h[1] * h[1]), z / (h[2] * h[2])) : nb.reduce((acc, o) => acc.add(V(o[0], o[1], o[2])), V(0, 0, 0));
+      nrm.normalize().applyMatrix4(rot);
+      d.mats.push(mul(toNode, T(x, y, z), scl));
+      const roll = rnd();
+      let c;
+      if (roll < 0.015) c = PIX_CYAN.clone();
+      else if (roll < 0.035) c = PIX_WHITE.clone();
+      else if (roll < 0.13) c = PIX_LAV.clone();
+      else c = PIX_BASE.clone();
+      const lit = 0.38 + 0.72 * Math.max(nrm.dot(LIGHT), 0) + 0.18 * Math.max(-nrm.z, 0);
+      d.cols.push(c.multiplyScalar(lit * rr(0.82, 1.12)));
+    }
+  }
+  const pixelMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.92 });
+  const pixelMeshes = [];
+  function buildPixels() {
+    pixelData.forEach((d, node) => {
+      const im = new THREE.InstancedMesh(GEO.block, pixelMat, d.mats.length);
+      d.mats.forEach((m, i) => { im.setMatrixAt(i, m); im.setColorAt(i, d.cols[i]); });
+      im.frustumCulled = false;
+      node.add(im);
+      pixelMeshes.push(im);
     });
   }
 
@@ -520,23 +604,15 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     const tips = [V(5 * s, 7, 0.8), V(8.5 * s, 3, 1.8), V(8.5 * s, -2.5, 2.8), V(6 * s, -8, 3.4)].map((o) => wWrist.clone().add(o));
     const spars = tips.map((tip, i) => bone("WingFinger" + (i + 1) + "_" + k, wWrist, tip, 0.55 - i * 0.05, w2, boneOpt));
     tips.forEach((tip, i) => decor(spars[i], [0.75, 1.5, 0.75], mul(Tv(tip), R(0, 0, rad(45 * s))), { kind: "neon", color: 0x9ff0ff, shape: "octa" }));
-    const edge = 0xf3b8ff;
-    for (let i = 0; i < 3; i++) {
-      const a = tips[i], b = tips[i + 1];
-      const mid = a.clone().lerp(b, 0.5).lerp(wWrist, 0.24);
-      tri(spars[i], wWrist, a, mid, 0.35, 1, 0.85);
-      tri(spars[i + 1], wWrist, mid, b, 0.35, 0.85, 1);
-      bar(spars[i], a, mid, 0.2, edge, 0.9);
-      bar(spars[i + 1], mid, b, 0.2, edge, 0.9);
-    }
     const bodyRear = V(2.2 * s, 12.5, 4.2);
-    const midIn = tips[3].clone().lerp(bodyRear, 0.5).lerp(wWrist, 0.18);
-    tri(w1, wBase, wElbow, wWrist, 0.1, 0.3, 0.35);
-    tri(w1, wBase, wWrist, bodyRear, 0.1, 0.35, 0.6);
-    tri(w2, wWrist, tips[3], midIn, 0.35, 1, 0.85);
-    tri(w2, wWrist, midIn, bodyRear, 0.35, 0.85, 0.6);
-    bar(w2, tips[3], midIn, 0.2, edge, 0.9);
-    bar(w2, midIn, bodyRear, 0.2, edge, 0.9);
+    const pts = [pin(w1, wBase), pin(w2, wElbow), pin(w2, wWrist)];
+    tips.forEach((tip, i) => pts.push(pin(spars[i], tip)));
+    pts.push(pin(torso, bodyRear));
+    for (let i = 0; i < 3; i++) pts.push(mixPt([[3 + i, 0.38], [4 + i, 0.38], [2, 0.24]]));
+    pts.push(mixPt([[6, 0.41], [7, 0.41], [2, 0.18]]));
+    const tris = [[0, 1, 2, 0.1, 0.3, 0.35], [0, 2, 7, 0.1, 0.35, 0.6], [2, 6, 11, 0.35, 1, 0.85], [2, 11, 7, 0.35, 0.85, 0.6]];
+    for (let i = 0; i < 3; i++) tris.push([2, 3 + i, 8 + i, 0.35, 1, 0.85], [2, 8 + i, 4 + i, 0.35, 0.85, 1]);
+    makeSheet(pts, tris, [[3, 8], [8, 4], [4, 9], [9, 5], [5, 10], [10, 6], [6, 11], [11, 7]]);
 
     // digitigrade leg: thigh, shin, metatarsal, foot
     const hip = V(3.6 * s, 9.6, 1.2);
@@ -578,12 +654,11 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     const tipP = pos.clone().add(dir.clone().multiplyScalar(3.4));
     const left = pos.clone().add(side.clone().multiplyScalar(1.9)).add(dir.clone().multiplyScalar(0.5));
     const right = pos.clone().add(side.clone().multiplyScalar(-1.9)).add(dir.clone().multiplyScalar(0.5));
-    tri(prev, back, left, tipP, 0.45, 1, 1);
-    tri(prev, back, tipP, right, 0.45, 1, 1);
-    bar(prev, left, tipP, 0.2, 0xf3b8ff); bar(prev, right, tipP, 0.2, 0xf3b8ff);
+    makeSheet([pin(prev, back), pin(prev, left), pin(prev, tipP), pin(prev, right)],
+      [[0, 1, 2, 0.45, 1, 1], [0, 2, 3, 0.45, 1, 1]], [[1, 2], [2, 3]]);
     decor(prev, [1, 2.2, 1], mul(Tv(tipP), R(rad(70), 0, rad(45))), { kind: "neon", color: 0x78ebff, shape: "octa" });
   })();
-  buildMembranes();
+  buildPixels();
 
   // sparkles around the chest
   (function () {
@@ -680,6 +755,17 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
   function setAuto(name, m) { auto[name] = m; }
   const sin = Math.sin;
 
+  // rotation about an axis given in the dragon's rest space, converted into a joint's own frame
+  function axisRot(name, axis, ang) {
+    const j = joints[name];
+    if (!j) return IDENT;
+    j.axes = j.axes || {};
+    const key = axis.toArray().join();
+    if (!j.axes[key]) j.axes[key] = axis.clone().applyMatrix4(new THREE.Matrix4().extractRotation(j.part.J).invert()).normalize();
+    return new THREE.Matrix4().makeRotationAxis(j.axes[key], ang);
+  }
+  const AXIS_Z = V(0, 0, 1), AXIS_Y = V(0, 1, 0);
+
   function animateBody(t, roar) {
     setAuto("RootJoint", T(0, sin(t * 1.4) * 0.4, 0));
     setAuto("Torso", R(sin(t * 1.4) * 0.03 - roar * 0.12, sin(t * 0.5) * 0.06, 0));
@@ -693,19 +779,22 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       const growl = Math.pow(Math.max(0, sin(t * 0.7 + ph)), 6);
       setAuto("Jaw_" + key, R(-(0.08 + 0.1 * (sin(t * 3 + ph) + 1) / 2 + Math.max(growl * 0.5, roar * 0.75)), 0, 0));
     });
-    const flap = sin(t * (2.4 + roar * 2));
+    const beat = t * (2.2 + roar * 2.2);
+    [["L", -1], ["R", 1]].forEach(([k, s]) => {
+      const down = sin(beat), lag = sin(beat - 0.9);
+      setAuto("WingArm_" + k, mul(axisRot("WingArm_" + k, AXIS_Z, s * (down * (0.6 + roar * 0.15) - 0.25)), axisRot("WingArm_" + k, AXIS_Y, -s * down * 0.12)));
+      setAuto("WingHand_" + k, axisRot("WingHand_" + k, AXIS_Z, s * lag * 0.35));
+      for (let i = 1; i <= 4; i++) setAuto("WingFinger" + i + "_" + k, axisRot("WingFinger" + i + "_" + k, AXIS_Z, s * sin(beat - 1.3 - i * 0.15) * 0.12));
+    });
     [["L", 0], ["R", Math.PI]].forEach(([k, ph]) => {
       setAuto("UpperArm_" + k, R(sin(t * 1.2 + ph) * 0.25 + roar * 0.35, 0, sin(t * 0.9 + ph) * 0.2));
       setAuto("Forearm_" + k, R(sin(t * 1.6 + ph) * 0.3, 0, 0));
       setAuto("Hand_" + k, R(sin(t * 2 + ph) * 0.3, 0, sin(t * 1.3 + ph) * 0.4));
       for (let f = 1; f <= 3; f++) setAuto("Finger" + f + "_" + k, R((sin(t * 2.5 + f + ph) + 1) * 0.25 + roar * 0.4, 0, 0));
-      setAuto("WingArm_" + k, R(flap * (0.4 + roar * 0.2), 0, 0));
-      setAuto("WingHand_" + k, R(sin(t * (2.4 + roar * 2) - 0.7) * 0.35, 0, 0));
       setAuto("Thigh_" + k, R(sin(t * 1.4 + ph) * 0.08, 0, 0));
       setAuto("Shin_" + k, R(-sin(t * 1.4 + ph) * 0.1, 0, 0));
       setAuto("Metatarsal_" + k, R(sin(t * 1.4 + ph) * 0.08, 0, 0));
       setAuto("Foot_" + k, R(sin(t * 1.4 + ph) * 0.1, 0, 0));
-      for (let i = 1; i <= 4; i++) setAuto("WingFinger" + i + "_" + k, R(sin(t * (2.4 + roar * 2) - 1 - i * 0.2) * 0.1, sin(t * 1.2 + i) * 0.05, 0));
     });
     for (let j = 1; j <= 8; j++) setAuto("Tail" + j, R(sin(t * 1.8 - j * 0.6) * 0.08, sin(t * 1.5 - j * 0.7) * (0.18 + roar * 0.15), 0));
   }
@@ -759,6 +848,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     if (bloom) bloom.strength = 0.7 + roar * 0.8;
 
     scene.updateMatrixWorld();
+    updateSheets();
     animateOrbs(wall, roar);
     controls.update();
     if (composer) composer.render(); else renderer.render(scene, camera);
@@ -826,15 +916,21 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     const panel = document.getElementById("posePanel");
     panel.hidden = !panel.hidden; toggle(bPose, !panel.hidden);
   });
-  const SKIN_LEVELS = [["ชัด", 0.85], ["ทึบ", 1], ["ใส", 0], ["บาง", 0.45]];
-  let skinIdx = 0;
-  const bSkin = document.getElementById("btnSkin");
-  bSkin.addEventListener("click", () => {
-    skinIdx = (skinIdx + 1) % SKIN_LEVELS.length;
-    uSkin.value = SKIN_LEVELS[skinIdx][1];
-    for (const k in skinCache) skinCache[k].visible = uSkin.value > 0;
-    bSkin.textContent = "ผิว: " + SKIN_LEVELS[skinIdx][0];
-  });
+  const SKIN_LEVELS = [["ชัด", 0.85, 0.92], ["ทึบ", 1, 1], ["ใส", 0, 0.4], ["บาง", 0.45, 0.65]];
+  let skinIdx = 0, pixelStyle = true;
+  const bSkin = document.getElementById("btnSkin"), bStyle = document.getElementById("btnStyle");
+  function refreshLook() {
+    const lvl = SKIN_LEVELS[skinIdx];
+    uSkin.value = lvl[1];
+    pixelMat.opacity = lvl[2];
+    for (const k in skinCache) skinCache[k].visible = !pixelStyle && lvl[1] > 0;
+    pixelMeshes.forEach((m) => { m.visible = pixelStyle; });
+    bSkin.textContent = "ผิว: " + lvl[0];
+    bStyle.textContent = "ลาย: " + (pixelStyle ? "พิกเซล" : "เรียบ");
+  }
+  bSkin.addEventListener("click", () => { skinIdx = (skinIdx + 1) % SKIN_LEVELS.length; refreshLook(); });
+  bStyle.addEventListener("click", () => { pixelStyle = !pixelStyle; refreshLook(); });
+  refreshLook();
   document.getElementById("btnRoar").addEventListener("click", () => { roarStart = performance.now() / 1000; });
   syncSliders();
 })();

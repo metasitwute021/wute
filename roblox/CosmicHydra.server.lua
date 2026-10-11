@@ -22,7 +22,9 @@ local CONFIG = {
 	BodyColor = Color3.fromRGB(120, 85, 255),
 	BodyMaterial = Enum.Material.ForceField,    -- ForceField = ใสแบบโฮโลแกรม, ลอง Glass ได้
 	BodyTransparency = 0.1,
-	SkinEnabled = true,                         -- ผิวชั้นในใต้ร่างใส ทำให้เห็นรูปร่างชัดขึ้น
+	PixelSkin = true,                           -- ผิวพิกเซลสี่เหลี่ยมเล็กๆ ต่อกันเป็นรูปร่าง (แบบในคลิป)
+	PixelSize = 0.8,                            -- ขนาดพิกเซล (เล็ก = ละเอียดแต่ชิ้นเยอะ, ถ้าเกมแลคให้เพิ่มเป็น 1-1.2)
+	SkinEnabled = true,                         -- ผิวเรียบชั้นใน (ใช้เมื่อ PixelSkin = false)
 	SkinColor = Color3.fromRGB(85, 55, 200),
 	SkinMaterial = Enum.Material.SmoothPlastic,
 	SkinTransparency = 0.25,                    -- 0 = ทึบ, 1 = มองไม่เห็น
@@ -553,7 +555,94 @@ end
 -- ผิวชั้นใน: ก็อปทุกชิ้นร่างใสเป็นชั้นทึบขนาด 97% ไว้ข้างใน
 ---------------------------------------------------------------------------
 
-if CONFIG.SkinEnabled then
+local PIX_BASE = Color3.fromRGB(91, 60, 214)
+local PIX_LAV = Color3.fromRGB(200, 180, 255)
+local PIX_WHITE = Color3.fromRGB(242, 237, 255)
+local PIX_CYAN = Color3.fromRGB(127, 233, 255)
+local LIGHT = Vector3.new(0.4, 0.8, -0.5).Unit
+local NEIGHBORS = {
+	Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0), Vector3.new(0, 1, 0),
+	Vector3.new(0, -1, 0), Vector3.new(0, 0, 1), Vector3.new(0, 0, -1),
+}
+
+-- เติมพิกเซลสี่เหลี่ยมบนผิวของชิ้นตามตาราง (เฉพาะชั้นนอกสุด)
+local function pixelShell(part)
+	local size, g = part.Size, CONFIG.PixelSize
+	local nx = math.max(1, math.round(size.X / g))
+	local ny = math.max(1, math.round(size.Y / g))
+	local nz = math.max(1, math.round(size.Z / g))
+	local cell = Vector3.new(size.X / nx, size.Y / ny, size.Z / nz)
+	local h = size / 2
+	local round = part.Shape == Enum.PartType.Ball or part:GetAttribute("Ellipsoid")
+	local function inside(i, j, k)
+		if i < 0 or j < 0 or k < 0 or i >= nx or j >= ny or k >= nz then
+			return false
+		end
+		if not round then
+			return true
+		end
+		local x = ((i + 0.5) * cell.X - h.X) / h.X
+		local y = ((j + 0.5) * cell.Y - h.Y) / h.Y
+		local z = ((k + 0.5) * cell.Z - h.Z) / h.Z
+		return x * x + y * y + z * z <= 1
+	end
+	for i = 0, nx - 1 do
+		for j = 0, ny - 1 do
+			for k = 0, nz - 1 do
+				if inside(i, j, k) then
+					local nrm, exposed = Vector3.zero, false
+					for _, o in ipairs(NEIGHBORS) do
+						if not inside(i + o.X, j + o.Y, k + o.Z) then
+							exposed = true
+							nrm = nrm + o
+						end
+					end
+					if exposed then
+						local lp = Vector3.new((i + 0.5) * cell.X - h.X, (j + 0.5) * cell.Y - h.Y, (k + 0.5) * cell.Z - h.Z)
+						if round then
+							nrm = Vector3.new(lp.X / (h.X * h.X), lp.Y / (h.Y * h.Y), lp.Z / (h.Z * h.Z))
+						end
+						if nrm.Magnitude < 1e-3 then
+							nrm = Vector3.yAxis
+						end
+						nrm = part.CFrame:VectorToWorldSpace(nrm.Unit)
+						local roll = rng:NextNumber()
+						local c = roll < 0.015 and PIX_CYAN or roll < 0.035 and PIX_WHITE or roll < 0.13 and PIX_LAV or PIX_BASE
+						local lit = (0.38 + 0.72 * math.max(nrm:Dot(LIGHT), 0) + 0.18 * math.max(-nrm.Z, 0)) * rng:NextNumber(0.82, 1.12)
+						local px = Instance.new("Part")
+						px.Name = "Pixel"
+						px.Size = cell * 0.84
+						px.CFrame = part.CFrame * CFrame.new(lp)
+						px.Material = roll < 0.035 and Enum.Material.Neon or Enum.Material.SmoothPlastic
+						px.Color = Color3.new(math.min(1, c.R * lit), math.min(1, c.G * lit), math.min(1, c.B * lit))
+						px.Transparency = 0.08
+						px.Anchored = true
+						px.CanCollide = false
+						px.CanTouch = false
+						px.CanQuery = false
+						px.CastShadow = false
+						px.Massless = true
+						px.Parent = part
+						weld(part, px)
+					end
+				end
+			end
+		end
+	end
+end
+
+if CONFIG.PixelSkin then
+	local bodyParts = {}
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("Part") and d.Material == CONFIG.BodyMaterial and d.Transparency < 1
+			and math.min(d.Size.X, d.Size.Y, d.Size.Z) >= 0.9 then
+			table.insert(bodyParts, d)
+		end
+	end
+	for _, d in ipairs(bodyParts) do
+		pixelShell(d)
+	end
+elseif CONFIG.SkinEnabled then
 	for _, d in ipairs(model:GetDescendants()) do
 		if d:IsA("Part") and d.Material == CONFIG.BodyMaterial and d.Transparency < 1 then
 			local skin = Instance.new("Part")
@@ -590,6 +679,10 @@ end
 local S = model:GetScale()
 for _, m in pairs(motors) do
 	m.base = m.motor.C0
+	-- แกนลำตัว (หน้า-หลัง) ในกรอบของข้อต่อ ใช้กระพือปีกขึ้นลงรอบลำตัว
+	local jointWorld = m.motor.Part0.CFrame * m.base
+	m.axisZ = jointWorld:VectorToObjectSpace(Vector3.zAxis)
+	m.axisY = jointWorld:VectorToObjectSpace(Vector3.yAxis)
 end
 
 for _, d in ipairs(model:GetDescendants()) do
@@ -711,7 +804,17 @@ local function animateBody(t)
 		pose("Jaw_" .. key, A(-(0.08 + 0.1 * (sin(t * 3 + ph) + 1) / 2 + roar * 0.5), 0, 0))
 	end
 
-	local flap = sin(t * 2.4)
+	-- ปีกกระพือรอบแกนลำตัวทั้งแผง (ปีกท่อนนอกกับก้านปีกไม่ขยับแยก เพื่อไม่ให้พังผืดฉีก)
+	local down = sin(t * 2.2)
+	for _, side in ipairs({ { "L", -1 }, { "R", 1 } }) do
+		local k, s = side[1], side[2]
+		local wing = motors["WingArm_" .. k]
+		if wing then
+			wing.motor.C0 = wing.base
+				* CFrame.fromAxisAngle(wing.axisZ, s * (down * 0.6 - 0.25))
+				* CFrame.fromAxisAngle(wing.axisY, -s * down * 0.12)
+		end
+	end
 	for _, side in ipairs({ { "L", 0 }, { "R", math.pi } }) do
 		local k, ph = side[1], side[2]
 		pose("UpperArm_" .. k, A(sin(t * 1.2 + ph) * 0.25, 0, sin(t * 0.9 + ph) * 0.2))
@@ -720,15 +823,10 @@ local function animateBody(t)
 		for f = 1, 3 do
 			pose("Finger" .. f .. "_" .. k, A((sin(t * 2.5 + f + ph) + 1) * 0.25, 0, 0))
 		end
-		pose("WingArm_" .. k, A(flap * 0.4, 0, 0))
-		pose("WingHand_" .. k, A(sin(t * 2.4 - 0.7) * 0.35, 0, 0))
 		pose("Thigh_" .. k, A(sin(t * 1.4 + ph) * 0.08, 0, 0))
 		pose("Shin_" .. k, A(-sin(t * 1.4 + ph) * 0.1, 0, 0))
 		pose("Metatarsal_" .. k, A(sin(t * 1.4 + ph) * 0.08, 0, 0))
 		pose("Foot_" .. k, A(sin(t * 1.4 + ph) * 0.1, 0, 0))
-		for i = 1, 4 do
-			pose("WingFinger" .. i .. "_" .. k, A(sin(t * 2.4 - 1 - i * 0.2) * 0.1, sin(t * 1.2 + i) * 0.05, 0))
-		end
 	end
 
 	for j = 1, 8 do
