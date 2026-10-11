@@ -140,7 +140,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
   const scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(0x07050f, 0.006);
   const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 800);
-  const camDist = window.innerWidth < window.innerHeight ? 1.7 : 1;
+  const camDist = window.innerWidth < window.innerHeight ? 2 : 1.15;
   camera.position.set(30 * camDist, 16 + 8 * camDist, -52 * camDist);
 
   const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -328,7 +328,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       const s = rr(0.3, 0.85);
       let pos;
       if (p.shape === "ball") {
-        pos = unitVec().multiplyScalar(hx);
+        pos = unitVec().multiply(V(hx, hy, hz));
       } else {
         pos = V(rr(-1, 1) * hx, rr(-1, 1) * hy, rr(-1, 1) * hz);
         const axis = Math.floor(rnd() * 3), sign = rnd() < 0.5 ? -1 : 1;
@@ -340,28 +340,84 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     }
   }
 
-  function claw(parent, base, tip, w) {
-    const len = base.distanceTo(tip);
-    decor(parent, [w, w, len], mul(lookAtCF(base, tip), T(0, 0, -len / 2)), { kind: "neon", color: C.gold });
+  // straight glowing rod between two points
+  function bar(parent, a, b, w, color, opacity) {
+    const len = a.distanceTo(b);
+    decor(parent, [w, w, len], mul(lookAtCF(a, b), T(0, 0, -len / 2)), { kind: "neon", color, opacity: opacity == null ? 1 : opacity });
+  }
+  function claw(parent, base, tip, w, color) { bar(parent, base, tip, w, color || C.gold); }
+  // two-stage tapered spike
+  function spike(parent, base, dir, len, w, color) {
+    const d = dir.clone().normalize();
+    const mid = base.clone().add(d.clone().multiplyScalar(len * 0.55));
+    bar(parent, base, mid, w, color || C.gold);
+    bar(parent, mid, base.clone().add(d.multiplyScalar(len)), w * 0.5, color || C.gold);
   }
 
-  // body
+  // wing / fin membranes: triangles gathered per bone, turned into one mesh per bone
+  const membranes = new Map();
+  function tri(owner, a, b, c, ta, tb, tc) {
+    let m = membranes.get(owner.node);
+    if (!m) membranes.set(owner.node, (m = { pos: [], t: [], inv: owner.J.clone().invert() }));
+    [a, b, c].forEach((p) => { const q = p.clone().applyMatrix4(m.inv); m.pos.push(q.x, q.y, q.z); });
+    m.t.push(ta, tb, tc);
+  }
+  const membraneMat = new THREE.ShaderMaterial({
+    uniforms: { uTime, uSkin },
+    vertexShader: "attribute float aT; varying float vT; varying vec3 vW; void main(){ vT = aT; vec4 wp = modelMatrix * vec4(position,1.0); vW = wp.xyz; gl_Position = projectionMatrix * viewMatrix * wp; }",
+    fragmentShader: [
+      "uniform float uTime; uniform float uSkin; varying float vT; varying vec3 vW;",
+      "void main(){ vec3 deep = vec3(0.2, 0.09, 0.5); vec3 mid = vec3(0.5, 0.3, 1.0); vec3 edge = vec3(1.0, 0.58, 0.95);",
+      "vec3 c = vT < 0.6 ? mix(deep, mid, vT / 0.6) : mix(mid, edge, (vT - 0.6) / 0.4);",
+      "float ripple = smoothstep(0.9, 1.0, sin(length(vW) * 2.4 - uTime * 2.5) * 0.5 + 0.5);",
+      "c += vec3(0.55, 0.8, 1.0) * ripple * 0.3;",
+      "float a = mix(0.5, 0.88, vT) * mix(0.6, 1.0, uSkin);",
+      "gl_FragColor = vec4(c, a); }",
+    ].join("\n"),
+    transparent: true, side: THREE.DoubleSide, depthWrite: false,
+  });
+  function buildMembranes() {
+    membranes.forEach((m, node) => {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(m.pos, 3));
+      g.setAttribute("aT", new THREE.Float32BufferAttribute(m.t, 1));
+      const mesh = new THREE.Mesh(g, membraneMat);
+      mesh.frustumCulled = false;
+      node.add(mesh);
+    });
+  }
+
+  // ---- body: chest, belly, hump, haunches ----
   const root = rigPart("Root", [2, 2, 2], T(0, 10, 0), { kind: "none" }, null, T(0, 10, 0));
-  const hips = rigPart("Hips", [8, 8, 8], T(0, 10, 0.5), { shape: "ball" }, root, T(0, 10, 0), "RootJoint");
-  voxels(hips, 22);
-  const torso = rigPart("Torso", [9, 10, 7], T(0, 16.5, -0.5), {}, hips, T(0, 12.5, 0));
-  voxels(torso, 30);
-  const chest = decor(torso, [10, 10, 10], T(0, 18.5, -0.3), { shape: "ball" });
-  voxels(chest, 26);
+  const hips = rigPart("Hips", [8.5, 7, 8.5], T(0, 10, 1.2), { shape: "ball" }, root, T(0, 10, 0), "RootJoint");
+  voxels(hips, 18);
+  const torso = rigPart("Torso", [10, 9.5, 8], T(0, 17.5, -0.6), { shape: "ball" }, hips, T(0, 12.5, 0));
+  voxels(torso, 24);
+  voxels(decor(torso, [8.6, 7.5, 7.6], T(0, 13.2, -0.1), { shape: "ball" }), 12);
+  voxels(decor(torso, [8.4, 5, 6.4], T(0, 20.6, 1), { shape: "ball" }), 10);
+  decor(torso, [7.6, 3.6, 5.2], T(0, 22, -1.3), { shape: "ball" });
+  [-1, 1].forEach((s) => voxels(decor(torso, [4.2, 4.4, 4.8], T(s * 4.6, 19.6, -0.8), { shape: "ball" }), 6));
 
-  for (let i = 0; i <= 4; i++) {
-    const w = 6.4 - Math.abs(i - 2) * 0.8;
-    decor(torso, [w, 0.55, 0.7], T(0, 12.4 + i * 1.35, -4.2), { kind: "neon", color: C.accent, opacity: 0.9 });
+  // belly plates down the front
+  for (let i = 0; i < 7; i++) {
+    const y = 9.8 + i * 1.0;
+    const w = 3.7 - Math.abs(i - 3) * 0.28;
+    decor(torso, [w, 0.78, 0.7], mul(T(0, y, -3.35 - (y - 9.8) * 0.2), R(rad(-12), 0, 0)), { kind: "neon", color: 0xe6d8ff, opacity: 0.8 });
   }
-  decor(torso, [0.7, 6.5, 0.7], T(0, 15.1, -4.3), { kind: "neon", color: C.accent, opacity: 0.85 });
+  // rib cage wrapping around the chest
   for (let i = 0; i <= 4; i++) {
-    decor(torso, [0.9, 0.9, 2.2], mul(T(0, 21 - i * 2.2, 3.6), R(rad(-35), 0, rad(45))), { kind: "neon", color: i % 2 === 0 ? C.gold : C.accent });
+    const y = 13.6 + i * 1.2, spread = 3.6 + Math.sin((i / 4) * Math.PI) * 0.9;
+    [-1, 1].forEach((s) => {
+      const a = V(s * 1.9, y, -4.3), b = V(s * spread, y + 0.6, -3.1), c = V(s * (spread + 0.6), y + 1.1, -1.5);
+      bar(torso, a, b, 0.42, C.accent, 0.9);
+      bar(torso, b, c, 0.36, C.accent, 0.75);
+    });
   }
+  // dorsal ridge
+  [[22.6, 1.8, 0.8], [21.3, 3.6, 1.1], [19.6, 4.3, 1.4], [17.6, 3.9, 1.3], [15.6, 3.8, 1.1], [13.6, 3.9, 1]].forEach(([y, z, k], i) => {
+    spike(torso, V(0, y, z), V(0, 1, 1.1), 2.2 * k, 0.75 * k, i % 2 ? C.accent : C.gold);
+  });
+  [[11.8, 5.1, 0.9], [9.8, 5.5, 0.8]].forEach(([y, z, k]) => spike(hips, V(0, y, z), V(0, 0.8, 1.2), 2.2 * k, 0.75 * k, C.gold));
 
   const corePos = V(0, 18, -5.2);
   decor(torso, [3, 3, 3], Tv(corePos), { kind: "dark", shape: "ball" });
@@ -383,30 +439,39 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     decor(coreRing, [0.35, 0.35, 0.35], mul(ringJ, R(0, 0, a), T(3.5, 0, 0)), { kind: "neon", color: 0x6eebff });
   }
 
-  // three necks and heads
+  // ---- three necks and heads ----
   const NECKS = [
     { key: "L", base: V(-3.2, 21, -1.5), dir: V(-0.75, 1, -0.35) },
     { key: "C", base: V(0, 21.5, -2), dir: V(0, 1, -0.45) },
     { key: "R", base: V(3.2, 21, -1.5), dir: V(0.75, 1, -0.35) },
   ];
-  const NECK_W = [2.7, 2.3, 2];
+  const NECK_W = [3.1, 2.6, 2.2];
   NECKS.forEach((n) => {
     let dir = n.dir.clone().normalize();
     let pos = n.base.clone();
     let prev = torso;
     for (let j = 1; j <= 3; j++) {
       const next = pos.clone().add(dir.clone().multiplyScalar(2.7));
-      const seg = bone("Neck" + j + "_" + n.key, pos, next, NECK_W[j - 1], prev);
-      voxels(seg, 7);
+      const w = NECK_W[j - 1];
+      const seg = bone("Neck" + j + "_" + n.key, pos, next, w, prev);
+      voxels(seg, 6);
+      // throat plate and neck spike
+      decor(seg, [w * 0.62, w * 0.2, 2.3], mul(seg.W, T(0, -w * 0.48, 0)), { kind: "neon", color: 0xe6d8ff, opacity: 0.7 });
+      spike(seg, posOf(mul(seg.W, T(0, w * 0.45, 0))), rotVec(seg.W, V(0, 1, 0.7)), 1.3, 0.5, j % 2 ? C.gold : C.accent);
       prev = seg; pos = next;
       dir = dir.clone().add(V(0, 0, -0.22)).normalize();
     }
     const headJ = lookAtCF(pos, pos.clone().add(V(n.dir.x * 0.5, -0.15, -1)));
-    const head = rigPart("Head_" + n.key, [2.8, 2.2, 4.2], mul(headJ, T(0, 0.3, -1.7)), {}, prev, headJ);
-    voxels(head, 10);
-    decor(head, [2.1, 1.3, 1.8], mul(head.W, T(0, -0.15, -2.7)));
+    const head = rigPart("Head_" + n.key, [2.8, 2.2, 4.2], mul(headJ, T(0, 0.3, -1.7)), { shape: "ball" }, prev, headJ);
+    decor(head, [2.6, 2, 2.6], mul(head.W, T(0, 0.15, 0.3)));
+    voxels(head, 8);
+    decor(head, [2.1, 1.35, 2.8], mul(head.W, T(0, -0.15, -2.9)));
     [-1, 1].forEach((s) => {
-      decor(head, [0.6, 0.6, 0.6], mul(head.W, T(s * 1.15, 0.55, -1)), { kind: "neon", color: C.eye, shape: "ball" });
+      decor(head, [0.65, 0.5, 0.75], mul(head.W, T(s * 1.12, 0.5, -1)), { kind: "neon", color: C.eye, shape: "ball" });
+      decor(head, [0.32, 0.22, 0.32], mul(head.W, T(s * 0.55, 0.52, -4.1)), { kind: "dark" });
+      bar(head, posOf(mul(head.W, T(s * 0.55, 0.95, -2))), posOf(mul(head.W, T(s * 1.35, 1.25, -0.3))), 0.36, C.accent);
+      spike(head, posOf(mul(head.W, T(s * 1.25, -0.3, 0.6))), rotVec(head.W, V(s * 0.8, -0.1, 1)), 1.7, 0.42, C.accent);
+      spike(head, posOf(mul(head.W, T(s * 1.05, 0.2, 1.3))), rotVec(head.W, V(s * 1, 0.3, 0.8)), 1.2, 0.32, C.gold);
       const hb = posOf(mul(head.W, T(s * 0.9, 1.1, 1)));
       const hm = hb.clone().add(rotVec(head.W, V(s * 0.5, 1.1, 1.4)));
       const ht = hm.clone().add(rotVec(head.W, V(s * 0.2, 0.2, 1.3)));
@@ -414,15 +479,16 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       claw(head, hm, ht, 0.35);
     });
     const jawJ = mul(headJ, T(0, -0.6, -0.4));
-    const jaw = rigPart("Jaw_" + n.key, [2.1, 0.7, 3.9], mul(jawJ, T(0, -0.35, -1.95)), {}, head, jawJ);
-    for (let t = 0; t <= 3; t++) {
+    const jaw = rigPart("Jaw_" + n.key, [2.1, 0.7, 4.3], mul(jawJ, T(0, -0.35, -2.15)), {}, head, jawJ);
+    spike(jaw, posOf(mul(jaw.W, T(0, -0.3, 1.2))), rotVec(jaw.W, V(0, -0.6, 1)), 1.1, 0.35, C.accent);
+    for (let t = 0; t <= 4; t++) {
       [-1, 1].forEach((s) => {
-        decor(jaw, [0.25, 0.45, 0.25], mul(jaw.W, T(s * 0.8, 0.5, -1.6 + t * 0.6 - 0.2)), { kind: "neon", color: 0xf5f0ff });
+        decor(jaw, [0.25, 0.45, 0.25], mul(jaw.W, T(s * 0.8, 0.5, -1.9 + t * 0.6)), { kind: "neon", color: 0xf5f0ff });
       });
     }
   });
 
-  // arms, wings, legs
+  // ---- arms, wings, legs ----
   [["L", -1], ["R", 1]].forEach(([k, s]) => {
     const shoulder = V(5 * s, 19.5, -1);
     const elbow = shoulder.clone().add(V(4.2 * s, 1, -1.2));
@@ -430,6 +496,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     const upper = bone("UpperArm_" + k, shoulder, elbow, 2.4, torso);
     const fore = bone("Forearm_" + k, elbow, wrist, 2, upper);
     voxels(upper, 8); voxels(fore, 7);
+    spike(fore, elbow, V(s * 0.4, -0.2, 1), 1.5, 0.5, C.gold);
     const handJ = lookAtCF(wrist, wrist.clone().add(wrist.clone().sub(elbow)));
     const hand = rigPart("Hand_" + k, [2.2, 2.2, 2.2], handJ, { shape: "ball" }, fore, handJ);
     for (let f = 1; f <= 3; f++) {
@@ -441,47 +508,82 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       claw(finger, posOf(mul(finger.W, T(0, 0, -hz))), posOf(mul(finger.W, T(0, -0.2, -hz - 0.8))), 0.3);
     }
 
-    const wBase = V(2.5 * s, 20.5, 2.5);
-    const wElbow = wBase.clone().add(V(5 * s, 3.5, 2));
-    const wTip = wElbow.clone().add(V(6 * s, -1, 1.5));
-    const wingBone = { kind: "neon", color: C.accent, opacity: 0.8 };
-    const w1 = bone("WingArm_" + k, wBase, wElbow, 1.1, torso, wingBone);
-    const w2 = bone("WingHand_" + k, wElbow, wTip, 0.9, w1, wingBone);
-    [w1, w2].forEach((wb) => {
-      const mem = decor(wb, [0.25, 5.5, wb.size[2]], mul(wb.W, T(0, -2.9, 0)), { color: C.membrane, strength: 1.2 });
-      voxels(mem, 9);
-    });
-
-    const hip = V(3.4 * s, 9, 0.5);
-    const knee = hip.clone().add(V(1.2 * s, -3, -2.6));
-    const ankle = knee.clone().add(V(0.2 * s, -4.6, 1.4));
-    const thigh = bone("Thigh_" + k, hip, knee, 3.2, hips);
-    const shin = bone("Shin_" + k, knee, ankle, 2.4, thigh);
-    voxels(thigh, 10); voxels(shin, 8);
-    const footJ = lookAtCF(ankle, ankle.clone().add(V(0, 0, -1)));
-    const foot = rigPart("Foot_" + k, [2.8, 1.2, 3.6], mul(footJ, T(0, -0.3, -1.2)), {}, shin, footJ);
-    for (let t = -1; t <= 1; t++) {
-      const b = posOf(mul(foot.W, T(t * 0.9, -0.2, -1.8)));
-      claw(foot, b, b.clone().add(V(t * 0.3, -0.3, -1.2)), 0.35);
+    // wing: arm, hand, four spars fanning from the wrist, scalloped membrane
+    const wBase = V(2.6 * s, 21.2, 2.6);
+    const wElbow = wBase.clone().add(V(4.6 * s, 5.4, 2.6));
+    const wWrist = wElbow.clone().add(V(4.6 * s, 2.6, 1.2));
+    const boneOpt = { kind: "neon", color: C.accent, opacity: 0.9 };
+    const w1 = bone("WingArm_" + k, wBase, wElbow, 1.3, torso, boneOpt);
+    const w2 = bone("WingHand_" + k, wElbow, wWrist, 1.0, w1, boneOpt);
+    decor(w2, [1.5, 1.5, 1.5], Tv(wWrist), { kind: "neon", color: C.gold, shape: "ball" });
+    claw(w2, wWrist, wWrist.clone().add(V(0.5 * s, 1.3, -1.3)), 0.42);
+    const tips = [V(5 * s, 7, 0.8), V(8.5 * s, 3, 1.8), V(8.5 * s, -2.5, 2.8), V(6 * s, -8, 3.4)].map((o) => wWrist.clone().add(o));
+    const spars = tips.map((tip, i) => bone("WingFinger" + (i + 1) + "_" + k, wWrist, tip, 0.55 - i * 0.05, w2, boneOpt));
+    tips.forEach((tip, i) => decor(spars[i], [0.75, 1.5, 0.75], mul(Tv(tip), R(0, 0, rad(45 * s))), { kind: "neon", color: 0x9ff0ff, shape: "octa" }));
+    const edge = 0xf3b8ff;
+    for (let i = 0; i < 3; i++) {
+      const a = tips[i], b = tips[i + 1];
+      const mid = a.clone().lerp(b, 0.5).lerp(wWrist, 0.24);
+      tri(spars[i], wWrist, a, mid, 0.35, 1, 0.85);
+      tri(spars[i + 1], wWrist, mid, b, 0.35, 0.85, 1);
+      bar(spars[i], a, mid, 0.2, edge, 0.9);
+      bar(spars[i + 1], mid, b, 0.2, edge, 0.9);
     }
+    const bodyRear = V(2.2 * s, 12.5, 4.2);
+    const midIn = tips[3].clone().lerp(bodyRear, 0.5).lerp(wWrist, 0.18);
+    tri(w1, wBase, wElbow, wWrist, 0.1, 0.3, 0.35);
+    tri(w1, wBase, wWrist, bodyRear, 0.1, 0.35, 0.6);
+    tri(w2, wWrist, tips[3], midIn, 0.35, 1, 0.85);
+    tri(w2, wWrist, midIn, bodyRear, 0.35, 0.85, 0.6);
+    bar(w2, tips[3], midIn, 0.2, edge, 0.9);
+    bar(w2, midIn, bodyRear, 0.2, edge, 0.9);
+
+    // digitigrade leg: thigh, shin, metatarsal, foot
+    const hip = V(3.6 * s, 9.6, 1.2);
+    const knee = hip.clone().add(V(1 * s, -3.2, -2.6));
+    const hock = knee.clone().add(V(0.2 * s, -2.6, 2.8));
+    const ankle = hock.clone().add(V(0, -2.3, -0.8));
+    const thigh = bone("Thigh_" + k, hip, knee, 3.4, hips);
+    voxels(decor(thigh, [4.6, 5.6, 6.2], Tv(hip.clone().add(V(0.6 * s, -0.6, 0.2))), { shape: "ball" }), 10);
+    const shin = bone("Shin_" + k, knee, hock, 2.4, thigh);
+    const meta = bone("Metatarsal_" + k, hock, ankle, 1.8, shin);
+    voxels(shin, 6); voxels(meta, 4);
+    spike(meta, hock, V(0, 0.3, 1.2), 1.4, 0.45, C.gold);
+    const footJ = lookAtCF(ankle, ankle.clone().add(V(0, 0, -1)));
+    const foot = rigPart("Foot_" + k, [2.8, 1.1, 3.4], mul(footJ, T(0, -0.3, -1.1)), { shape: "ball" }, meta, footJ);
+    for (let t = -1; t <= 1; t++) {
+      const b = posOf(mul(foot.W, T(t * 0.9, -0.1, -1.5)));
+      claw(foot, b, b.clone().add(V(t * 0.3, -0.35, -1.3)), 0.38);
+    }
+    claw(foot, posOf(mul(foot.W, T(0, -0.1, 1.4))), posOf(mul(foot.W, T(0, -0.4, 2.4))), 0.32);
   });
 
-  // tail
+  // ---- tail: 8 segments, spikes, spade fin ----
   (function () {
-    let pos = V(0, 8.5, 4);
+    let pos = V(0, 8.5, 4.5);
     let dir = V(0, -0.35, 1).normalize();
     let prev = hips;
-    const count = 7;
+    const count = 8;
     for (let j = 1; j <= count; j++) {
-      const w = 3 - (j - 1) * (2.2 / (count - 1));
-      const next = pos.clone().add(dir.clone().multiplyScalar(2.8));
+      const w = 3.4 - (j - 1) * (2.6 / (count - 1));
+      const next = pos.clone().add(dir.clone().multiplyScalar(2.7));
       const seg = bone("Tail" + j, pos, next, w, prev);
       voxels(seg, Math.max(3, 9 - j));
+      spike(seg, posOf(mul(seg.W, T(0, w * 0.45, 0))), rotVec(seg.W, V(0, 1, 0.8)), 0.7 + w * 0.4, 0.3 + w * 0.13, j % 2 ? C.gold : C.accent);
       prev = seg; pos = next;
-      dir = dir.clone().add(V(0.12, 0.08, 0)).normalize();
+      dir = dir.clone().add(V(0.12, 0.07, 0)).normalize();
     }
-    decor(prev, [1.2, 2.6, 1.2], mul(Tv(pos), R(rad(70), 0, rad(45))), { kind: "neon", color: 0x78ebff, shape: "octa" });
+    const side = dir.clone().cross(V(0, 1, 0)).normalize();
+    const back = pos.clone().sub(dir.clone().multiplyScalar(0.6));
+    const tipP = pos.clone().add(dir.clone().multiplyScalar(3.4));
+    const left = pos.clone().add(side.clone().multiplyScalar(1.9)).add(dir.clone().multiplyScalar(0.5));
+    const right = pos.clone().add(side.clone().multiplyScalar(-1.9)).add(dir.clone().multiplyScalar(0.5));
+    tri(prev, back, left, tipP, 0.45, 1, 1);
+    tri(prev, back, tipP, right, 0.45, 1, 1);
+    bar(prev, left, tipP, 0.2, 0xf3b8ff); bar(prev, right, tipP, 0.2, 0xf3b8ff);
+    decor(prev, [1, 2.2, 1], mul(Tv(tipP), R(rad(70), 0, rad(45))), { kind: "neon", color: 0x78ebff, shape: "octa" });
   })();
+  buildMembranes();
 
   // sparkles around the chest
   (function () {
@@ -601,9 +703,11 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       setAuto("WingHand_" + k, R(sin(t * (2.4 + roar * 2) - 0.7) * 0.35, 0, 0));
       setAuto("Thigh_" + k, R(sin(t * 1.4 + ph) * 0.08, 0, 0));
       setAuto("Shin_" + k, R(-sin(t * 1.4 + ph) * 0.1, 0, 0));
+      setAuto("Metatarsal_" + k, R(sin(t * 1.4 + ph) * 0.08, 0, 0));
       setAuto("Foot_" + k, R(sin(t * 1.4 + ph) * 0.1, 0, 0));
+      for (let i = 1; i <= 4; i++) setAuto("WingFinger" + i + "_" + k, R(sin(t * (2.4 + roar * 2) - 1 - i * 0.2) * 0.1, sin(t * 1.2 + i) * 0.05, 0));
     });
-    for (let j = 1; j <= 7; j++) setAuto("Tail" + j, R(sin(t * 1.8 - j * 0.6) * 0.08, sin(t * 1.5 - j * 0.7) * (0.18 + roar * 0.15), 0));
+    for (let j = 1; j <= 8; j++) setAuto("Tail" + j, R(sin(t * 1.8 - j * 0.6) * 0.08, sin(t * 1.5 - j * 0.7) * (0.18 + roar * 0.15), 0));
   }
 
   function applyPoses() {
@@ -675,11 +779,12 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
   const PART = {
     RootJoint: "ทั้งตัว (ลอยขึ้นลง)", Torso: "ลำตัว / อก", CoreSpin: "วงแหวนกลางอก",
     Neck: "คอ", Head: "หัว", Jaw: "กราม", UpperArm: "ต้นแขน", Forearm: "แขนท่อนล่าง", Hand: "มือ",
-    Finger: "นิ้ว", WingArm: "ปีกท่อนใน", WingHand: "ปีกท่อนนอก", Thigh: "ต้นขา", Shin: "หน้าแข้ง", Foot: "เท้า", Tail: "หาง",
+    Finger: "นิ้ว", WingArm: "ปีกท่อนใน", WingHand: "ปีกท่อนนอก", Thigh: "ต้นขา", Metatarsal: "ข้อเท้า", Shin: "หน้าแข้ง", Foot: "เท้า", Tail: "หาง",
   };
   function label(name) {
     if (PART[name]) return PART[name];
     let m = name.match(/^Neck(\d)_(\w)$/); if (m) return "คอ" + SIDE[m[2]] + " ท่อน " + m[1];
+    m = name.match(/^WingFinger(\d)_(\w)$/); if (m) return "ก้านปีก " + m[1] + " ปีก" + SIDE[m[2]];
     m = name.match(/^Finger(\d)_(\w)$/); if (m) return "นิ้วที่ " + m[1] + " มือ" + SIDE[m[2]];
     m = name.match(/^Tail(\d)$/); if (m) return "หาง ท่อน " + m[1];
     m = name.match(/^(\w+)_(\w)$/); if (m) return (m[1] === "Jaw" ? "กรามหัว" : PART[m[1]] || m[1]) + SIDE[m[2]];
