@@ -359,20 +359,25 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
 
   // ---- membranes that stretch with the bones (no tearing) ----
   // a point is pinned to a bone, or is a weighted mix of other points
-  function pin(part, p) { return { node: part.node, local: p.clone().applyMatrix4(part.J.clone().invert()) }; }
+  function pin(part, p) { return { node: part.node, local: p.clone().applyMatrix4(part.J.clone().invert()), rest: p.clone() }; }
   function mixPt(list) { return { mix: list }; }
   const membraneMat = new THREE.ShaderMaterial({
     uniforms: { uTime, uSkin },
-    vertexShader: "attribute float aT; varying float vT; varying vec3 vW; void main(){ vT = aT; vW = position; gl_Position = projectionMatrix * viewMatrix * vec4(position,1.0); }",
+    vertexShader: "attribute float aT; attribute vec3 aRest; varying float vT; varying vec3 vR; void main(){ vT = aT; vR = aRest; gl_Position = projectionMatrix * viewMatrix * vec4(position,1.0); }",
     fragmentShader: [
-      "uniform float uTime; uniform float uSkin; varying float vT; varying vec3 vW;",
-      "void main(){ vec3 deep = vec3(0.2, 0.09, 0.5); vec3 mid = vec3(0.5, 0.3, 1.0); vec3 edge = vec3(1.0, 0.58, 0.95);",
+      "uniform float uTime; uniform float uSkin; varying float vT; varying vec3 vR;",
+      "float hash(vec3 p){ return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }",
+      "void main(){ vec3 deep = vec3(0.24, 0.12, 0.62); vec3 mid = vec3(0.48, 0.32, 1.0); vec3 edge = vec3(0.95, 0.6, 1.0);",
       "vec3 c = vT < 0.6 ? mix(deep, mid, vT / 0.6) : mix(mid, edge, (vT - 0.6) / 0.4);",
-      "vec3 g = abs(fract(vW * 2.2) - 0.5); float grid = smoothstep(0.42, 0.5, max(max(g.x, g.y), g.z));",
-      "c = mix(c, c * 0.45, grid * 0.6);",
-      "float ripple = smoothstep(0.9, 1.0, sin(length(vW) * 2.4 - uTime * 2.5) * 0.5 + 0.5);",
-      "c += vec3(0.55, 0.8, 1.0) * ripple * 0.3;",
-      "gl_FragColor = vec4(c, mix(0.5, 0.88, vT)); }",
+      "vec3 q = vec3(vR.xy * 1.7, 0.5); vec3 cell = floor(q); float h = hash(cell);",
+      "c *= 0.72 + 0.5 * h;",
+      "if (h > 0.93) c = mix(c, vec3(0.86, 0.8, 1.0), 0.7);",
+      "if (h < 0.02) c = mix(c, vec3(0.5, 0.92, 1.0), 0.7);",
+      "vec2 g = abs(fract(q.xy) - 0.5); float gap = smoothstep(0.36, 0.47, max(g.x, g.y));",
+      "float wave = smoothstep(0.85, 1.0, sin(cell.x * 0.7 + cell.y * 0.9 - uTime * 3.0) * 0.5 + 0.5);",
+      "c += vec3(0.35, 0.3, 0.6) * wave * 0.35;",
+      "float a = mix(0.62, 0.92, vT) * (1.0 - gap * 0.7);",
+      "gl_FragColor = vec4(c * (1.0 - gap * 0.5), a); }",
     ].join("\n"),
     transparent: true, side: THREE.DoubleSide, depthWrite: false,
   });
@@ -381,9 +386,31 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
   function makeSheet(points, tris, edges) {
     const pos = new Float32Array(tris.length * 9), tt = new Float32Array(tris.length * 3);
     tris.forEach((tr, i) => { tt[i * 3] = tr[3]; tt[i * 3 + 1] = tr[4]; tt[i * 3 + 2] = tr[5]; });
+    points.forEach((p) => {
+      if (p.mix) p.rest = p.mix.reduce((acc, [j, f]) => acc.addScaledVector(points[j].rest, f), V(0, 0, 0));
+    });
+    // flat 2D coordinates across the sheet so its pixel grid is square, not diagonal
+    const nrm = V(0, 0, 0);
+    tris.forEach((tr) => {
+      const a = points[tr[0]].rest, b = points[tr[1]].rest, c = points[tr[2]].rest;
+      const n = b.clone().sub(a).cross(c.clone().sub(a));
+      nrm.add(n.dot(nrm) < 0 ? n.negate() : n);
+    });
+    nrm.normalize();
+    const uAx = Math.abs(nrm.y) > 0.95 ? V(1, 0, 0) : V(0, 1, 0).cross(nrm).normalize();
+    const vAx = nrm.clone().cross(uAx);
+    const origin = points[0].rest;
+    const rest = new Float32Array(tris.length * 9);
+    tris.forEach((tr, i) => {
+      for (let k = 0; k < 3; k++) {
+        const d = points[tr[k]].rest.clone().sub(origin);
+        rest.set([d.dot(uAx), d.dot(vAx), 0], i * 9 + k * 3);
+      }
+    });
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
     g.setAttribute("aT", new THREE.BufferAttribute(tt, 1));
+    g.setAttribute("aRest", new THREE.BufferAttribute(rest, 3));
     const mesh = new THREE.Mesh(g, membraneMat);
     mesh.frustumCulled = false;
     scene.add(mesh);
@@ -603,16 +630,17 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
 
     // wing: arm, hand, four spars fanning from the wrist, scalloped membrane
     const wBase = V(2.6 * s, 21.2, 2.6);
-    const wElbow = wBase.clone().add(V(4.6 * s, 5.4, 2.6));
-    const wWrist = wElbow.clone().add(V(4.6 * s, 2.6, 1.2));
-    const boneOpt = { kind: "neon", color: C.accent, opacity: 0.9 };
-    const w1 = bone("WingArm_" + k, wBase, wElbow, 1.3, torso, boneOpt);
-    const w2 = bone("WingHand_" + k, wElbow, wWrist, 1.0, w1, boneOpt);
-    decor(w2, [1.5, 1.5, 1.5], Tv(wWrist), { kind: "neon", color: C.gold, shape: "ball" });
-    claw(w2, wWrist, wWrist.clone().add(V(0.5 * s, 1.3, -1.3)), 0.42);
-    const tips = [V(5 * s, 7, 0.8), V(8.5 * s, 3, 1.8), V(8.5 * s, -2.5, 2.8), V(6 * s, -8, 3.4)].map((o) => wWrist.clone().add(o));
-    const spars = tips.map((tip, i) => bone("WingFinger" + (i + 1) + "_" + k, wWrist, tip, 0.55 - i * 0.05, w2, boneOpt));
-    tips.forEach((tip, i) => decor(spars[i], [0.75, 1.5, 0.75], mul(Tv(tip), R(0, 0, rad(45 * s))), { kind: "neon", color: 0x9ff0ff, shape: "octa" }));
+    const wElbow = wBase.clone().add(V(4.6 * s, 2.4, 3.5));
+    const wWrist = wElbow.clone().add(V(5.2 * s, 1.6, -0.5));
+    const boneOpt = { kind: "neon", color: 0x6f52e8, opacity: 1 };
+    const w1 = bone("WingArm_" + k, wBase, wElbow, 1.0, torso, boneOpt);
+    const w2 = bone("WingHand_" + k, wElbow, wWrist, 0.8, w1, boneOpt);
+    decor(w1, [1.1, 1.1, 1.1], Tv(wElbow), { kind: "neon", color: 0x9a80ff, shape: "ball" });
+    decor(w2, [1.2, 1.2, 1.2], Tv(wWrist), { kind: "neon", color: C.gold, shape: "ball" });
+    claw(w2, wWrist, wWrist.clone().add(V(0.4 * s, 1.4, -1.2)), 0.36);
+    const tips = [V(6 * s, 3.5, 1.5), V(8.5 * s, -1, 3), V(7 * s, -6, 4), V(3.5 * s, -9.5, 4.5)].map((o) => wWrist.clone().add(o));
+    const spars = tips.map((tip, i) => bone("WingFinger" + (i + 1) + "_" + k, wWrist, tip, 0.42 - i * 0.04, w2, boneOpt));
+    tips.forEach((tip, i) => decor(spars[i], [0.55, 1.1, 0.55], mul(Tv(tip), R(0, 0, rad(45 * s))), { kind: "neon", color: 0x9ff0ff, shape: "octa" }));
     const bodyRear = V(2.2 * s, 12.5, 4.2);
     const pts = [pin(w1, wBase), pin(w2, wElbow), pin(w2, wWrist)];
     tips.forEach((tip, i) => pts.push(pin(spars[i], tip)));
@@ -790,8 +818,8 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     const beat = t * (2.2 + roar * 2.2);
     [["L", -1], ["R", 1]].forEach(([k, s]) => {
       const down = sin(beat), lag = sin(beat - 0.9);
-      setAuto("WingArm_" + k, mul(axisRot("WingArm_" + k, AXIS_Z, s * (down * (0.6 + roar * 0.15) - 0.25)), axisRot("WingArm_" + k, AXIS_Y, -s * down * 0.12)));
-      setAuto("WingHand_" + k, axisRot("WingHand_" + k, AXIS_Z, s * lag * 0.35));
+      setAuto("WingArm_" + k, mul(axisRot("WingArm_" + k, AXIS_Z, s * (down * (0.55 + roar * 0.2) - 0.12)), axisRot("WingArm_" + k, AXIS_Y, -s * down * 0.15)));
+      setAuto("WingHand_" + k, axisRot("WingHand_" + k, AXIS_Z, s * lag * 0.3));
       for (let i = 1; i <= 4; i++) setAuto("WingFinger" + i + "_" + k, axisRot("WingFinger" + i + "_" + k, AXIS_Z, s * sin(beat - 1.3 - i * 0.15) * 0.12));
     });
     [["L", 0], ["R", Math.PI]].forEach(([k, ph]) => {

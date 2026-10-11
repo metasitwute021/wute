@@ -229,7 +229,9 @@ local function triangle(parent, a, b, c, t)
 		w.Size = piece[1]
 		w.CFrame = piece[2]
 		w.Material = Enum.Material.Glass
-		w.Color = membraneColor(t)
+		local shade = rng:NextNumber(0.8, 1.15)
+		local mc = membraneColor(t)
+		w.Color = Color3.new(math.min(1, mc.R * shade), math.min(1, mc.G * shade), math.min(1, mc.B * shade))
 		w.Transparency = 0.55 - 0.3 * t
 		w.Anchored = true
 		w.CanCollide = false
@@ -456,25 +458,28 @@ for _, side in ipairs({ { "L", -1 }, { "R", 1 } }) do
 
 	-- ปีก: ต้นปีก, ปลายปีก, ก้านปีก 4 ก้านแผ่จากข้อมือปีก, พังผืดขอบหยัก
 	local wBase = Vector3.new(2.6 * s, 21.2, 2.6)
-	local wElbow = wBase + Vector3.new(4.6 * s, 5.4, 2.6)
-	local wWrist = wElbow + Vector3.new(4.6 * s, 2.6, 1.2)
-	local boneOpts = { material = Enum.Material.Neon, color = CONFIG.AccentColor, transparency = 0.1 }
-	local w1 = bone("WingArm_" .. k, wBase, wElbow, 1.3, torso, boneOpts)
-	local w2 = bone("WingHand_" .. k, wElbow, wWrist, 1.0, w1, boneOpts)
-	decor(w2, "WingKnuckle", Vector3.new(1.5, 1.5, 1.5), CFrame.new(wWrist), {
+	local wElbow = wBase + Vector3.new(4.6 * s, 2.4, 3.5)
+	local wWrist = wElbow + Vector3.new(5.2 * s, 1.6, -0.5)
+	local boneOpts = { material = Enum.Material.Neon, color = Color3.fromRGB(111, 82, 232), transparency = 0 }
+	local w1 = bone("WingArm_" .. k, wBase, wElbow, 1.0, torso, boneOpts)
+	local w2 = bone("WingHand_" .. k, wElbow, wWrist, 0.8, w1, boneOpts)
+	decor(w1, "WingElbow", Vector3.new(1.1, 1.1, 1.1), CFrame.new(wElbow), {
+		shape = Enum.PartType.Ball, material = Enum.Material.Neon, color = Color3.fromRGB(154, 128, 255), transparency = 0,
+	})
+	decor(w2, "WingKnuckle", Vector3.new(1.2, 1.2, 1.2), CFrame.new(wWrist), {
 		shape = Enum.PartType.Ball, material = Enum.Material.Neon, color = CONFIG.GoldColor, transparency = 0,
 	})
-	claw(w2, wWrist, wWrist + Vector3.new(0.5 * s, 1.3, -1.3), 0.42)
+	claw(w2, wWrist, wWrist + Vector3.new(0.4 * s, 1.4, -1.2), 0.36)
 
 	local tipOffsets = {
-		Vector3.new(5 * s, 7, 0.8), Vector3.new(8.5 * s, 3, 1.8),
-		Vector3.new(8.5 * s, -2.5, 2.8), Vector3.new(6 * s, -8, 3.4),
+		Vector3.new(6 * s, 3.5, 1.5), Vector3.new(8.5 * s, -1, 3),
+		Vector3.new(7 * s, -6, 4), Vector3.new(3.5 * s, -9.5, 4.5),
 	}
 	local tips, spars = {}, {}
 	for i, o in ipairs(tipOffsets) do
 		tips[i] = wWrist + o
-		spars[i] = bone("WingFinger" .. i .. "_" .. k, wWrist, tips[i], 0.55 - (i - 1) * 0.05, w2, boneOpts)
-		decor(spars[i], "WingTipCrystal", Vector3.new(0.75, 1.5, 0.75), CFrame.new(tips[i]) * A(0, 0, rad(45 * s)), {
+		spars[i] = bone("WingFinger" .. i .. "_" .. k, wWrist, tips[i], 0.42 - (i - 1) * 0.04, w2, boneOpts)
+		decor(spars[i], "WingTipCrystal", Vector3.new(0.55, 1.1, 0.55), CFrame.new(tips[i]) * A(0, 0, rad(45 * s)), {
 			material = Enum.Material.Neon, color = Color3.fromRGB(160, 240, 255), transparency = 0,
 		})
 	end
@@ -837,8 +842,8 @@ local function animateBody(t)
 		local wing = motors["WingArm_" .. k]
 		if wing then
 			wing.motor.C0 = wing.base
-				* CFrame.fromAxisAngle(wing.axisZ, s * (down * 0.6 - 0.25))
-				* CFrame.fromAxisAngle(wing.axisY, -s * down * 0.12)
+				* CFrame.fromAxisAngle(wing.axisZ, s * (down * 0.55 - 0.12))
+				* CFrame.fromAxisAngle(wing.axisY, -s * down * 0.15)
 		end
 	end
 	for _, side in ipairs({ { "L", 0 }, { "R", math.pi } }) do
