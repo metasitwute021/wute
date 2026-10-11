@@ -245,6 +245,12 @@ local function pt(cf, x, y, z)
 	return (cf * CFrame.new(x, y, z)).Position
 end
 
+-- กำหนดแบบพิกเซล: "head" = ละเอียดและสว่างสุด, "limb" = ละเอียดเงาชัด
+local function tag(part, style)
+	part:SetAttribute("PixelStyle", style)
+	return part
+end
+
 ---------------------------------------------------------------------------
 -- ลำตัว: อก ท้อง หลังโหนก ไหล่ สะโพก
 ---------------------------------------------------------------------------
@@ -252,9 +258,9 @@ end
 local root = newPart("HumanoidRootPart", Vector3.new(2, 2, 2), CFrame.new(0, 10, 0), { transparency = 1 })
 model.PrimaryPart = root
 
-local hips = ellipsoid("Hips", Vector3.new(8.5, 7, 8.5), CFrame.new(0, 10, 1.2))
+local hips = tag(ellipsoid("Hips", Vector3.new(8.5, 7, 8.5), CFrame.new(0, 10, 1.2)), "limb")
 motor(root, hips, CFrame.new(0, 10, 0), "RootJoint")
-voxels(hips, 18)
+voxels(hips, 6)
 
 local torso = ellipsoid("Torso", Vector3.new(10, 9.5, 8), CFrame.new(0, 17.5, -0.6))
 motor(hips, torso, CFrame.new(0, 12.5, 0))
@@ -273,8 +279,8 @@ for i = 0, 6 do
 	local w = 3.7 - math.abs(i - 3) * 0.28
 	decor(torso, "BellyPlate", Vector3.new(w, 0.78, 0.7), CFrame.new(0, y, -3.35 - (y - 9.8) * 0.2) * A(rad(-12), 0, 0), {
 		material = Enum.Material.Neon,
-		color = Color3.fromRGB(230, 216, 255),
-		transparency = 0.2,
+		color = Color3.fromRGB(164, 140, 245),
+		transparency = 0.15,
 	})
 end
 
@@ -379,12 +385,11 @@ for _, n in ipairs(NECKS) do
 
 	-- หัว
 	local headCF = lookAt(pos, pos + Vector3.new(n.dir.X * 0.5, -0.15, -1))
-	local head = ellipsoid("Head_" .. key, Vector3.new(2.8, 2.2, 4.2), headCF * CFrame.new(0, 0.3, -1.7))
+	local head = tag(ellipsoid("Head_" .. key, Vector3.new(2.8, 2.2, 4.2), headCF * CFrame.new(0, 0.3, -1.7)), "head")
 	motor(prev, head, headCF)
 	local hcf = head.CFrame
-	decor(head, "Skull", Vector3.new(2.6, 2, 2.6), hcf * CFrame.new(0, 0.15, 0.3))
-	voxels(head, 8)
-	decor(head, "Snout", Vector3.new(2.1, 1.35, 2.8), hcf * CFrame.new(0, -0.15, -2.9))
+	tag(decor(head, "Skull", Vector3.new(2.6, 2, 2.6), hcf * CFrame.new(0, 0.15, 0.3)), "head")
+	tag(decor(head, "Snout", Vector3.new(2.1, 1.35, 2.8), hcf * CFrame.new(0, -0.15, -2.9)), "head")
 
 	for _, s in ipairs({ -1, 1 }) do
 		decorEllipsoid(head, "Eye", Vector3.new(0.65, 0.5, 0.75), hcf * CFrame.new(s * 1.12, 0.5, -1), {
@@ -410,7 +415,7 @@ for _, n in ipairs(NECKS) do
 
 	-- กราม (ขยับอ้าปากได้)
 	local jawCF = headCF * CFrame.new(0, -0.6, -0.4)
-	local jaw = newPart("Jaw_" .. key, Vector3.new(2.1, 0.7, 4.3), jawCF * CFrame.new(0, -0.35, -2.15))
+	local jaw = tag(newPart("Jaw_" .. key, Vector3.new(2.1, 0.7, 4.3), jawCF * CFrame.new(0, -0.35, -2.15)), "head")
 	motor(head, jaw, jawCF)
 	spike(jaw, pt(jaw.CFrame, 0, -0.3, 1.2), jaw.CFrame:VectorToWorldSpace(Vector3.new(0, -0.6, 1)), 1.1, 0.35, CONFIG.AccentColor)
 	for t = 0, 4 do
@@ -431,18 +436,16 @@ end
 for _, side in ipairs({ { "L", -1 }, { "R", 1 } }) do
 	local k, s = side[1], side[2]
 
-	-- แขน: ยกออกด้านข้าง ถือดาวในมือ
+	-- แขน: ห้อยลงข้างลำตัว ปลายแขนยื่นมาด้านหน้า
 	local shoulder = Vector3.new(5 * s, 19.5, -1)
-	local elbow = shoulder + Vector3.new(4.2 * s, 1, -1.2)
-	local wrist = elbow + Vector3.new(1.5 * s, 2.5, -2.5)
-	local upper = bone("UpperArm_" .. k, shoulder, elbow, 2.4, torso)
-	local fore = bone("Forearm_" .. k, elbow, wrist, 2, upper)
-	voxels(upper, 8)
-	voxels(fore, 7)
+	local elbow = shoulder + Vector3.new(1.6 * s, -3.8, -1.2)
+	local wrist = elbow + Vector3.new(0.4 * s, -2.8, -2.2)
+	local upper = tag(bone("UpperArm_" .. k, shoulder, elbow, 2.4, torso), "limb")
+	local fore = tag(bone("Forearm_" .. k, elbow, wrist, 2, upper), "limb")
 	spike(fore, elbow, Vector3.new(s * 0.4, -0.2, 1), 1.5, 0.5)
 
 	local handCF = lookAt(wrist, wrist + (wrist - elbow))
-	local hand = newPart("Hand_" .. k, Vector3.new(2.2, 2.2, 2.2), handCF, { shape = Enum.PartType.Ball })
+	local hand = tag(newPart("Hand_" .. k, Vector3.new(2.2, 2.2, 2.2), handCF, { shape = Enum.PartType.Ball }), "limb")
 	motor(fore, hand, handCF)
 	for f = 1, 3 do
 		local x = (f - 2) * 0.65
@@ -498,16 +501,14 @@ for _, side in ipairs({ { "L", -1 }, { "R", 1 } }) do
 	local knee = hip + Vector3.new(1 * s, -3.2, -2.6)
 	local hock = knee + Vector3.new(0.2 * s, -2.6, 2.8)
 	local ankle = hock + Vector3.new(0, -2.3, -0.8)
-	local thigh = bone("Thigh_" .. k, hip, knee, 3.4, hips)
-	voxels(decorEllipsoid(thigh, "Haunch", Vector3.new(4.6, 5.6, 6.2), CFrame.new(hip + Vector3.new(0.6 * s, -0.6, 0.2))), 10)
-	local shin = bone("Shin_" .. k, knee, hock, 2.4, thigh)
-	local meta = bone("Metatarsal_" .. k, hock, ankle, 1.8, shin)
-	voxels(shin, 6)
-	voxels(meta, 4)
+	local thigh = tag(bone("Thigh_" .. k, hip, knee, 3.4, hips), "limb")
+	voxels(tag(decorEllipsoid(thigh, "Haunch", Vector3.new(4.6, 5.6, 6.2), CFrame.new(hip + Vector3.new(0.6 * s, -0.6, 0.2))), "limb"), 3)
+	local shin = tag(bone("Shin_" .. k, knee, hock, 2.4, thigh), "limb")
+	local meta = tag(bone("Metatarsal_" .. k, hock, ankle, 1.8, shin), "limb")
 	spike(meta, hock, Vector3.new(0, 0.3, 1.2), 1.4, 0.45)
 
 	local footCF = CFrame.lookAt(ankle, ankle + Vector3.new(0, 0, -1))
-	local foot = ellipsoid("Foot_" .. k, Vector3.new(2.8, 1.1, 3.4), footCF * CFrame.new(0, -0.3, -1.1))
+	local foot = tag(ellipsoid("Foot_" .. k, Vector3.new(2.8, 1.1, 3.4), footCF * CFrame.new(0, -0.3, -1.1)), "limb")
 	motor(meta, foot, footCF)
 	for t = -1, 1 do
 		local base = pt(foot.CFrame, t * 0.9, -0.1, -1.5)
@@ -566,8 +567,18 @@ local NEIGHBORS = {
 }
 
 -- เติมพิกเซลสี่เหลี่ยมบนผิวของชิ้นตามตาราง (เฉพาะชั้นนอกสุด)
+local PIX_HEAD_BASE = Color3.fromRGB(125, 96, 245)
+local PIX_STYLE = {
+	body = { size = 1, gap = 0.84 },
+	limb = { size = 0.8, gap = 0.8 },
+	head = { size = 0.6, gap = 0.78 },
+}
+
 local function pixelShell(part)
-	local size, g = part.Size, CONFIG.PixelSize
+	local style = part:GetAttribute("PixelStyle")
+	local st = PIX_STYLE[style] or PIX_STYLE.body
+	local isHead = style == "head"
+	local size, g = part.Size, CONFIG.PixelSize * st.size
 	local nx = math.max(1, math.round(size.X / g))
 	local ny = math.max(1, math.round(size.Y / g))
 	local nz = math.max(1, math.round(size.Z / g))
@@ -607,11 +618,26 @@ local function pixelShell(part)
 						end
 						nrm = part.CFrame:VectorToWorldSpace(nrm.Unit)
 						local roll = rng:NextNumber()
-						local c = roll < 0.015 and PIX_CYAN or roll < 0.035 and PIX_WHITE or roll < 0.13 and PIX_LAV or PIX_BASE
-						local lit = (0.38 + 0.72 * math.max(nrm:Dot(LIGHT), 0) + 0.18 * math.max(-nrm.Z, 0)) * rng:NextNumber(0.82, 1.12)
+						local c
+						if roll < (isHead and 0.03 or 0.015) then
+							c = PIX_CYAN
+						elseif roll < (isHead and 0.08 or 0.035) then
+							c = PIX_WHITE
+						elseif roll < (isHead and 0.38 or style == "limb" and 0.18 or 0.13) then
+							c = PIX_LAV
+						else
+							c = isHead and PIX_HEAD_BASE or PIX_BASE
+						end
+						local lit
+						if style then
+							lit = 0.28 + 0.9 * math.max(nrm:Dot(LIGHT), 0) + 0.22 * math.max(-nrm.Z, 0)
+						else
+							lit = 0.38 + 0.72 * math.max(nrm:Dot(LIGHT), 0) + 0.18 * math.max(-nrm.Z, 0)
+						end
+						lit = lit * rng:NextNumber(0.82, 1.12)
 						local px = Instance.new("Part")
 						px.Name = "Pixel"
-						px.Size = cell * 0.84
+						px.Size = cell * st.gap
 						px.CFrame = part.CFrame * CFrame.new(lp)
 						px.Material = roll < 0.035 and Enum.Material.Neon or Enum.Material.SmoothPlastic
 						px.Color = Color3.new(math.min(1, c.R * lit), math.min(1, c.G * lit), math.min(1, c.B * lit))
@@ -635,7 +661,7 @@ if CONFIG.PixelSkin then
 	local bodyParts = {}
 	for _, d in ipairs(model:GetDescendants()) do
 		if d:IsA("Part") and d.Material == CONFIG.BodyMaterial and d.Transparency < 1
-			and math.min(d.Size.X, d.Size.Y, d.Size.Z) >= 0.9 then
+			and math.min(d.Size.X, d.Size.Y, d.Size.Z) >= (d:GetAttribute("PixelStyle") == "head" and 0.6 or 0.9) then
 			table.insert(bodyParts, d)
 		end
 	end
@@ -817,8 +843,8 @@ local function animateBody(t)
 	end
 	for _, side in ipairs({ { "L", 0 }, { "R", math.pi } }) do
 		local k, ph = side[1], side[2]
-		pose("UpperArm_" .. k, A(sin(t * 1.2 + ph) * 0.25, 0, sin(t * 0.9 + ph) * 0.2))
-		pose("Forearm_" .. k, A(sin(t * 1.6 + ph) * 0.3, 0, 0))
+		pose("UpperArm_" .. k, A(sin(t * 1.2 + ph) * 0.12, 0, sin(t * 0.9 + ph) * 0.06))
+		pose("Forearm_" .. k, A(sin(t * 1.6 + ph) * 0.15, 0, 0))
 		pose("Hand_" .. k, A(sin(t * 2 + ph) * 0.3, 0, sin(t * 1.3 + ph) * 0.4))
 		for f = 1, 3 do
 			pose("Finger" .. f .. "_" .. k, A((sin(t * 2.5 + f + ph) + 1) * 0.25, 0, 0))

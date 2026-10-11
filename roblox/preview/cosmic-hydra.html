@@ -217,6 +217,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
         "gl_FragColor = vec4(c, (0.09 + 0.6 * f) * uStrength); }",
       ].join("\n"),
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      userData: { base: strength },
     }));
   }
   const uSkin = { value: 0.85 };
@@ -294,7 +295,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       skin.matrix.copy(mesh.matrix).multiply(new THREE.Matrix4().makeScale(0.97, 0.97, 0.97));
       skin.renderOrder = -1;
       owner.node.add(skin);
-      if (Math.min(size[0], size[1], size[2]) >= 0.9) pixelShell(owner, W, size, o.shape || "block");
+      if (Math.min(size[0], size[1], size[2]) >= (o.pix === "head" ? 0.6 : 0.9)) pixelShell(owner, W, size, o.shape || "block", o.pix);
     }
   }
 
@@ -421,12 +422,19 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
   }
 
   // ---- pixel skin: small square pixels on a grid over each body shape ----
-  const PIXEL = 0.45;
+  // pixel grid per style: head = finest and brightest, limb = fine with strong shading
+  const PIX_STYLE = {
+    body: { size: 0.45, gap: 0.84 },
+    limb: { size: 0.36, gap: 0.8 },
+    head: { size: 0.28, gap: 0.78 },
+  };
+  const PIX_HEAD_BASE = new THREE.Color(0x7d60f5);
   const pixelData = new Map();
   const LIGHT = V(0.4, 0.8, -0.5).normalize();
   const PIX_BASE = new THREE.Color(0x5b3cd6), PIX_LAV = new THREE.Color(0xc8b4ff), PIX_WHITE = new THREE.Color(0xf2edff), PIX_CYAN = new THREE.Color(0x7fe9ff);
-  function pixelShell(owner, W, size, shape) {
-    const n = size.map((v) => Math.max(1, Math.round(v / PIXEL)));
+  function pixelShell(owner, W, size, shape, style) {
+    const st = PIX_STYLE[style] || PIX_STYLE.body;
+    const n = size.map((v) => Math.max(1, Math.round(v / st.size)));
     const cell = size.map((v, i) => v / n[i]);
     const h = size.map((v) => v / 2);
     const round = shape === "ball";
@@ -440,7 +448,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     if (!d) pixelData.set(owner.node, (d = { mats: [], cols: [] }));
     const toNode = owner.J.clone().invert().multiply(W);
     const rot = new THREE.Matrix4().extractRotation(W);
-    const scl = new THREE.Matrix4().makeScale(cell[0] * 0.84, cell[1] * 0.84, cell[2] * 0.84);
+    const scl = new THREE.Matrix4().makeScale(cell[0] * st.gap, cell[1] * st.gap, cell[2] * st.gap);
     for (let i = 0; i < n[0]; i++) for (let j = 0; j < n[1]; j++) for (let k = 0; k < n[2]; k++) {
       if (!inside(i, j, k)) continue;
       const nb = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]].filter((o) => !inside(i + o[0], j + o[1], k + o[2]));
@@ -451,11 +459,13 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       d.mats.push(mul(toNode, T(x, y, z), scl));
       const roll = rnd();
       let c;
-      if (roll < 0.015) c = PIX_CYAN.clone();
-      else if (roll < 0.035) c = PIX_WHITE.clone();
-      else if (roll < 0.13) c = PIX_LAV.clone();
-      else c = PIX_BASE.clone();
-      const lit = 0.38 + 0.72 * Math.max(nrm.dot(LIGHT), 0) + 0.18 * Math.max(-nrm.z, 0);
+      const isHead = style === "head";
+      if (roll < (isHead ? 0.03 : 0.015)) c = PIX_CYAN.clone();
+      else if (roll < (isHead ? 0.08 : 0.035)) c = PIX_WHITE.clone();
+      else if (roll < (isHead ? 0.38 : style === "limb" ? 0.18 : 0.13)) c = PIX_LAV.clone();
+      else c = (isHead ? PIX_HEAD_BASE : PIX_BASE).clone();
+      const lit = style ? 0.28 + 0.9 * Math.max(nrm.dot(LIGHT), 0) + 0.22 * Math.max(-nrm.z, 0)
+        : 0.38 + 0.72 * Math.max(nrm.dot(LIGHT), 0) + 0.18 * Math.max(-nrm.z, 0);
       d.cols.push(c.multiplyScalar(lit * rr(0.82, 1.12)));
     }
   }
@@ -473,8 +483,8 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
 
   // ---- body: chest, belly, hump, haunches ----
   const root = rigPart("Root", [2, 2, 2], T(0, 10, 0), { kind: "none" }, null, T(0, 10, 0));
-  const hips = rigPart("Hips", [8.5, 7, 8.5], T(0, 10, 1.2), { shape: "ball" }, root, T(0, 10, 0), "RootJoint");
-  voxels(hips, 18);
+  const hips = rigPart("Hips", [8.5, 7, 8.5], T(0, 10, 1.2), { shape: "ball", pix: "limb" }, root, T(0, 10, 0), "RootJoint");
+  voxels(hips, 6);
   const torso = rigPart("Torso", [10, 9.5, 8], T(0, 17.5, -0.6), { shape: "ball" }, hips, T(0, 12.5, 0));
   voxels(torso, 24);
   voxels(decor(torso, [8.6, 7.5, 7.6], T(0, 13.2, -0.1), { shape: "ball" }), 12);
@@ -486,7 +496,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
   for (let i = 0; i < 7; i++) {
     const y = 9.8 + i * 1.0;
     const w = 3.7 - Math.abs(i - 3) * 0.28;
-    decor(torso, [w, 0.78, 0.7], mul(T(0, y, -3.35 - (y - 9.8) * 0.2), R(rad(-12), 0, 0)), { kind: "neon", color: 0xe6d8ff, opacity: 0.8 });
+    decor(torso, [w, 0.78, 0.7], mul(T(0, y, -3.35 - (y - 9.8) * 0.2), R(rad(-12), 0, 0)), { kind: "neon", color: 0xa48cf5, opacity: 0.85 });
   }
   // rib cage wrapping around the chest
   for (let i = 0; i <= 4; i++) {
@@ -546,10 +556,9 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       dir = dir.clone().add(V(0, 0, -0.22)).normalize();
     }
     const headJ = lookAtCF(pos, pos.clone().add(V(n.dir.x * 0.5, -0.15, -1)));
-    const head = rigPart("Head_" + n.key, [2.8, 2.2, 4.2], mul(headJ, T(0, 0.3, -1.7)), { shape: "ball" }, prev, headJ);
-    decor(head, [2.6, 2, 2.6], mul(head.W, T(0, 0.15, 0.3)));
-    voxels(head, 8);
-    decor(head, [2.1, 1.35, 2.8], mul(head.W, T(0, -0.15, -2.9)));
+    const head = rigPart("Head_" + n.key, [2.8, 2.2, 4.2], mul(headJ, T(0, 0.3, -1.7)), { shape: "ball", pix: "head" }, prev, headJ);
+    decor(head, [2.6, 2, 2.6], mul(head.W, T(0, 0.15, 0.3)), { pix: "head" });
+    decor(head, [2.1, 1.35, 2.8], mul(head.W, T(0, -0.15, -2.9)), { pix: "head" });
     [-1, 1].forEach((s) => {
       decor(head, [0.65, 0.5, 0.75], mul(head.W, T(s * 1.12, 0.5, -1)), { kind: "neon", color: C.eye, shape: "ball" });
       decor(head, [0.32, 0.22, 0.32], mul(head.W, T(s * 0.55, 0.52, -4.1)), { kind: "dark" });
@@ -563,7 +572,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       claw(head, hm, ht, 0.35);
     });
     const jawJ = mul(headJ, T(0, -0.6, -0.4));
-    const jaw = rigPart("Jaw_" + n.key, [2.1, 0.7, 4.3], mul(jawJ, T(0, -0.35, -2.15)), {}, head, jawJ);
+    const jaw = rigPart("Jaw_" + n.key, [2.1, 0.7, 4.3], mul(jawJ, T(0, -0.35, -2.15)), { pix: "head" }, head, jawJ);
     spike(jaw, posOf(mul(jaw.W, T(0, -0.3, 1.2))), rotVec(jaw.W, V(0, -0.6, 1)), 1.1, 0.35, C.accent);
     for (let t = 0; t <= 4; t++) {
       [-1, 1].forEach((s) => {
@@ -575,14 +584,14 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
   // ---- arms, wings, legs ----
   [["L", -1], ["R", 1]].forEach(([k, s]) => {
     const shoulder = V(5 * s, 19.5, -1);
-    const elbow = shoulder.clone().add(V(4.2 * s, 1, -1.2));
-    const wrist = elbow.clone().add(V(1.5 * s, 2.5, -2.5));
-    const upper = bone("UpperArm_" + k, shoulder, elbow, 2.4, torso);
-    const fore = bone("Forearm_" + k, elbow, wrist, 2, upper);
-    voxels(upper, 8); voxels(fore, 7);
+    const elbow = shoulder.clone().add(V(1.6 * s, -3.8, -1.2));
+    const wrist = elbow.clone().add(V(0.4 * s, -2.8, -2.2));
+    const limb = { pix: "limb" };
+    const upper = bone("UpperArm_" + k, shoulder, elbow, 2.4, torso, limb);
+    const fore = bone("Forearm_" + k, elbow, wrist, 2, upper, limb);
     spike(fore, elbow, V(s * 0.4, -0.2, 1), 1.5, 0.5, C.gold);
     const handJ = lookAtCF(wrist, wrist.clone().add(wrist.clone().sub(elbow)));
-    const hand = rigPart("Hand_" + k, [2.2, 2.2, 2.2], handJ, { shape: "ball" }, fore, handJ);
+    const hand = rigPart("Hand_" + k, [2.2, 2.2, 2.2], handJ, { shape: "ball", pix: "limb" }, fore, handJ);
     for (let f = 1; f <= 3; f++) {
       const x = (f - 2) * 0.65;
       const b = posOf(mul(handJ, T(x, 0.3, -0.8)));
@@ -619,14 +628,13 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     const knee = hip.clone().add(V(1 * s, -3.2, -2.6));
     const hock = knee.clone().add(V(0.2 * s, -2.6, 2.8));
     const ankle = hock.clone().add(V(0, -2.3, -0.8));
-    const thigh = bone("Thigh_" + k, hip, knee, 3.4, hips);
-    voxels(decor(thigh, [4.6, 5.6, 6.2], Tv(hip.clone().add(V(0.6 * s, -0.6, 0.2))), { shape: "ball" }), 10);
-    const shin = bone("Shin_" + k, knee, hock, 2.4, thigh);
-    const meta = bone("Metatarsal_" + k, hock, ankle, 1.8, shin);
-    voxels(shin, 6); voxels(meta, 4);
+    const thigh = bone("Thigh_" + k, hip, knee, 3.4, hips, { pix: "limb" });
+    voxels(decor(thigh, [4.6, 5.6, 6.2], Tv(hip.clone().add(V(0.6 * s, -0.6, 0.2))), { shape: "ball", pix: "limb" }), 3);
+    const shin = bone("Shin_" + k, knee, hock, 2.4, thigh, { pix: "limb" });
+    const meta = bone("Metatarsal_" + k, hock, ankle, 1.8, shin, { pix: "limb" });
     spike(meta, hock, V(0, 0.3, 1.2), 1.4, 0.45, C.gold);
     const footJ = lookAtCF(ankle, ankle.clone().add(V(0, 0, -1)));
-    const foot = rigPart("Foot_" + k, [2.8, 1.1, 3.4], mul(footJ, T(0, -0.3, -1.1)), { shape: "ball" }, meta, footJ);
+    const foot = rigPart("Foot_" + k, [2.8, 1.1, 3.4], mul(footJ, T(0, -0.3, -1.1)), { shape: "ball", pix: "limb" }, meta, footJ);
     for (let t = -1; t <= 1; t++) {
       const b = posOf(mul(foot.W, T(t * 0.9, -0.1, -1.5)));
       claw(foot, b, b.clone().add(V(t * 0.3, -0.35, -1.3)), 0.38);
@@ -787,8 +795,8 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       for (let i = 1; i <= 4; i++) setAuto("WingFinger" + i + "_" + k, axisRot("WingFinger" + i + "_" + k, AXIS_Z, s * sin(beat - 1.3 - i * 0.15) * 0.12));
     });
     [["L", 0], ["R", Math.PI]].forEach(([k, ph]) => {
-      setAuto("UpperArm_" + k, R(sin(t * 1.2 + ph) * 0.25 + roar * 0.35, 0, sin(t * 0.9 + ph) * 0.2));
-      setAuto("Forearm_" + k, R(sin(t * 1.6 + ph) * 0.3, 0, 0));
+      setAuto("UpperArm_" + k, R(sin(t * 1.2 + ph) * 0.12 + roar * 0.6, 0, sin(t * 0.9 + ph) * 0.06));
+      setAuto("Forearm_" + k, R(sin(t * 1.6 + ph) * 0.15 + roar * 0.3, 0, 0));
       setAuto("Hand_" + k, R(sin(t * 2 + ph) * 0.3, 0, sin(t * 1.3 + ph) * 0.4));
       for (let f = 1; f <= 3; f++) setAuto("Finger" + f + "_" + k, R((sin(t * 2.5 + f + ph) + 1) * 0.25 + roar * 0.4, 0, 0));
       setAuto("Thigh_" + k, R(sin(t * 1.4 + ph) * 0.08, 0, 0));
@@ -925,6 +933,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     pixelMat.opacity = lvl[2];
     for (const k in skinCache) skinCache[k].visible = !pixelStyle && lvl[1] > 0;
     pixelMeshes.forEach((m) => { m.visible = pixelStyle; });
+    for (const k in holoCache) holoCache[k].uniforms.uStrength.value = holoCache[k].userData.base * (pixelStyle ? 0.3 : 1);
     bSkin.textContent = "ผิว: " + lvl[0];
     bStyle.textContent = "ลาย: " + (pixelStyle ? "พิกเซล" : "เรียบ");
   }
