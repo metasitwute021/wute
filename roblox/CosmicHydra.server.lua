@@ -22,6 +22,10 @@ local CONFIG = {
 	BodyColor = Color3.fromRGB(120, 85, 255),
 	BodyMaterial = Enum.Material.ForceField,    -- ForceField = ใสแบบโฮโลแกรม, ลอง Glass ได้
 	BodyTransparency = 0.1,
+	SkinEnabled = true,                         -- ผิวชั้นในใต้ร่างใส ทำให้เห็นรูปร่างชัดขึ้น
+	SkinColor = Color3.fromRGB(85, 55, 200),
+	SkinMaterial = Enum.Material.SmoothPlastic,
+	SkinTransparency = 0.25,                    -- 0 = ทึบ, 1 = มองไม่เห็น
 	AccentColor = Color3.fromRGB(215, 190, 255),
 	GoldColor = Color3.fromRGB(255, 205, 110),
 	EyeColor = Color3.fromRGB(170, 245, 255),
@@ -390,6 +394,33 @@ do
 		color = Color3.fromRGB(120, 235, 255),
 		transparency = 0.1,
 	})
+end
+
+---------------------------------------------------------------------------
+-- ผิวชั้นใน: ก็อปทุกชิ้นร่างใสเป็นชั้นทึบขนาด 97% ไว้ข้างใน
+---------------------------------------------------------------------------
+
+if CONFIG.SkinEnabled then
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") and d.Material == CONFIG.BodyMaterial and d.Transparency < 1 then
+			local skin = Instance.new("Part")
+			skin.Name = "Skin"
+			skin.Shape = d.Shape
+			skin.Size = d.Size * 0.97
+			skin.CFrame = d.CFrame
+			skin.Material = CONFIG.SkinMaterial
+			skin.Color = d.Name == "Membrane" and Color3.fromRGB(110, 80, 220) or CONFIG.SkinColor
+			skin.Transparency = d.Name == "Membrane" and math.max(CONFIG.SkinTransparency, 0.5) or CONFIG.SkinTransparency
+			skin.Anchored = true
+			skin.CanCollide = false
+			skin.CanTouch = false
+			skin.CanQuery = false
+			skin.Massless = true
+			skin.CastShadow = false
+			skin.Parent = d
+			weld(d, skin)
+		end
+	end
 end
 
 ---------------------------------------------------------------------------

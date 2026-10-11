@@ -1,0 +1,736 @@
+<title>Cosmic Hydra</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Sans+Thai:wght@400;500&display=swap">
+<style>
+/* Layout: full-bleed 3D stage, title floats top-left, control dock pinned to the bottom with a slide-up pose panel */
+:root {
+  --void: #07050f;
+  --panel: rgba(20, 13, 40, 0.82);
+  --line: rgba(190, 160, 255, 0.22);
+  --ink: #ece6ff;
+  --muted: #a99ccc;
+  --violet: #a77bff;
+  --cyan: #7fe9ff;
+  --gold: #ffcd6e;
+  --display: "Chakra Petch", "IBM Plex Sans Thai", system-ui, sans-serif;
+  --body: "IBM Plex Sans Thai", system-ui, sans-serif;
+  color-scheme: dark;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+.pose[hidden] { display: none; }
+body {
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--body);
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+#stage { position: fixed; inset: 0; touch-action: none; }
+#stage canvas { display: block; }
+
+.title {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 14px);
+  left: 16px; right: 16px;
+  pointer-events: none;
+  display: grid; gap: 2px;
+}
+.title h1 {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: clamp(1.5rem, 6vw, 2.2rem);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: linear-gradient(90deg, var(--ink), var(--violet) 55%, var(--cyan));
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent;
+}
+.title p { margin: 0; color: var(--muted); font-size: 0.85rem; }
+.hint { color: var(--muted); font-size: 0.75rem; opacity: 0.8; }
+
+.dock {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  padding: 10px 16px calc(env(safe-area-inset-bottom, 0px) + 12px);
+  display: grid; gap: 10px;
+  background: linear-gradient(to top, rgba(7,5,15,0.95), rgba(7,5,15,0));
+}
+.buttons { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+button, select {
+  font: 500 0.9rem var(--body);
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 9px 14px;
+  min-height: 40px;
+  cursor: pointer;
+}
+button[aria-pressed="true"] { border-color: var(--violet); box-shadow: 0 0 12px rgba(167,123,255,0.45) inset; }
+button.roar { border-color: var(--gold); color: var(--gold); font-family: var(--display); letter-spacing: 0.05em; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+.pose {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 12px 14px;
+  display: grid; gap: 10px;
+  max-width: 520px; width: 100%; margin: 0 auto;
+  backdrop-filter: blur(8px);
+}
+.pose-head { display: flex; gap: 8px; align-items: center; }
+.pose-head select { flex: 1; min-width: 0; border-radius: 10px; }
+.pose label { display: grid; grid-template-columns: 4.6rem 1fr 3rem; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--muted); }
+.pose output { font-variant-numeric: tabular-nums; text-align: right; color: var(--ink); }
+input[type=range] { width: 100%; accent-color: var(--violet); }
+.pose small { color: var(--muted); font-size: 0.75rem; }
+</style>
+
+<div id="stage" aria-label="โมเดลมังกร 3 หัวแบบ 3 มิติ ลากเพื่อหมุนกล้อง"></div>
+
+<div class="title">
+  <h1>Cosmic Hydra</h1>
+  <p>มังกร 3 หัวร่างใส · พรีวิวโมเดล Roblox</p>
+  <span class="hint">ลากนิ้วเพื่อหมุน · จีบนิ้วเพื่อซูม</span>
+</div>
+
+<div class="dock">
+  <div class="pose" id="posePanel" hidden>
+    <div class="pose-head">
+      <select id="jointSelect" aria-label="เลือกข้อต่อ"></select>
+      <button id="resetJoint" type="button">รีเซ็ต</button>
+    </div>
+    <label>ก้ม / เงย <input id="rx" type="range" min="-90" max="90" value="0"><output id="rxv">0°</output></label>
+    <label>ส่ายซ้ายขวา <input id="ry" type="range" min="-90" max="90" value="0"><output id="ryv">0°</output></label>
+    <label>เอียง <input id="rz" type="range" min="-90" max="90" value="0"><output id="rzv">0°</output></label>
+    <small>ทุกข้อต่อตรงกับ Motor6D ในสคริปต์ Roblox · ปิด "ท่าขยับ" เพื่อดูท่าที่ปรับชัดๆ</small>
+  </div>
+  <div class="buttons">
+    <button id="btnAnim" type="button" aria-pressed="true">ท่าขยับ</button>
+    <button id="btnSpin" type="button" aria-pressed="true">หมุนกล้อง</button>
+    <button id="btnPose" type="button" aria-pressed="false">ปรับท่า</button>
+    <button id="btnSkin" type="button">ผิว: ชัด</button>
+    <button id="btnRoar" type="button" class="roar">คำราม!</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // ---------- scene ----------
+  const stage = document.getElementById("stage");
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setClearColor(0x07050f, 1);
+  stage.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x07050f, 0.006);
+  const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 800);
+  const camDist = window.innerWidth < window.innerHeight ? 1.7 : 1;
+  camera.position.set(30 * camDist, 16 + 8 * camDist, -52 * camDist);
+
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.target.set(0, 14, 0);
+  controls.enableDamping = true;
+  controls.minDistance = 18;
+  controls.maxDistance = 200;
+  controls.autoRotate = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  controls.autoRotateSpeed = 0.8;
+
+  let composer = null, bloom = null;
+  if (THREE.EffectComposer && THREE.UnrealBloomPass) {
+    composer = new THREE.EffectComposer(renderer);
+    composer.addPass(new THREE.RenderPass(scene, camera));
+    bloom = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.7, 0.45, 0.4);
+    composer.addPass(bloom);
+  }
+
+  // ---------- math helpers (Roblox CFrame-style, Y up, -Z forward) ----------
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  const T = (x, y, z) => new THREE.Matrix4().makeTranslation(x, y, z);
+  const Tv = (v) => T(v.x, v.y, v.z);
+  const R = (x, y, z) => new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(x, y, z, "XYZ"));
+  const mul = (...ms) => ms.reduce((a, b) => a.clone().multiply(b));
+  const posOf = (m) => new THREE.Vector3().setFromMatrixPosition(m);
+  const rotVec = (m, v) => v.clone().applyMatrix4(new THREE.Matrix4().extractRotation(m));
+  const rad = THREE.MathUtils.degToRad;
+  function lookAtCF(from, to) {
+    const d = to.clone().sub(from).normalize();
+    const up = Math.abs(d.y) > 0.98 ? V(0, 0, 1) : V(0, 1, 0);
+    const m = new THREE.Matrix4().lookAt(from, to, up);
+    m.setPosition(from);
+    return m;
+  }
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const rnd = mulberry32(7);
+  const rr = (a, b) => a + (b - a) * rnd();
+  function unitVec() {
+    const z = rr(-1, 1), a = rr(0, Math.PI * 2), s = Math.sqrt(1 - z * z);
+    return V(s * Math.cos(a), z, s * Math.sin(a));
+  }
+
+  // ---------- materials ----------
+  const C = {
+    body: 0x7855ff, accent: 0xd7beff, gold: 0xffcd6e, eye: 0xaaf5ff, membrane: 0xa078ff,
+  };
+  const uTime = { value: 0 };
+  const holoCache = {};
+  function holoMat(color, strength) {
+    const key = color + ":" + strength;
+    if (holoCache[key]) return holoCache[key];
+    return (holoCache[key] = new THREE.ShaderMaterial({
+      uniforms: { uTime, uColor: { value: new THREE.Color(color) }, uStrength: { value: strength } },
+      vertexShader: [
+        "varying vec3 vN; varying vec3 vV; varying float vY;",
+        "void main(){ vec4 wp = modelMatrix * vec4(position,1.0); vY = wp.y;",
+        "vec4 mv = viewMatrix * wp; vV = -mv.xyz; vN = normalize(normalMatrix * normal);",
+        "gl_Position = projectionMatrix * mv; }",
+      ].join("\n"),
+      fragmentShader: [
+        "uniform float uTime; uniform vec3 uColor; uniform float uStrength;",
+        "varying vec3 vN; varying vec3 vV; varying float vY;",
+        "void main(){ float f = 1.0 - abs(dot(normalize(vN), normalize(vV))); f = pow(f, 2.0);",
+        "float scan = 0.7 + 0.3 * sin(vY * 5.0 - uTime * 4.0);",
+        "vec3 c = uColor * (0.3 + 1.3 * f) * scan;",
+        "gl_FragColor = vec4(c, (0.09 + 0.6 * f) * uStrength); }",
+      ].join("\n"),
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    }));
+  }
+  const uSkin = { value: 0.85 };
+  const skinCache = {};
+  function skinMat(color, mulOpacity) {
+    const key = color + ":" + mulOpacity;
+    if (skinCache[key]) return skinCache[key];
+    return (skinCache[key] = new THREE.ShaderMaterial({
+      uniforms: { uSkin, uTime, uMul: { value: mulOpacity }, uColor: { value: new THREE.Color(color).multiplyScalar(0.75) } },
+      vertexShader: [
+        "varying vec3 vN; varying vec3 vW; varying vec3 vV;",
+        "void main(){ vec4 wp = modelMatrix * vec4(position,1.0); vW = wp.xyz;",
+        "vN = normalize(mat3(modelMatrix) * normal); vec4 mv = viewMatrix * wp; vV = normalize(cameraPosition - wp.xyz);",
+        "gl_Position = projectionMatrix * mv; }",
+      ].join("\n"),
+      fragmentShader: [
+        "uniform float uSkin; uniform float uMul; uniform float uTime; uniform vec3 uColor;",
+        "varying vec3 vN; varying vec3 vW; varying vec3 vV;",
+        "void main(){ vec3 N = normalize(vN);",
+        "float key = max(dot(N, normalize(vec3(0.4, 0.8, -0.5))), 0.0);",
+        "float fill = max(dot(N, normalize(vec3(-0.6, 0.2, 0.7))), 0.0);",
+        "vec3 p = vW * 1.6; vec3 g = abs(fract(p) - 0.5);",
+        "vec3 an = abs(N); float edge = an.x > an.y && an.x > an.z ? max(g.y, g.z) : (an.y > an.z ? max(g.x, g.z) : max(g.x, g.y));",
+        "float scale = smoothstep(0.38, 0.5, edge);",
+        "vec3 cell = floor(p); float tone = fract(sin(dot(cell, vec3(12.9898, 78.233, 37.719))) * 43758.5453);",
+        "float rim = pow(1.0 - abs(dot(N, normalize(vV))), 3.0);",
+        "vec3 c = uColor * (0.28 + 0.75 * key + 0.25 * fill) * (0.82 + 0.3 * tone);",
+        "c = mix(c, c * 0.35, scale) + vec3(0.75, 0.6, 1.0) * rim * 0.5;",
+        "gl_FragColor = vec4(c, uSkin * uMul); }",
+      ].join("\n"),
+      transparent: true, depthWrite: true,
+    }));
+  }
+  const basicCache = {};
+  function basicMat(color, opacity, additive) {
+    const key = color + ":" + opacity + ":" + !!additive;
+    if (basicCache[key]) return basicCache[key];
+    return (basicCache[key] = new THREE.MeshBasicMaterial({
+      color, transparent: opacity < 1 || !!additive, opacity,
+      blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+      depthWrite: !additive && opacity >= 1,
+    }));
+  }
+  function matFor(o) {
+    const kind = o.kind || "holo";
+    if (kind === "holo") return holoMat(o.color != null ? o.color : C.body, o.strength || 1);
+    if (kind === "neon") return basicMat(o.color, o.opacity != null ? o.opacity : 1, false);
+    if (kind === "glass") return basicMat(o.color, 0.55, true);
+    if (kind === "dark") return basicMat(0x0a0519, 1, false);
+    return null;
+  }
+  const GEO = {
+    block: new THREE.BoxGeometry(1, 1, 1),
+    ball: new THREE.SphereGeometry(0.5, 24, 16),
+    octa: new THREE.OctahedronGeometry(0.5, 0),
+  };
+
+  // ---------- rig ----------
+  // Each rig part owns a node whose world transform is its joint frame J.
+  const rig = new THREE.Group();
+  scene.add(rig);
+  const joints = {};
+
+  function addMesh(owner, W, size, o) {
+    const mat = matFor(o);
+    if (!mat) return;
+    const mesh = new THREE.Mesh(GEO[o.shape || "block"], mat);
+    mesh.matrixAutoUpdate = false;
+    mesh.matrix.copy(mul(owner.J.clone().invert(), W, new THREE.Matrix4().makeScale(size[0], size[1], size[2])));
+    owner.node.add(mesh);
+    if ((o.kind || "holo") === "holo") {
+      // solid scaled skin under the hologram shell
+      const skin = new THREE.Mesh(GEO[o.shape || "block"], skinMat(o.color != null ? o.color : C.body, o.color === C.membrane ? 0.55 : 1));
+      skin.matrixAutoUpdate = false;
+      skin.matrix.copy(mesh.matrix).multiply(new THREE.Matrix4().makeScale(0.97, 0.97, 0.97));
+      skin.renderOrder = -1;
+      owner.node.add(skin);
+    }
+  }
+
+  function rigPart(name, size, W, o, parent, J, jointName) {
+    const node = new THREE.Group();
+    node.matrixAutoUpdate = false;
+    const parentJ = parent ? parent.J : new THREE.Matrix4();
+    const local = parentJ.clone().invert().multiply(J);
+    node.matrix.copy(local);
+    (parent ? parent.node : rig).add(node);
+    const p = { name, node, J, W, size, shape: (o && o.shape) || "block" };
+    p.local = J.clone().invert().multiply(W);
+    if (parent) joints[jointName || name] = { node, base: local.clone(), part: p };
+    addMesh(p, W, size, o || {});
+    return p;
+  }
+
+  function decor(parent, size, W, o) {
+    addMesh(parent, W, size, o || {});
+    return { node: parent.node, J: parent.J, W, size, shape: (o && o.shape) || "block" };
+  }
+
+  function bone(name, a, b, w, parent, o) {
+    const len = a.distanceTo(b);
+    const J = lookAtCF(a, b);
+    return rigPart(name, [w, w, len + w * 0.35], mul(J, T(0, 0, -len / 2)), o, parent, J);
+  }
+
+  const VOXEL_COLORS = [0xcdb4ff, 0x966eff, 0xf0e8ff, 0x6946eb];
+  function voxels(p, count) {
+    const hx = p.size[0] / 2, hy = p.size[1] / 2, hz = p.size[2] / 2;
+    for (let i = 0; i < count; i++) {
+      const s = rr(0.3, 0.85);
+      let pos;
+      if (p.shape === "ball") {
+        pos = unitVec().multiplyScalar(hx);
+      } else {
+        pos = V(rr(-1, 1) * hx, rr(-1, 1) * hy, rr(-1, 1) * hz);
+        const axis = Math.floor(rnd() * 3), sign = rnd() < 0.5 ? -1 : 1;
+        if (axis === 0) pos.x = sign * hx; else if (axis === 1) pos.y = sign * hy; else pos.z = sign * hz;
+      }
+      const gold = rnd() < 0.05;
+      const color = gold ? C.gold : VOXEL_COLORS[Math.floor(rnd() * VOXEL_COLORS.length)];
+      decor(p, [s, s, s], mul(p.W, Tv(pos)), rnd() < 0.5 ? { kind: "neon", color, opacity: rr(0.55, 0.9) } : { kind: "glass", color });
+    }
+  }
+
+  function claw(parent, base, tip, w) {
+    const len = base.distanceTo(tip);
+    decor(parent, [w, w, len], mul(lookAtCF(base, tip), T(0, 0, -len / 2)), { kind: "neon", color: C.gold });
+  }
+
+  // body
+  const root = rigPart("Root", [2, 2, 2], T(0, 10, 0), { kind: "none" }, null, T(0, 10, 0));
+  const hips = rigPart("Hips", [8, 8, 8], T(0, 10, 0.5), { shape: "ball" }, root, T(0, 10, 0), "RootJoint");
+  voxels(hips, 22);
+  const torso = rigPart("Torso", [9, 10, 7], T(0, 16.5, -0.5), {}, hips, T(0, 12.5, 0));
+  voxels(torso, 30);
+  const chest = decor(torso, [10, 10, 10], T(0, 18.5, -0.3), { shape: "ball" });
+  voxels(chest, 26);
+
+  for (let i = 0; i <= 4; i++) {
+    const w = 6.4 - Math.abs(i - 2) * 0.8;
+    decor(torso, [w, 0.55, 0.7], T(0, 12.4 + i * 1.35, -4.2), { kind: "neon", color: C.accent, opacity: 0.9 });
+  }
+  decor(torso, [0.7, 6.5, 0.7], T(0, 15.1, -4.3), { kind: "neon", color: C.accent, opacity: 0.85 });
+  for (let i = 0; i <= 4; i++) {
+    decor(torso, [0.9, 0.9, 2.2], mul(T(0, 21 - i * 2.2, 3.6), R(rad(-35), 0, rad(45))), { kind: "neon", color: i % 2 === 0 ? C.gold : C.accent });
+  }
+
+  const corePos = V(0, 18, -5.2);
+  decor(torso, [3, 3, 3], Tv(corePos), { kind: "dark", shape: "ball" });
+  const coreLightMat = basicMat(0xc06eff, 0.22, true);
+  const coreGlow = new THREE.Mesh(GEO.ball, coreLightMat);
+  coreGlow.scale.setScalar(4.2);
+  // glow lives on the torso node, expressed relative to the torso joint
+  coreGlow.position.copy(corePos.clone().applyMatrix4(torso.J.clone().invert()));
+  torso.node.add(coreGlow);
+
+  const ringJ = Tv(corePos.clone().add(V(0, 0, -0.4)));
+  const coreRing = rigPart("CoreRing", [0.4, 0.4, 0.4], ringJ, { kind: "none" }, torso, ringJ, "CoreSpin");
+  for (let i = 0; i < 18; i++) {
+    const a = (i / 18) * Math.PI * 2;
+    decor(coreRing, [0.45, 1.1, 0.45], mul(ringJ, R(0, 0, a), T(2.4, 0, 0)), { kind: "neon", color: i % 3 === 0 ? 0xff78e6 : 0xaf5fff });
+  }
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + 0.2;
+    decor(coreRing, [0.35, 0.35, 0.35], mul(ringJ, R(0, 0, a), T(3.5, 0, 0)), { kind: "neon", color: 0x6eebff });
+  }
+
+  // three necks and heads
+  const NECKS = [
+    { key: "L", base: V(-3.2, 21, -1.5), dir: V(-0.75, 1, -0.35) },
+    { key: "C", base: V(0, 21.5, -2), dir: V(0, 1, -0.45) },
+    { key: "R", base: V(3.2, 21, -1.5), dir: V(0.75, 1, -0.35) },
+  ];
+  const NECK_W = [2.7, 2.3, 2];
+  NECKS.forEach((n) => {
+    let dir = n.dir.clone().normalize();
+    let pos = n.base.clone();
+    let prev = torso;
+    for (let j = 1; j <= 3; j++) {
+      const next = pos.clone().add(dir.clone().multiplyScalar(2.7));
+      const seg = bone("Neck" + j + "_" + n.key, pos, next, NECK_W[j - 1], prev);
+      voxels(seg, 7);
+      prev = seg; pos = next;
+      dir = dir.clone().add(V(0, 0, -0.22)).normalize();
+    }
+    const headJ = lookAtCF(pos, pos.clone().add(V(n.dir.x * 0.5, -0.15, -1)));
+    const head = rigPart("Head_" + n.key, [2.8, 2.2, 4.2], mul(headJ, T(0, 0.3, -1.7)), {}, prev, headJ);
+    voxels(head, 10);
+    decor(head, [2.1, 1.3, 1.8], mul(head.W, T(0, -0.15, -2.7)));
+    [-1, 1].forEach((s) => {
+      decor(head, [0.6, 0.6, 0.6], mul(head.W, T(s * 1.15, 0.55, -1)), { kind: "neon", color: C.eye, shape: "ball" });
+      const hb = posOf(mul(head.W, T(s * 0.9, 1.1, 1)));
+      const hm = hb.clone().add(rotVec(head.W, V(s * 0.5, 1.1, 1.4)));
+      const ht = hm.clone().add(rotVec(head.W, V(s * 0.2, 0.2, 1.3)));
+      claw(head, hb, hm, 0.55);
+      claw(head, hm, ht, 0.35);
+    });
+    const jawJ = mul(headJ, T(0, -0.6, -0.4));
+    const jaw = rigPart("Jaw_" + n.key, [2.1, 0.7, 3.9], mul(jawJ, T(0, -0.35, -1.95)), {}, head, jawJ);
+    for (let t = 0; t <= 3; t++) {
+      [-1, 1].forEach((s) => {
+        decor(jaw, [0.25, 0.45, 0.25], mul(jaw.W, T(s * 0.8, 0.5, -1.6 + t * 0.6 - 0.2)), { kind: "neon", color: 0xf5f0ff });
+      });
+    }
+  });
+
+  // arms, wings, legs
+  [["L", -1], ["R", 1]].forEach(([k, s]) => {
+    const shoulder = V(5 * s, 19.5, -1);
+    const elbow = shoulder.clone().add(V(4.2 * s, 1, -1.2));
+    const wrist = elbow.clone().add(V(1.5 * s, 2.5, -2.5));
+    const upper = bone("UpperArm_" + k, shoulder, elbow, 2.4, torso);
+    const fore = bone("Forearm_" + k, elbow, wrist, 2, upper);
+    voxels(upper, 8); voxels(fore, 7);
+    const handJ = lookAtCF(wrist, wrist.clone().add(wrist.clone().sub(elbow)));
+    const hand = rigPart("Hand_" + k, [2.2, 2.2, 2.2], handJ, { shape: "ball" }, fore, handJ);
+    for (let f = 1; f <= 3; f++) {
+      const x = (f - 2) * 0.65;
+      const b = posOf(mul(handJ, T(x, 0.3, -0.8)));
+      const tip = posOf(mul(handJ, T(x * 1.4, 1.1, -2.3)));
+      const finger = bone("Finger" + f + "_" + k, b, tip, 0.5, hand);
+      const hz = finger.size[2] / 2;
+      claw(finger, posOf(mul(finger.W, T(0, 0, -hz))), posOf(mul(finger.W, T(0, -0.2, -hz - 0.8))), 0.3);
+    }
+
+    const wBase = V(2.5 * s, 20.5, 2.5);
+    const wElbow = wBase.clone().add(V(5 * s, 3.5, 2));
+    const wTip = wElbow.clone().add(V(6 * s, -1, 1.5));
+    const wingBone = { kind: "neon", color: C.accent, opacity: 0.8 };
+    const w1 = bone("WingArm_" + k, wBase, wElbow, 1.1, torso, wingBone);
+    const w2 = bone("WingHand_" + k, wElbow, wTip, 0.9, w1, wingBone);
+    [w1, w2].forEach((wb) => {
+      const mem = decor(wb, [0.25, 5.5, wb.size[2]], mul(wb.W, T(0, -2.9, 0)), { color: C.membrane, strength: 1.2 });
+      voxels(mem, 9);
+    });
+
+    const hip = V(3.4 * s, 9, 0.5);
+    const knee = hip.clone().add(V(1.2 * s, -3, -2.6));
+    const ankle = knee.clone().add(V(0.2 * s, -4.6, 1.4));
+    const thigh = bone("Thigh_" + k, hip, knee, 3.2, hips);
+    const shin = bone("Shin_" + k, knee, ankle, 2.4, thigh);
+    voxels(thigh, 10); voxels(shin, 8);
+    const footJ = lookAtCF(ankle, ankle.clone().add(V(0, 0, -1)));
+    const foot = rigPart("Foot_" + k, [2.8, 1.2, 3.6], mul(footJ, T(0, -0.3, -1.2)), {}, shin, footJ);
+    for (let t = -1; t <= 1; t++) {
+      const b = posOf(mul(foot.W, T(t * 0.9, -0.2, -1.8)));
+      claw(foot, b, b.clone().add(V(t * 0.3, -0.3, -1.2)), 0.35);
+    }
+  });
+
+  // tail
+  (function () {
+    let pos = V(0, 8.5, 4);
+    let dir = V(0, -0.35, 1).normalize();
+    let prev = hips;
+    const count = 7;
+    for (let j = 1; j <= count; j++) {
+      const w = 3 - (j - 1) * (2.2 / (count - 1));
+      const next = pos.clone().add(dir.clone().multiplyScalar(2.8));
+      const seg = bone("Tail" + j, pos, next, w, prev);
+      voxels(seg, Math.max(3, 9 - j));
+      prev = seg; pos = next;
+      dir = dir.clone().add(V(0.12, 0.08, 0)).normalize();
+    }
+    decor(prev, [1.2, 2.6, 1.2], mul(Tv(pos), R(rad(70), 0, rad(45))), { kind: "neon", color: 0x78ebff, shape: "octa" });
+  })();
+
+  // sparkles around the chest
+  (function () {
+    const n = 140, pts = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      const v = unitVec().multiplyScalar(rr(5, 12));
+      pts.set([v.x, v.y, v.z], i * 3);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pts, 3));
+    const sp = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xd2b4ff, size: 0.35, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false }));
+    sp.name = "sparkles";
+    torso.node.add(sp);
+    torso.sparkles = sp;
+  })();
+
+  // ---------- environment ----------
+  (function stars() {
+    const n = 1800, pts = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+      const v = unitVec().multiplyScalar(rr(160, 360));
+      pts.set([v.x, Math.abs(v.y) * 0.9 + v.y * 0.1, v.z], i * 3);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pts, 3));
+    scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xbfb4ff, size: 1.1, sizeAttenuation: true, fog: false })));
+  })();
+  const grid = new THREE.PolarGridHelper(40, 16, 8, 64, 0x4b2f9a, 0x2a1b5a);
+  grid.material.transparent = true; grid.material.opacity = 0.45;
+  scene.add(grid);
+
+  // ---------- orbiting planets ----------
+  const ORBS = [
+    { size: 3.4, color: 0x5acdff, ring: true, anchor: "Torso", radius: 14, speed: 0.55, tilt: [0.25, 0.1], phase: 0 },
+    { size: 3.8, color: 0xb95aff, ring: true, anchor: "Torso", radius: 16, speed: -0.4, tilt: [-0.35, 0.2], phase: 2.2 },
+    { size: 2.0, color: 0xffcd6e, ring: true, anchor: "Torso", radius: 9.5, speed: 0.9, tilt: [0.5, -0.3], phase: 4 },
+    { size: 1.6, color: 0x82fff0, anchor: "Torso", radius: 11.5, speed: 1.2, tilt: [-0.6, 0.4], phase: 1 },
+    { size: 2.6, color: 0xff78dc, anchor: "Torso", radius: 19, speed: 0.3, tilt: [0.15, -0.5], phase: 3.3 },
+    { size: 1.5, color: 0x6ee1ff, anchor: "Hand_L", radius: 2.6, speed: 2.2, tilt: [0.4, 0], phase: 0 },
+    { size: 1.5, color: 0xcd82ff, anchor: "Hand_R", radius: 2.6, speed: -2.2, tilt: [-0.4, 0], phase: 1.5 },
+    { size: 1.3, color: 0xd7beff, crystal: true, anchor: "Torso", radius: 12.5, speed: -0.7, tilt: [0.9, 0], phase: 0.5 },
+    { size: 1.1, color: 0xf0ebff, crystal: true, anchor: "Torso", radius: 13.5, speed: 0.65, tilt: [-0.8, 0.5], phase: 2.8 },
+    { size: 1.2, color: 0x96e6ff, crystal: true, anchor: "Head_C", radius: 4.5, speed: 1.4, tilt: [0.3, 0.3], phase: 1.1 },
+  ];
+  const TRAIL = 28;
+  const orbs = ORBS.map((spec) => {
+    const g = new THREE.Group();
+    const d = spec.size;
+    let body;
+    if (spec.crystal) {
+      body = new THREE.Mesh(GEO.octa, basicMat(spec.color, 0.9, false));
+      body.scale.set(d, d * 1.9, d);
+    } else {
+      body = new THREE.Mesh(GEO.ball, basicMat(spec.color, 1, false));
+      body.scale.setScalar(d);
+      const halo = new THREE.Mesh(GEO.ball, basicMat(spec.color, 0.18, true));
+      halo.scale.setScalar(d * 1.6);
+      g.add(halo);
+    }
+    g.add(body);
+    if (spec.ring) {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(d * 0.72, d * 1.18, 48),
+        new THREE.MeshBasicMaterial({ color: new THREE.Color(spec.color).lerp(new THREE.Color(0xffffff), 0.35), side: THREE.DoubleSide, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false })
+      );
+      ring.rotation.set(rad(-70), rad(15), 0);
+      g.add(ring);
+    }
+    scene.add(g);
+
+    const tPos = new Float32Array(TRAIL * 3), tCol = new Float32Array(TRAIL * 3);
+    const col = new THREE.Color(spec.color);
+    for (let i = 0; i < TRAIL; i++) {
+      const f = 1 - i / TRAIL;
+      tCol.set([col.r * f, col.g * f, col.b * f], i * 3);
+    }
+    const tg = new THREE.BufferGeometry();
+    tg.setAttribute("position", new THREE.BufferAttribute(tPos, 3));
+    tg.setAttribute("color", new THREE.BufferAttribute(tCol, 3));
+    const line = new THREE.Line(tg, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    line.frustumCulled = false;
+    scene.add(line);
+    return { spec, group: g, line, filled: false, anchor: joints[spec.anchor].part };
+  });
+
+  // ---------- animation ----------
+  const manual = {};
+  let autoAnim = true;
+  let roarStart = -99;
+
+  const IDENT = new THREE.Matrix4();
+  const tmp = new THREE.Matrix4();
+  const auto = {};
+  function setAuto(name, m) { auto[name] = m; }
+  const sin = Math.sin;
+
+  function animateBody(t, roar) {
+    setAuto("RootJoint", T(0, sin(t * 1.4) * 0.4, 0));
+    setAuto("Torso", R(sin(t * 1.4) * 0.03 - roar * 0.12, sin(t * 0.5) * 0.06, 0));
+    setAuto("CoreSpin", R(0, 0, t * (1.5 + roar * 6)));
+    ["L", "C", "R"].forEach((key, idx) => {
+      const ph = (idx + 1) * 2.1;
+      for (let j = 1; j <= 3; j++) {
+        setAuto("Neck" + j + "_" + key, R(sin(t * 1.3 + ph + j * 0.5) * 0.1 + roar * 0.12, sin(t * 0.9 + ph + j * 0.4) * 0.14, 0));
+      }
+      setAuto("Head_" + key, R(sin(t * 1.7 + ph) * 0.15 + roar * 0.3, sin(t * 1.1 + ph) * 0.2, sin(t * 0.8 + ph) * 0.1 + roar * sin(t * 18 + ph) * 0.05));
+      const growl = Math.pow(Math.max(0, sin(t * 0.7 + ph)), 6);
+      setAuto("Jaw_" + key, R(-(0.08 + 0.1 * (sin(t * 3 + ph) + 1) / 2 + Math.max(growl * 0.5, roar * 0.75)), 0, 0));
+    });
+    const flap = sin(t * (2.4 + roar * 2));
+    [["L", 0], ["R", Math.PI]].forEach(([k, ph]) => {
+      setAuto("UpperArm_" + k, R(sin(t * 1.2 + ph) * 0.25 + roar * 0.35, 0, sin(t * 0.9 + ph) * 0.2));
+      setAuto("Forearm_" + k, R(sin(t * 1.6 + ph) * 0.3, 0, 0));
+      setAuto("Hand_" + k, R(sin(t * 2 + ph) * 0.3, 0, sin(t * 1.3 + ph) * 0.4));
+      for (let f = 1; f <= 3; f++) setAuto("Finger" + f + "_" + k, R((sin(t * 2.5 + f + ph) + 1) * 0.25 + roar * 0.4, 0, 0));
+      setAuto("WingArm_" + k, R(flap * (0.4 + roar * 0.2), 0, 0));
+      setAuto("WingHand_" + k, R(sin(t * (2.4 + roar * 2) - 0.7) * 0.35, 0, 0));
+      setAuto("Thigh_" + k, R(sin(t * 1.4 + ph) * 0.08, 0, 0));
+      setAuto("Shin_" + k, R(-sin(t * 1.4 + ph) * 0.1, 0, 0));
+      setAuto("Foot_" + k, R(sin(t * 1.4 + ph) * 0.1, 0, 0));
+    });
+    for (let j = 1; j <= 7; j++) setAuto("Tail" + j, R(sin(t * 1.8 - j * 0.6) * 0.08, sin(t * 1.5 - j * 0.7) * (0.18 + roar * 0.15), 0));
+  }
+
+  function applyPoses() {
+    for (const name in joints) {
+      const j = joints[name];
+      const m = manual[name];
+      j.node.matrix.copy(j.base).multiply(auto[name] || IDENT);
+      if (m) j.node.matrix.multiply(tmp.makeRotationFromEuler(new THREE.Euler(rad(m[0]), rad(m[1]), rad(m[2]), "XYZ")));
+    }
+  }
+
+  const tilt = new THREE.Matrix4();
+  function animateOrbs(t, roar) {
+    orbs.forEach((o) => {
+      const s = o.spec;
+      const center = posOf(new THREE.Matrix4().multiplyMatrices(o.anchor.node.matrixWorld, o.anchor.local));
+      const ang = s.phase + t * s.speed * (1 + roar * 1.5);
+      const r = s.radius * (1 + roar * 0.15);
+      const off = V(Math.cos(ang), sin(ang * 2) * 0.15, sin(ang)).multiplyScalar(r);
+      tilt.makeRotationFromEuler(new THREE.Euler(s.tilt[0], 0, s.tilt[1], "XYZ"));
+      const p = center.add(off.applyMatrix4(tilt));
+      o.group.position.copy(p);
+      if (s.crystal) o.group.rotation.set(t * 1.3, t * 0.9, rad(45));
+      else o.group.rotation.y = t * 0.8;
+
+      const arr = o.line.geometry.attributes.position.array;
+      if (!o.filled) { for (let i = 0; i < TRAIL; i++) arr.set([p.x, p.y, p.z], i * 3); o.filled = true; }
+      arr.copyWithin(3, 0, (TRAIL - 1) * 3);
+      arr[0] = p.x; arr[1] = p.y; arr[2] = p.z;
+      o.line.geometry.attributes.position.needsUpdate = true;
+    });
+  }
+
+  let animClock = 0, last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    if (autoAnim) animClock += dt;
+    const wall = now / 1000;
+    uTime.value = wall;
+    const since = wall - roarStart;
+    const roar = since < 2.6 ? Math.sin(Math.min(1, since / 2.6) * Math.PI) : 0;
+
+    if (autoAnim || roar > 0) animateBody(animClock, roar);
+    else for (const k in auto) delete auto[k];
+    applyPoses();
+    if (torso.sparkles) torso.sparkles.rotation.y = wall * 0.15;
+    coreGlow.scale.setScalar(4.2 + sin(wall * 2) * 0.3 + roar * 2.5);
+    if (bloom) bloom.strength = 0.7 + roar * 0.8;
+
+    scene.updateMatrixWorld();
+    animateOrbs(wall, roar);
+    controls.update();
+    if (composer) composer.render(); else renderer.render(scene, camera);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  window.addEventListener("resize", () => {
+    const w = window.innerWidth, h = window.innerHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+    if (composer) composer.setSize(w, h);
+  });
+
+  // ---------- UI ----------
+  const SIDE = { L: "ซ้าย", R: "ขวา", C: "กลาง" };
+  const PART = {
+    RootJoint: "ทั้งตัว (ลอยขึ้นลง)", Torso: "ลำตัว / อก", CoreSpin: "วงแหวนกลางอก",
+    Neck: "คอ", Head: "หัว", Jaw: "กราม", UpperArm: "ต้นแขน", Forearm: "แขนท่อนล่าง", Hand: "มือ",
+    Finger: "นิ้ว", WingArm: "ปีกท่อนใน", WingHand: "ปีกท่อนนอก", Thigh: "ต้นขา", Shin: "หน้าแข้ง", Foot: "เท้า", Tail: "หาง",
+  };
+  function label(name) {
+    if (PART[name]) return PART[name];
+    let m = name.match(/^Neck(\d)_(\w)$/); if (m) return "คอ" + SIDE[m[2]] + " ท่อน " + m[1];
+    m = name.match(/^Finger(\d)_(\w)$/); if (m) return "นิ้วที่ " + m[1] + " มือ" + SIDE[m[2]];
+    m = name.match(/^Tail(\d)$/); if (m) return "หาง ท่อน " + m[1];
+    m = name.match(/^(\w+)_(\w)$/); if (m) return (m[1] === "Jaw" ? "กรามหัว" : PART[m[1]] || m[1]) + SIDE[m[2]];
+    return name;
+  }
+  const sel = document.getElementById("jointSelect");
+  const order = ["Head_C", "Head_L", "Head_R", "Jaw_C", "Jaw_L", "Jaw_R"];
+  Object.keys(joints).sort((a, b) => {
+    const ia = order.indexOf(a), ib = order.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  }).forEach((name) => {
+    const op = document.createElement("option");
+    op.value = name; op.textContent = label(name) + "  ·  " + name;
+    sel.appendChild(op);
+  });
+  const sliders = ["rx", "ry", "rz"].map((id) => document.getElementById(id));
+  const outs = ["rxv", "ryv", "rzv"].map((id) => document.getElementById(id));
+  function syncSliders() {
+    const m = manual[sel.value] || [0, 0, 0];
+    sliders.forEach((s, i) => { s.value = m[i]; outs[i].textContent = m[i] + "°"; });
+  }
+  sliders.forEach((s, i) => s.addEventListener("input", () => {
+    const m = manual[sel.value] || (manual[sel.value] = [0, 0, 0]);
+    m[i] = Number(s.value);
+    outs[i].textContent = s.value + "°";
+  }));
+  sel.addEventListener("change", syncSliders);
+  document.getElementById("resetJoint").addEventListener("click", () => { delete manual[sel.value]; syncSliders(); });
+
+  function toggle(btn, on) { btn.setAttribute("aria-pressed", on ? "true" : "false"); }
+  const bAnim = document.getElementById("btnAnim"), bSpin = document.getElementById("btnSpin"), bPose = document.getElementById("btnPose");
+  toggle(bSpin, controls.autoRotate);
+  bAnim.addEventListener("click", () => {
+    autoAnim = !autoAnim; toggle(bAnim, autoAnim);
+    if (!autoAnim) for (const k in auto) delete auto[k];
+  });
+  bSpin.addEventListener("click", () => { controls.autoRotate = !controls.autoRotate; toggle(bSpin, controls.autoRotate); });
+  bPose.addEventListener("click", () => {
+    const panel = document.getElementById("posePanel");
+    panel.hidden = !panel.hidden; toggle(bPose, !panel.hidden);
+  });
+  const SKIN_LEVELS = [["ชัด", 0.85], ["ทึบ", 1], ["ใส", 0], ["บาง", 0.45]];
+  let skinIdx = 0;
+  const bSkin = document.getElementById("btnSkin");
+  bSkin.addEventListener("click", () => {
+    skinIdx = (skinIdx + 1) % SKIN_LEVELS.length;
+    uSkin.value = SKIN_LEVELS[skinIdx][1];
+    for (const k in skinCache) skinCache[k].visible = uSkin.value > 0;
+    bSkin.textContent = "ผิว: " + SKIN_LEVELS[skinIdx][0];
+  });
+  document.getElementById("btnRoar").addEventListener("click", () => { roarStart = performance.now() / 1000; });
+  syncSliders();
+})();
+</script>
