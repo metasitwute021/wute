@@ -294,7 +294,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
   const spikeMat = new THREE.MeshStandardMaterial({ color: 0x6a35e8, flatShading: true, metalness: 0.55, roughness: 0.12, emissive: 0x2a0a80, emissiveIntensity: 0.55, transparent: true, opacity: 0.95 });
   const goldMat = new THREE.MeshStandardMaterial({ color: 0xffcf7a, flatShading: true, metalness: 0.6, roughness: 0.25, emissive: 0xb07a20, emissiveIntensity: 0.9 });
   const frameMat = new THREE.MeshStandardMaterial({ color: 0x3a3548, flatShading: true, metalness: 0.75, roughness: 0.38 });
-  const CRY_SPACING = { body: 1.35, limb: 1.05, head: 0.45 };
+  const CRY_SPACING = { body: 1.35, limb: 1.05, head: 0.36 };
   const CRY_COLORS = [[0.36, 0x6a2ee0], [0.66, 0x3a16b0], [0.8, 0x2633c8], [0.88, 0xa865ff], [1.01, 0x1e1640]];
   const crystalData = new Map();
   function ellipsoidArea(a, b, c) {
@@ -695,7 +695,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     { key: "C", base: V(0, 21.5, -2), dir: V(0, 1, -0.45) },
     { key: "R", base: V(3.2, 21, -1.5), dir: V(0.75, 1, -0.35) },
   ];
-  const NECK_W = [2.6, 2.2, 1.9];
+  const NECK_W = [2.3, 1.85, 1.5];
   NECKS.forEach((n) => {
     let dir = n.dir.clone().normalize();
     let pos = n.base.clone();
@@ -713,40 +713,43 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       dir = dir.clone().add(V(0, 0, -0.22)).normalize();
     }
     const headJ = lookAtCF(pos, pos.clone().add(V(n.dir.x * 0.5, -0.15, -1)));
-    // slim, long head: narrow skull, long pointed snout, thin jaw
-    const head = rigPart("Head_" + n.key, [2.0, 1.55, 4.4], mul(headJ, T(0, 0.25, -1.9)), { shape: "ball", pix: "head" }, prev, headJ);
-    decor(head, [1.85, 1.4, 2.0], mul(head.W, T(0, 0.15, 0.6)), { pix: "head" });
-    decor(head, [1.3, 0.9, 2.6], mul(head.W, T(0, -0.1, -2.9)), { pix: "head" });
-    decor(head, [0.85, 0.65, 1.2], mul(head.W, T(0, -0.15, -4.5), R(rad(6), 0, 0)), { pix: "head" });
+    // slim, long head: narrow skull, long pointed snout, thin jaw (HS scales the whole head)
+    const HS = 0.68;
+    const hT = (x, y, z) => T(x * HS, y * HS, z * HS);
+    const hs = (v) => v.map((x) => x * HS);
+    const head = rigPart("Head_" + n.key, hs([2.0, 1.55, 4.4]), mul(headJ, hT(0, 0.25, -1.9)), { shape: "ball", pix: "head" }, prev, headJ);
+    decor(head, hs([1.85, 1.4, 2.0]), mul(head.W, hT(0, 0.15, 0.6)), { pix: "head" });
+    decor(head, hs([1.3, 0.9, 2.6]), mul(head.W, hT(0, -0.1, -2.9)), { pix: "head" });
+    decor(head, hs([0.85, 0.65, 1.2]), mul(head.W, hT(0, -0.15, -4.5), R(rad(6), 0, 0)), { pix: "head" });
     [-1, 1].forEach((s) => {
-      decor(head, [0.5, 0.26, 0.85], mul(head.W, T(s * 0.78, 0.42, -1.2), R(0, s * rad(-15), s * rad(-12))), { kind: "neon", color: C.eye });
-      decor(head, [0.22, 0.16, 0.3], mul(head.W, T(s * 0.28, 0.2, -4.95)), { kind: "dark" });
-      bar(head, posOf(mul(head.W, T(s * 0.45, 0.75, -2.0))), posOf(mul(head.W, T(s * 1.0, 0.95, -0.6))), 0.26, C.accent);
-      spike(head, posOf(mul(head.W, T(s * 0.9, -0.25, 0.4))), rotVec(head.W, V(s * 0.7, -0.1, 1)), 1.8, 0.34, C.accent);
-      spike(head, posOf(mul(head.W, T(s * 0.8, 0.1, 1.2))), rotVec(head.W, V(s, 0.3, 0.9)), 1.3, 0.28, C.gold);
-      const hb = posOf(mul(head.W, T(s * 0.6, 0.8, 1.0)));
-      const hm = hb.clone().add(rotVec(head.W, V(s * 0.4, 1.0, 1.5)));
-      const ht = hm.clone().add(rotVec(head.W, V(s * 0.15, 0.2, 1.3)));
-      claw(head, hb, hm, 0.45);
-      claw(head, hm, ht, 0.3);
+      decor(head, hs([0.5, 0.26, 0.85]), mul(head.W, hT(s * 0.78, 0.42, -1.2), R(0, s * rad(-15), s * rad(-12))), { kind: "neon", color: C.eye });
+      decor(head, hs([0.22, 0.16, 0.3]), mul(head.W, hT(s * 0.28, 0.2, -4.95)), { kind: "dark" });
+      bar(head, posOf(mul(head.W, hT(s * 0.45, 0.75, -2.0))), posOf(mul(head.W, hT(s * 1.0, 0.95, -0.6))), HS * 0.26, C.accent);
+      spike(head, posOf(mul(head.W, hT(s * 0.9, -0.25, 0.4))), rotVec(head.W, V(s * 0.7, -0.1, 1)), HS * (1.8), HS * 0.34, C.accent);
+      spike(head, posOf(mul(head.W, hT(s * 0.8, 0.1, 1.2))), rotVec(head.W, V(s, 0.3, 0.9)), HS * (1.3), HS * 0.28, C.gold);
+      const hb = posOf(mul(head.W, hT(s * 0.6, 0.8, 1.0)));
+      const hm = hb.clone().add(rotVec(head.W, V(s * 0.4, 1.0, 1.5)).multiplyScalar(HS));
+      const ht = hm.clone().add(rotVec(head.W, V(s * 0.15, 0.2, 1.3)).multiplyScalar(HS));
+      claw(head, hb, hm, HS * 0.45);
+      claw(head, hm, ht, HS * 0.3);
       for (let t = 0; t < 5; t++) {
-        decor(head, [0.18, 0.4, 0.18], mul(head.W, T(s * 0.45, -0.62, -2.3 - t * 0.6)), { kind: "neon", color: 0xf5f0ff });
+        decor(head, hs([0.18, 0.4, 0.18]), mul(head.W, hT(s * 0.45, -0.62, -2.3 - t * 0.6)), { kind: "neon", color: 0xf5f0ff });
       }
     });
     for (let c = -2; c <= 2; c++) {
-      spike(head, posOf(mul(head.W, T(c * 0.35, 0.7, 0.8 + Math.abs(c) * 0.3))), rotVec(head.W, V(c * 0.35, 0.8, 1.3)), 2.0 - Math.abs(c) * 0.3, 0.36, C.gold);
+      spike(head, posOf(mul(head.W, hT(c * 0.35, 0.7, 0.8 + Math.abs(c) * 0.3))), rotVec(head.W, V(c * 0.35, 0.8, 1.3)), HS * (2.0 - Math.abs(c) * 0.3), HS * 0.36, C.gold);
     }
-    spike(head, posOf(mul(head.W, T(0, 0.35, -2.4))), rotVec(head.W, V(0, 1, 0.6)), 0.7, 0.25, C.gold);
-    spike(head, posOf(mul(head.W, T(0, 0.3, -3.4))), rotVec(head.W, V(0, 1, 0.5)), 0.5, 0.2, C.gold);
-    decor(head, [0.9, 0.25, 4.2], mul(head.W, T(0, -0.55, -3.0)), { kind: "neon", color: 0xff4fd8 });
-    const jawJ = mul(headJ, T(0, -0.45, -0.6));
-    const jaw = rigPart("Jaw_" + n.key, [1.2, 0.5, 5.6], mul(jawJ, T(0, -0.25, -2.8)), { pix: "head" }, head, jawJ);
-    spike(jaw, posOf(mul(jaw.W, T(0, -0.2, 2.0))), rotVec(jaw.W, V(0, -0.5, 1)), 1.0, 0.3, C.accent);
-    [-1, 1].forEach((s) => spike(jaw, posOf(mul(jaw.W, T(s * 0.6, 0, 1.6))), rotVec(jaw.W, V(s * 0.6, -0.3, 1)), 1.0, 0.28, C.accent));
-    decor(jaw, [0.9, 0.25, 4.4], mul(jaw.W, T(0, 0.25, -0.3)), { kind: "neon", color: 0xff4fd8 });
+    spike(head, posOf(mul(head.W, hT(0, 0.35, -2.4))), rotVec(head.W, V(0, 1, 0.6)), HS * (0.7), HS * 0.25, C.gold);
+    spike(head, posOf(mul(head.W, hT(0, 0.3, -3.4))), rotVec(head.W, V(0, 1, 0.5)), HS * (0.5), HS * 0.2, C.gold);
+    decor(head, hs([0.9, 0.25, 4.2]), mul(head.W, hT(0, -0.55, -3.0)), { kind: "neon", color: 0xff4fd8 });
+    const jawJ = mul(headJ, hT(0, -0.45, -0.6));
+    const jaw = rigPart("Jaw_" + n.key, hs([1.2, 0.5, 5.6]), mul(jawJ, hT(0, -0.25, -2.8)), { pix: "head" }, head, jawJ);
+    spike(jaw, posOf(mul(jaw.W, hT(0, -0.2, 2.0))), rotVec(jaw.W, V(0, -0.5, 1)), HS * (1.0), HS * 0.3, C.accent);
+    [-1, 1].forEach((s) => spike(jaw, posOf(mul(jaw.W, hT(s * 0.6, 0, 1.6))), rotVec(jaw.W, V(s * 0.6, -0.3, 1)), HS * 1.0, HS * 0.28, C.accent));
+    decor(jaw, hs([0.9, 0.25, 4.4]), mul(jaw.W, hT(0, 0.25, -0.3)), { kind: "neon", color: 0xff4fd8 });
     for (let t = 0; t < 6; t++) {
       [-1, 1].forEach((s) => {
-        decor(jaw, [0.18, 0.4, 0.18], mul(jaw.W, T(s * 0.45, 0.42, -2.4 + t * 0.7)), { kind: "neon", color: 0xf5f0ff });
+        decor(jaw, hs([0.18, 0.4, 0.18]), mul(jaw.W, hT(s * 0.45, 0.42, -2.4 + t * 0.7)), { kind: "neon", color: 0xf5f0ff });
       });
     }
   });

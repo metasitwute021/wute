@@ -443,7 +443,8 @@ local NECKS = {
 	{ key = "C", base = Vector3.new(0, 21.5, -2), dir = Vector3.new(0, 1, -0.45) },
 	{ key = "R", base = Vector3.new(3.2, 21, -1.5), dir = Vector3.new(0.75, 1, -0.35) },
 }
-local NECK_WIDTH = { 2.6, 2.2, 1.9 }
+local NECK_WIDTH = { 2.3, 1.85, 1.5 }
+local HS = 0.68 -- ขนาดหัว (1 = ใหญ่เท่าเดิม)
 
 for _, n in ipairs(NECKS) do
 	local key = n.key
@@ -470,39 +471,48 @@ for _, n in ipairs(NECKS) do
 		dir = (dir + Vector3.new(0, 0, -0.22)).Unit
 	end
 
-	-- หัวทรงเพรียว: กะโหลกแคบ ปากยาวแหลม กรามบาง
+	-- หัวทรงเพรียว: กะโหลกแคบ ปากยาวแหลม กรามบาง (HS ย่อขนาดทั้งหัว)
+	local function hC(x, y, z)
+		return CFrame.new(x * HS, y * HS, z * HS)
+	end
+	local function hV(x, y, z)
+		return Vector3.new(x, y, z) * HS
+	end
+	local function hpt(cf, x, y, z)
+		return pt(cf, x * HS, y * HS, z * HS)
+	end
 	local headCF = lookAt(pos, pos + Vector3.new(n.dir.X * 0.5, -0.15, -1))
-	local head = tag(ellipsoid("Head_" .. key, Vector3.new(2.0, 1.55, 4.4), headCF * CFrame.new(0, 0.25, -1.9)), "head")
+	local head = tag(ellipsoid("Head_" .. key, hV(2.0, 1.55, 4.4), headCF * hC(0, 0.25, -1.9)), "head")
 	motor(prev, head, headCF)
 	local hcf = head.CFrame
-	tag(decor(head, "Skull", Vector3.new(1.85, 1.4, 2.0), hcf * CFrame.new(0, 0.15, 0.6)), "head")
-	tag(decor(head, "Snout", Vector3.new(1.3, 0.9, 2.6), hcf * CFrame.new(0, -0.1, -2.9)), "head")
-	tag(decor(head, "SnoutTip", Vector3.new(0.85, 0.65, 1.2), hcf * CFrame.new(0, -0.15, -4.5) * A(rad(6), 0, 0)), "head")
+	tag(decor(head, "Skull", hV(1.85, 1.4, 2.0), hcf * hC(0, 0.15, 0.6)), "head")
+	tag(decor(head, "Snout", hV(1.3, 0.9, 2.6), hcf * hC(0, -0.1, -2.9)), "head")
+	tag(decor(head, "SnoutTip", hV(0.85, 0.65, 1.2), hcf * hC(0, -0.15, -4.5) * A(rad(6), 0, 0)), "head")
 	local WHITE = Color3.fromRGB(245, 240, 255)
 
 	for _, s in ipairs({ -1, 1 }) do
-		decor(head, "Eye", Vector3.new(0.5, 0.26, 0.85), hcf * CFrame.new(s * 0.78, 0.42, -1.2) * A(0, s * rad(-15), s * rad(-12)), {
+		decor(head, "Eye", hV(0.5, 0.26, 0.85), hcf * hC(s * 0.78, 0.42, -1.2) * A(0, s * rad(-15), s * rad(-12)), {
 			material = Enum.Material.Neon,
 			color = CONFIG.EyeColor,
 			transparency = 0,
 		})
-		decor(head, "Nostril", Vector3.new(0.22, 0.16, 0.3), hcf * CFrame.new(s * 0.28, 0.2, -4.95), {
+		decor(head, "Nostril", hV(0.22, 0.16, 0.3), hcf * hC(s * 0.28, 0.2, -4.95), {
 			material = Enum.Material.SmoothPlastic,
 			color = Color3.fromRGB(10, 5, 25),
 			transparency = 0,
 		})
-		bar(head, pt(hcf, s * 0.45, 0.75, -2), pt(hcf, s * 1.0, 0.95, -0.6), 0.26, CONFIG.AccentColor) -- คิ้ว
-		spike(head, pt(hcf, s * 0.9, -0.25, 0.4), hcf:VectorToWorldSpace(Vector3.new(s * 0.7, -0.1, 1)), 1.8, 0.34, Color3.fromRGB(150, 90, 255)) -- แก้ม
-		spike(head, pt(hcf, s * 0.8, 0.1, 1.2), hcf:VectorToWorldSpace(Vector3.new(s, 0.3, 0.9)), 1.3, 0.28)
+		bar(head, hpt(hcf, s * 0.45, 0.75, -2), hpt(hcf, s * 1.0, 0.95, -0.6), HS * 0.26, CONFIG.AccentColor) -- คิ้ว
+		spike(head, hpt(hcf, s * 0.9, -0.25, 0.4), hcf:VectorToWorldSpace(Vector3.new(s * 0.7, -0.1, 1)), HS * 1.8, HS * 0.34, Color3.fromRGB(150, 90, 255)) -- แก้ม
+		spike(head, hpt(hcf, s * 0.8, 0.1, 1.2), hcf:VectorToWorldSpace(Vector3.new(s, 0.3, 0.9)), HS * (1.3), HS * 0.28)
 		-- เขา 2 ท่อน
-		local hornBase = pt(hcf, s * 0.6, 0.8, 1)
-		local hornMid = hornBase + hcf:VectorToWorldSpace(Vector3.new(s * 0.4, 1, 1.5))
-		local hornTip = hornMid + hcf:VectorToWorldSpace(Vector3.new(s * 0.15, 0.2, 1.3))
-		claw(head, hornBase, hornMid, 0.45)
-		claw(head, hornMid, hornTip, 0.3)
+		local hornBase = hpt(hcf, s * 0.6, 0.8, 1)
+		local hornMid = hornBase + hcf:VectorToWorldSpace(Vector3.new(s * 0.4, 1, 1.5)) * HS
+		local hornTip = hornMid + hcf:VectorToWorldSpace(Vector3.new(s * 0.15, 0.2, 1.3)) * HS
+		claw(head, hornBase, hornMid, HS * 0.45)
+		claw(head, hornMid, hornTip, HS * 0.3)
 		-- ฟันบน
 		for t = 0, 4 do
-			decor(head, "Tooth", Vector3.new(0.18, 0.4, 0.18), hcf * CFrame.new(s * 0.45, -0.62, -2.3 - t * 0.6), {
+			decor(head, "Tooth", hV(0.18, 0.4, 0.18), hcf * hC(s * 0.45, -0.62, -2.3 - t * 0.6), {
 				material = Enum.Material.Neon, color = WHITE, transparency = 0,
 			})
 		end
@@ -510,33 +520,33 @@ for _, n in ipairs(NECKS) do
 
 	-- มงกุฎหนามทองกวาดไปด้านหลัง + หนามเล็กบนสันจมูก
 	for c = -2, 2 do
-		spike(head, pt(hcf, c * 0.35, 0.7, 0.8 + math.abs(c) * 0.3), hcf:VectorToWorldSpace(Vector3.new(c * 0.35, 0.8, 1.3)), 2 - math.abs(c) * 0.3, 0.36)
+		spike(head, hpt(hcf, c * 0.35, 0.7, 0.8 + math.abs(c) * 0.3), hcf:VectorToWorldSpace(Vector3.new(c * 0.35, 0.8, 1.3)), HS * (2 - math.abs(c) * 0.3), HS * 0.36)
 	end
-	spike(head, pt(hcf, 0, 0.35, -2.4), hcf:VectorToWorldSpace(Vector3.new(0, 1, 0.6)), 0.7, 0.25)
-	spike(head, pt(hcf, 0, 0.3, -3.4), hcf:VectorToWorldSpace(Vector3.new(0, 1, 0.5)), 0.5, 0.2)
+	spike(head, hpt(hcf, 0, 0.35, -2.4), hcf:VectorToWorldSpace(Vector3.new(0, 1, 0.6)), HS * (0.7), HS * 0.25)
+	spike(head, hpt(hcf, 0, 0.3, -3.4), hcf:VectorToWorldSpace(Vector3.new(0, 1, 0.5)), HS * (0.5), HS * 0.2)
 	-- ในปากเรืองแสงชมพู
-	decor(head, "MouthGlow", Vector3.new(0.9, 0.25, 4.2), hcf * CFrame.new(0, -0.55, -3), {
+	decor(head, "MouthGlow", hV(0.9, 0.25, 4.2), hcf * hC(0, -0.55, -3), {
 		material = Enum.Material.Neon,
 		color = Color3.fromRGB(255, 79, 216),
 		transparency = 0,
 	})
 
 	-- กราม (ขยับอ้าปากได้)
-	local jawCF = headCF * CFrame.new(0, -0.45, -0.6)
-	local jaw = tag(newPart("Jaw_" .. key, Vector3.new(1.2, 0.5, 5.6), jawCF * CFrame.new(0, -0.25, -2.8)), "head")
+	local jawCF = headCF * hC(0, -0.45, -0.6)
+	local jaw = tag(newPart("Jaw_" .. key, hV(1.2, 0.5, 5.6), jawCF * hC(0, -0.25, -2.8)), "head")
 	motor(head, jaw, jawCF)
-	spike(jaw, pt(jaw.CFrame, 0, -0.2, 2), jaw.CFrame:VectorToWorldSpace(Vector3.new(0, -0.5, 1)), 1, 0.3, CONFIG.AccentColor)
+	spike(jaw, hpt(jaw.CFrame, 0, -0.2, 2), jaw.CFrame:VectorToWorldSpace(Vector3.new(0, -0.5, 1)), HS * (1), HS * 0.3, CONFIG.AccentColor)
 	for _, s in ipairs({ -1, 1 }) do
-		spike(jaw, pt(jaw.CFrame, s * 0.6, 0, 1.6), jaw.CFrame:VectorToWorldSpace(Vector3.new(s * 0.6, -0.3, 1)), 1, 0.28, CONFIG.AccentColor)
+		spike(jaw, hpt(jaw.CFrame, s * 0.6, 0, 1.6), jaw.CFrame:VectorToWorldSpace(Vector3.new(s * 0.6, -0.3, 1)), HS * (1), HS * 0.28, CONFIG.AccentColor)
 	end
-	decor(jaw, "MouthGlow", Vector3.new(0.9, 0.25, 4.4), jaw.CFrame * CFrame.new(0, 0.25, -0.3), {
+	decor(jaw, "MouthGlow", hV(0.9, 0.25, 4.4), jaw.CFrame * hC(0, 0.25, -0.3), {
 		material = Enum.Material.Neon,
 		color = Color3.fromRGB(255, 79, 216),
 		transparency = 0,
 	})
 	for t = 0, 5 do
 		for _, s in ipairs({ -1, 1 }) do
-			decor(jaw, "Tooth", Vector3.new(0.18, 0.4, 0.18), jaw.CFrame * CFrame.new(s * 0.45, 0.42, -2.4 + t * 0.7), {
+			decor(jaw, "Tooth", hV(0.18, 0.4, 0.18), jaw.CFrame * hC(s * 0.45, 0.42, -2.4 + t * 0.7), {
 				material = Enum.Material.Neon, color = WHITE, transparency = 0,
 			})
 		end
@@ -813,7 +823,7 @@ local function pixelShell(part)
 end
 
 -- เกล็ดคริสตัล: แผ่นเหลี่ยมซ้อนกันชี้ลงและไปทางหาง คลุมผิวทั้งชิ้น
-local CRY_SPACING = { body = 1, limb = 0.78, head = 0.33 }
+local CRY_SPACING = { body = 1, limb = 0.78, head = 0.27 }
 local CRY_COLORS = {
 	{ 0.36, Color3.fromRGB(106, 46, 224) }, { 0.66, Color3.fromRGB(58, 22, 176) },
 	{ 0.8, Color3.fromRGB(38, 51, 200) }, { 0.88, Color3.fromRGB(168, 101, 255) }, { 1.01, Color3.fromRGB(30, 22, 64) },
