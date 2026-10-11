@@ -601,7 +601,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
   const root = rigPart("Root", [2, 2, 2], T(0, 10, 0), { kind: "none" }, null, T(0, 10, 0));
   const hips = rigPart("Hips", [8.5, 7, 8.5], T(0, 10, 1.2), { shape: "ball", pix: "limb" }, root, T(0, 10, 0), "RootJoint");
   voxels(hips, 6);
-  const torso = rigPart("Torso", [9.6, 10.5, 8], T(0, 17.7, -0.6), { shape: "ball", noFront: true }, hips, T(0, 12.5, 0));
+  const torso = rigPart("Torso", [9.6, 10.5, 8], T(0, 17.7, -0.6), { shape: "ball" }, hips, T(0, 12.5, 0));
   voxels(torso, 24);
   voxels(decor(torso, [8.4, 7.4, 7.4], T(0, 13.2, -0.1), { shape: "ball", noFront: true }), 12);
   voxels(decor(torso, [8.4, 5, 6.4], T(0, 20.6, 1), { shape: "ball" }), 10);
@@ -647,47 +647,21 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
   [[11.8, 5.1, 0.9], [9.8, 5.5, 0.8]].forEach(([y, z, k]) => spike(hips, V(0, y, z), V(0, 0.8, 1.2), 2.2 * k, 0.75 * k, C.gold));
 
   const corePos = V(0, 18, -5.2);
-  // core housing: blue orb in a glass shell, framed by a segmented crystal ring
-  const coreCF = Tv(corePos);
-  decor(torso, [3.4, 3.4, 3.4], coreCF, { kind: "neon", color: 0x3f8cff, shape: "ball" });
-  decor(torso, [1.9, 1.9, 1.9], Tv(corePos.clone().add(V(0, 0.2, -1))), { kind: "neon", color: 0xd6f2ff, shape: "ball" });
-  decor(torso, [4.5, 4.5, 4.5], coreCF, { kind: "glass", color: 0x1c3a9a, shape: "ball" });
-  decor(torso, [6, 6, 5], mul(coreCF, T(0, 0, 0.3)), { kind: "frame", shape: "torus" });
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2 + Math.PI / 12;
-    decor(torso, [1.05, 1.7, 1.2], mul(coreCF, T(0, 0, 0.2), R(0, 0, a), T(3.6, 0, 0)), i % 3 === 1 ? { kind: "neon", color: 0x7444d8, opacity: 0.95 } : { kind: "crystal" });
-  }
-  decor(torso, [9.6, 9.6, 6], mul(coreCF, T(0, 0, 0.5)), { kind: "frame", shape: "torus" });
-  [90, 270].forEach((deg) => {
-    const a = rad(deg);
-    decor(torso, [0.9, 1.7, 0.9], mul(coreCF, T(Math.cos(a) * 4.5, Math.sin(a) * 4.5, -0.3)), { kind: "neon", color: 0x9a7cf0, shape: "octa" });
-  });
-  [40, 58, 122, 140, 158, 222, 318].forEach((deg) => {
-    const a = rad(deg);
-    const b = corePos.clone().add(V(Math.cos(a) * 4.3, Math.sin(a) * 4.3, 0.1));
-    spike(torso, b, V(Math.cos(a), Math.sin(a), -0.3), 1.9, 0.55, C.gold);
-  });
-  decor(torso, [10, 10, 2.4], mul(coreCF, T(0, 0, -0.6), R(rad(82), 0, rad(-6))), { kind: "neon", color: 0x9fe4ff, shape: "torus" });
+  // small blue energy orb set into the chest
+  decor(torso, [1.8, 1.8, 1.8], Tv(corePos.clone().add(V(0, 0, 0.6))), { kind: "neon", color: 0x3f8cff, shape: "ball" });
+  decor(torso, [1.0, 1.0, 1.0], Tv(corePos.clone().add(V(0, 0.1, 0.1))), { kind: "neon", color: 0xd6f2ff, shape: "ball" });
   const coreLight = new THREE.PointLight(0x4a8cff, 2.2, 26);
   coreLight.position.copy(corePos.clone().add(V(0, 0, -2)).applyMatrix4(torso.J.clone().invert()));
   torso.node.add(coreLight);
   const coreLightMat = basicMat(0x3d7bff, 0.25, true);
   const coreGlow = new THREE.Mesh(GEO.ball, coreLightMat);
-  coreGlow.scale.setScalar(4.2);
+  coreGlow.scale.setScalar(2.4);
   // glow lives on the torso node, expressed relative to the torso joint
   coreGlow.position.copy(corePos.clone().applyMatrix4(torso.J.clone().invert()));
   torso.node.add(coreGlow);
 
   const ringJ = Tv(corePos.clone().add(V(0, 0, -0.4)));
   const coreRing = rigPart("CoreRing", [0.4, 0.4, 0.4], ringJ, { kind: "none" }, torso, ringJ, "CoreSpin");
-  for (let i = 0; i < 18; i++) {
-    const a = (i / 18) * Math.PI * 2;
-    decor(coreRing, [0.45, 1.1, 0.45], mul(ringJ, R(0, 0, a), T(2.4, 0, 0)), { kind: "neon", color: i % 3 === 0 ? 0xbfe8ff : 0x4aa8ff });
-  }
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2 + 0.2;
-    decor(coreRing, [0.35, 0.35, 0.35], mul(ringJ, R(0, 0, a), T(3.5, 0, 0)), { kind: "neon", color: 0x6eebff });
-  }
 
   // ---- three necks and heads ----
   const NECKS = [
@@ -1058,7 +1032,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     else for (const k in auto) delete auto[k];
     applyPoses();
     if (torso.sparkles) torso.sparkles.rotation.y = wall * 0.15;
-    coreGlow.scale.setScalar(4.2 + sin(wall * 2) * 0.3 + roar * 2.5);
+    coreGlow.scale.setScalar(2.4 + sin(wall * 2) * 0.2 + roar * 1.2);
     if (bloom) bloom.strength = 0.7 + roar * 0.8;
 
     scene.updateMatrixWorld();

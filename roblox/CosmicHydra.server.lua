@@ -266,7 +266,6 @@ motor(root, hips, CFrame.new(0, 10, 0), "RootJoint")
 voxels(hips, 6)
 
 local torso = ellipsoid("Torso", Vector3.new(9.6, 10.5, 8), CFrame.new(0, 17.7, -0.6))
-torso:SetAttribute("NoFront", true)
 motor(hips, torso, CFrame.new(0, 12.5, 0))
 voxels(torso, 24)
 
@@ -336,58 +335,20 @@ end
 spike(hips, Vector3.new(0, 11.8, 5.1), Vector3.new(0, 0.8, 1.2), 2, 0.68)
 spike(hips, Vector3.new(0, 9.8, 5.5), Vector3.new(0, 0.8, 1.2), 1.8, 0.6)
 
--- แกนพลังกลางอก (ลูกพลังงานสีน้ำเงิน + เกราะวงแหวน + วงแหวนหมุน)
+-- ลูกพลังงานสีน้ำเงินเล็กๆ ฝังกลางอก
 local corePos = Vector3.new(0, 18, -5.2)
-local core = decor(torso, "Core", Vector3.new(3.4, 3.4, 3.4), CFrame.new(corePos), {
+local core = decor(torso, "Core", Vector3.new(1.8, 1.8, 1.8), CFrame.new(corePos + Vector3.new(0, 0, 0.6)), {
 	shape = Enum.PartType.Ball,
 	material = Enum.Material.Neon,
 	color = Color3.fromRGB(63, 140, 255),
 	transparency = 0,
 })
-decor(torso, "CoreHeart", Vector3.new(1.9, 1.9, 1.9), CFrame.new(corePos + Vector3.new(0, 0.2, -1)), {
+decor(torso, "CoreHeart", Vector3.new(1, 1, 1), CFrame.new(corePos + Vector3.new(0, 0.1, 0.1)), {
 	shape = Enum.PartType.Ball,
 	material = Enum.Material.Neon,
 	color = Color3.fromRGB(214, 242, 255),
 	transparency = 0,
 })
-for i = 0, 15 do
-	local a = i / 16 * math.pi * 2
-	decor(torso, "CoreArmor", Vector3.new(0.9, 1.4, 0.9), CFrame.new(corePos + Vector3.new(0, 0, 0.6)) * A(0, 0, a) * CFrame.new(3, 0, 0), {
-		material = Enum.Material.Metal,
-		color = Color3.fromRGB(58, 53, 72),
-		transparency = 0,
-	})
-end
--- เปลือกแก้ว + วงแหวนเกราะคริสตัลเป็นปล้อง + กรอบนอก
-decor(torso, "CoreShell", Vector3.new(4.5, 4.5, 4.5), CFrame.new(corePos), {
-	shape = Enum.PartType.Ball, material = Enum.Material.Glass, color = Color3.fromRGB(40, 80, 200), transparency = 0.6,
-})
-for i = 0, 11 do
-	local a = i / 12 * math.pi * 2 + math.pi / 12
-	local seg = decor(torso, "CoreSegment", Vector3.new(1.05, 1.7, 1.2), CFrame.new(corePos + Vector3.new(0, 0, 0.2)) * A(0, 0, a) * CFrame.new(3.6, 0, 0), {
-		material = i % 3 == 1 and Enum.Material.Neon or Enum.Material.Glass,
-		color = i % 3 == 1 and Color3.fromRGB(116, 68, 216) or Color3.fromRGB(106, 53, 232),
-		transparency = 0.05,
-	})
-	seg.Reflectance = 0.2
-end
-for i = 0, 23 do
-	local a = i / 24 * math.pi * 2
-	decor(torso, "CoreFrame", Vector3.new(0.8, 1.3, 0.9), CFrame.new(corePos + Vector3.new(0, 0, 0.5)) * A(0, 0, a) * CFrame.new(4.75, 0, 0), {
-		material = Enum.Material.Metal, color = Color3.fromRGB(58, 53, 72), transparency = 0,
-	})
-end
-for _, deg in ipairs({ 90, 270 }) do
-	local a = rad(deg)
-	decor(torso, "CoreStud", Vector3.new(0.8, 1.6, 0.8), CFrame.new(corePos + Vector3.new(math.cos(a) * 4.5, math.sin(a) * 4.5, -0.3)) * A(0, 0, rad(45)), {
-		material = Enum.Material.Neon, color = Color3.fromRGB(154, 124, 240), transparency = 0,
-	})
-end
-for _, deg in ipairs({ 40, 58, 122, 140, 158, 222, 318 }) do
-	local a = rad(deg)
-	local b = corePos + Vector3.new(math.cos(a) * 4.3, math.sin(a) * 4.3, 0.1)
-	spike(torso, b, Vector3.new(math.cos(a), math.sin(a), -0.3), 1.9, 0.55)
-end
 local coreLight = Instance.new("PointLight")
 coreLight.Color = Color3.fromRGB(74, 140, 255)
 coreLight.Range = 22
@@ -396,31 +357,6 @@ coreLight.Parent = core
 
 local coreRing = newPart("CoreRing", Vector3.new(0.4, 0.4, 0.4), CFrame.new(corePos + Vector3.new(0, 0, -0.4)), { transparency = 1 })
 motor(torso, coreRing, coreRing.CFrame, "CoreSpin")
-for i = 0, 17 do
-	local a = i / 18 * math.pi * 2
-	decor(coreRing, "RingBit", Vector3.new(0.45, 1.1, 0.45), coreRing.CFrame * A(0, 0, a) * CFrame.new(2.4, 0, 0), {
-		material = Enum.Material.Neon,
-		color = i % 3 == 0 and Color3.fromRGB(191, 232, 255) or Color3.fromRGB(74, 168, 255),
-		transparency = 0,
-	})
-end
-for i = 0, 7 do
-	local a = i / 8 * math.pi * 2 + 0.2
-	decor(coreRing, "RingDot", Vector3.new(0.35, 0.35, 0.35), coreRing.CFrame * A(0, 0, a) * CFrame.new(3.5, 0, 0), {
-		material = Enum.Material.Neon,
-		color = Color3.fromRGB(110, 235, 255),
-		transparency = 0,
-	})
-end
--- วงแหวนแบบดาวเสาร์เอียงรอบลูกพลังงาน
-for i = 0, 31 do
-	local a = i / 32 * math.pi * 2
-	decor(torso, "PlanetRing", Vector3.new(0.3, 0.25, 1.1), CFrame.new(corePos + Vector3.new(0, 0, -0.6)) * A(rad(-8), 0, rad(-6)) * A(0, a, 0) * CFrame.new(5, 0, 0), {
-		material = Enum.Material.Neon,
-		color = Color3.fromRGB(159, 228, 255),
-		transparency = 0.1,
-	})
-end
 
 -- ประกายระยิบรอบตัว
 local sparkle = Instance.new("ParticleEmitter")
