@@ -112,7 +112,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     <button id="btnAnim" type="button" aria-pressed="true">ท่าขยับ</button>
     <button id="btnSpin" type="button" aria-pressed="true">หมุนกล้อง</button>
     <button id="btnPose" type="button" aria-pressed="false">ปรับท่า</button>
-    <button id="btnStyle" type="button">ลาย: พิกเซล</button>
+    <button id="btnStyle" type="button">ลาย: คริสตัล</button>
     <button id="btnSkin" type="button">ผิว: ชัด</button>
     <button id="btnRoar" type="button" class="roar">คำราม!</button>
   </div>
@@ -221,12 +221,13 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     }));
   }
   const uSkin = { value: 0.85 };
+  const uTone = { value: 1 };
   const skinCache = {};
   function skinMat(color, mulOpacity) {
     const key = color + ":" + mulOpacity;
     if (skinCache[key]) return skinCache[key];
     return (skinCache[key] = new THREE.ShaderMaterial({
-      uniforms: { uSkin, uTime, uMul: { value: mulOpacity }, uColor: { value: new THREE.Color(color).multiplyScalar(0.75) } },
+      uniforms: { uSkin, uTone, uTime, uMul: { value: mulOpacity }, uColor: { value: new THREE.Color(color).multiplyScalar(0.75) } },
       vertexShader: [
         "varying vec3 vN; varying vec3 vW; varying vec3 vV;",
         "void main(){ vec4 wp = modelMatrix * vec4(position,1.0); vW = wp.xyz;",
@@ -234,7 +235,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
         "gl_Position = projectionMatrix * mv; }",
       ].join("\n"),
       fragmentShader: [
-        "uniform float uSkin; uniform float uMul; uniform float uTime; uniform vec3 uColor;",
+        "uniform float uSkin; uniform float uMul; uniform float uTime; uniform vec3 uColor; uniform float uTone;",
         "varying vec3 vN; varying vec3 vW; varying vec3 vV;",
         "void main(){ vec3 N = normalize(vN);",
         "float key = max(dot(N, normalize(vec3(0.4, 0.8, -0.5))), 0.0);",
@@ -244,7 +245,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
         "float scale = smoothstep(0.38, 0.5, edge);",
         "vec3 cell = floor(p); float tone = fract(sin(dot(cell, vec3(12.9898, 78.233, 37.719))) * 43758.5453);",
         "float rim = pow(1.0 - abs(dot(N, normalize(vV))), 3.0);",
-        "vec3 c = uColor * (0.28 + 0.75 * key + 0.25 * fill) * (0.82 + 0.3 * tone);",
+        "vec3 c = uColor * uTone * (0.28 + 0.75 * key + 0.25 * fill) * (0.82 + 0.3 * tone);",
         "c = mix(c, c * 0.35, scale) + vec3(0.75, 0.6, 1.0) * rim * 0.5;",
         "gl_FragColor = vec4(c, uSkin * uMul); }",
       ].join("\n"),
@@ -267,13 +268,91 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     if (kind === "neon") return basicMat(o.color, o.opacity != null ? o.opacity : 1, false);
     if (kind === "glass") return basicMat(o.color, 0.55, true);
     if (kind === "dark") return basicMat(0x0a0519, 1, false);
+    if (kind === "gold") return goldMat;
+    if (kind === "blade") return bladeMat;
+    if (kind === "crystal") return spikeMat;
+    if (kind === "frame") return frameMat;
     return null;
   }
   const GEO = {
     block: new THREE.BoxGeometry(1, 1, 1),
     ball: new THREE.SphereGeometry(0.5, 24, 16),
     octa: new THREE.OctahedronGeometry(0.5, 0),
+    cone: new THREE.ConeGeometry(0.5, 1, 4),
+    torus: new THREE.TorusGeometry(0.5, 0.06, 8, 48),
   };
+  // ---- crystal look: lit, faceted shards ----
+  scene.add(new THREE.HemisphereLight(0xa38cff, 0x12082c, 0.95));
+  const keyLight = new THREE.DirectionalLight(0xf2e8ff, 1.35);
+  keyLight.position.set(20, 40, -30);
+  scene.add(keyLight);
+  const rimLight = new THREE.DirectionalLight(0xff5fd8, 1.1);
+  rimLight.position.set(-25, 15, 40);
+  scene.add(rimLight);
+  const crystalMat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, metalness: 0.45, roughness: 0.14, emissive: 0x160640, transparent: true, opacity: 0.94 });
+  const bladeMat = new THREE.MeshStandardMaterial({ color: 0x8a4cff, flatShading: true, metalness: 0.3, roughness: 0.08, emissive: 0x4614b0, emissiveIntensity: 0.75, transparent: true, opacity: 0.74, side: THREE.DoubleSide, depthWrite: false });
+  const spikeMat = new THREE.MeshStandardMaterial({ color: 0x8a45ff, flatShading: true, metalness: 0.3, roughness: 0.12, emissive: 0x4a12b8, emissiveIntensity: 0.7, transparent: true, opacity: 0.9 });
+  const goldMat = new THREE.MeshStandardMaterial({ color: 0xffcf7a, flatShading: true, metalness: 0.6, roughness: 0.25, emissive: 0xb07a20, emissiveIntensity: 0.9 });
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0x3a3548, flatShading: true, metalness: 0.75, roughness: 0.38 });
+  const CRY_SPACING = { body: 1.35, limb: 1.05, head: 0.68 };
+  const CRY_COLORS = [[0.36, 0x6a2ee0], [0.66, 0x3a16b0], [0.8, 0x2633c8], [0.88, 0xa865ff], [1.01, 0x1e1640]];
+  const crystalData = new Map();
+  function ellipsoidArea(a, b, c) {
+    const p = 1.6;
+    return 4 * Math.PI * Math.pow((Math.pow(a * b, p) + Math.pow(a * c, p) + Math.pow(b * c, p)) / 3, 1 / p);
+  }
+  function crystalShell(owner, W, size, shape, style) {
+    const sp = CRY_SPACING[style] || CRY_SPACING.body;
+    const h = V(size[0] / 2, size[1] / 2, size[2] / 2);
+    const round = shape === "ball";
+    const faces = [[0, size[1] * size[2]], [1, size[0] * size[2]], [2, size[0] * size[1]]];
+    const area = round ? ellipsoidArea(h.x, h.y, h.z) : 2 * (faces[0][1] + faces[1][1] + faces[2][1]);
+    const count = Math.min(500, Math.max(4, Math.round((area / (sp * sp)) * 1.05)));
+    // scales point down and back; along a bone they point back toward its root
+    const flowLocal = round ? V(0, -0.8, 0.6) : V(0, -0.2, 1);
+    let d = crystalData.get(owner.node);
+    if (!d) crystalData.set(owner.node, (d = { mats: [], cols: [] }));
+    const toNode = owner.J.clone().invert().multiply(W);
+    for (let i = 0; i < count; i++) {
+      let p, n;
+      if (round) {
+        p = unitVec().multiply(h);
+        n = V(p.x / (h.x * h.x), p.y / (h.y * h.y), p.z / (h.z * h.z)).normalize();
+      } else {
+        let r = rnd() * (faces[0][1] + faces[1][1] + faces[2][1]), ax = 0;
+        while (ax < 2 && r > faces[ax][1]) { r -= faces[ax][1]; ax++; }
+        const sign = rnd() < 0.5 ? -1 : 1;
+        p = V(rr(-1, 1) * h.x, rr(-1, 1) * h.y, rr(-1, 1) * h.z);
+        n = V(0, 0, 0);
+        if (ax === 0) { p.x = sign * h.x; n.x = sign; } else if (ax === 1) { p.y = sign * h.y; n.y = sign; } else { p.z = sign * h.z; n.z = sign; }
+      }
+      let f = flowLocal.clone().addScaledVector(n, -flowLocal.dot(n));
+      if (f.lengthSq() < 0.01) f = V(1, 0, 0).cross(n);
+      f.normalize();
+      const fl = f.clone().addScaledVector(n, 0.18).normalize();
+      const x = fl.clone().cross(n).normalize();
+      const nz = x.clone().cross(fl);
+      const L = sp * rr(1.1, 1.7), w = sp * rr(0.9, 1.3), t = sp * rr(0.45, 0.7);
+      const pos = p.clone().addScaledVector(n, t * 0.15).addScaledVector(fl, L * 0.3);
+      d.mats.push(mul(toNode, Tv(pos), new THREE.Matrix4().makeBasis(x, fl, nz), new THREE.Matrix4().makeScale(w, L, t)));
+      const roll = rnd();
+      let col = CRY_COLORS.find((c) => roll < c[0])[1];
+      if (style === "head" && rnd() < 0.12) col = 0xd07cff;
+      d.cols.push(new THREE.Color(col).multiplyScalar(rr(0.85, 1.15)));
+    }
+  }
+  const crystalMeshes = [];
+  function buildCrystals() {
+    crystalData.forEach((d, node) => {
+      const im = new THREE.InstancedMesh(GEO.octa, crystalMat, d.mats.length);
+      d.mats.forEach((m, i) => { im.setMatrixAt(i, m); im.setColorAt(i, d.cols[i]); });
+      im.frustumCulled = false;
+      node.add(im);
+      crystalMeshes.push(im);
+    });
+  }
+
+
 
   // ---------- rig ----------
   // Each rig part owns a node whose world transform is its joint frame J.
@@ -281,10 +360,13 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
   scene.add(rig);
   const joints = {};
 
+  let collecting = null;
+  const pixelOnly = [];
   function addMesh(owner, W, size, o) {
     const mat = matFor(o);
     if (!mat) return;
     const mesh = new THREE.Mesh(GEO[o.shape || "block"], mat);
+    if (collecting) collecting.push(mesh);
     mesh.matrixAutoUpdate = false;
     mesh.matrix.copy(mul(owner.J.clone().invert(), W, new THREE.Matrix4().makeScale(size[0], size[1], size[2])));
     owner.node.add(mesh);
@@ -295,7 +377,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       skin.matrix.copy(mesh.matrix).multiply(new THREE.Matrix4().makeScale(0.97, 0.97, 0.97));
       skin.renderOrder = -1;
       owner.node.add(skin);
-      if (Math.min(size[0], size[1], size[2]) >= (o.pix === "head" ? 0.6 : 0.9)) pixelShell(owner, W, size, o.shape || "block", o.pix);
+      if (Math.min(size[0], size[1], size[2]) >= (o.pix === "head" ? 0.6 : 0.9)) { pixelShell(owner, W, size, o.shape || "block", o.pix); crystalShell(owner, W, size, o.shape || "block", o.pix); }
     }
   }
 
@@ -326,6 +408,10 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
 
   const VOXEL_COLORS = [0xcdb4ff, 0x966eff, 0xf0e8ff, 0x6946eb];
   function voxels(p, count) {
+    collecting = pixelOnly;
+    try { scatterVoxels(p, count); } finally { collecting = null; }
+  }
+  function scatterVoxels(p, count) {
     const hx = p.size[0] / 2, hy = p.size[1] / 2, hz = p.size[2] / 2;
     for (let i = 0; i < count; i++) {
       const s = rr(0.3, 0.85);
@@ -348,24 +434,23 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     const len = a.distanceTo(b);
     decor(parent, [w, w, len], mul(lookAtCF(a, b), T(0, 0, -len / 2)), { kind: "neon", color, opacity: opacity == null ? 1 : opacity });
   }
-  function claw(parent, base, tip, w, color) { bar(parent, base, tip, w, color || C.gold); }
-  // two-stage tapered spike
+  // faceted four-sided spike: gold, or violet crystal for the accent colour
   function spike(parent, base, dir, len, w, color) {
-    const d = dir.clone().normalize();
-    const mid = base.clone().add(d.clone().multiplyScalar(len * 0.55));
-    bar(parent, base, mid, w, color || C.gold);
-    bar(parent, mid, base.clone().add(d.multiplyScalar(len)), w * 0.5, color || C.gold);
+    const tip = base.clone().add(dir.clone().normalize().multiplyScalar(len));
+    const W = mul(lookAtCF(base, tip), R(-Math.PI / 2, 0, 0), T(0, len / 2, 0));
+    decor(parent, [w * 1.35, len, w * 1.35], W, { kind: color && color !== C.gold ? "crystal" : "gold", shape: "cone" });
   }
+  function claw(parent, base, tip, w, color) { spike(parent, base, tip.clone().sub(base), base.distanceTo(tip) * 1.15, w, color); }
 
   // ---- membranes that stretch with the bones (no tearing) ----
   // a point is pinned to a bone, or is a weighted mix of other points
   function pin(part, p) { return { node: part.node, local: p.clone().applyMatrix4(part.J.clone().invert()), rest: p.clone() }; }
   function mixPt(list) { return { mix: list }; }
   const membraneMat = new THREE.ShaderMaterial({
-    uniforms: { uTime, uSkin },
+    uniforms: { uTime, uSkin, uMem: { value: 1 } },
     vertexShader: "attribute float aT; attribute vec3 aRest; varying float vT; varying vec3 vR; void main(){ vT = aT; vR = aRest; gl_Position = projectionMatrix * viewMatrix * vec4(position,1.0); }",
     fragmentShader: [
-      "uniform float uTime; uniform float uSkin; varying float vT; varying vec3 vR;",
+      "uniform float uTime; uniform float uSkin; uniform float uMem; varying float vT; varying vec3 vR;",
       "float hash(vec3 p){ return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }",
       "void main(){ vec3 deep = vec3(0.24, 0.12, 0.62); vec3 mid = vec3(0.48, 0.32, 1.0); vec3 edge = vec3(0.95, 0.6, 1.0);",
       "vec3 c = vT < 0.6 ? mix(deep, mid, vT / 0.6) : mix(mid, edge, (vT - 0.6) / 0.4);",
@@ -377,7 +462,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       "float wave = smoothstep(0.85, 1.0, sin(cell.x * 0.7 + cell.y * 0.9 - uTime * 3.0) * 0.5 + 0.5);",
       "c += vec3(0.35, 0.3, 0.6) * wave * 0.35;",
       "float a = mix(0.62, 0.92, vT) * (1.0 - gap * 0.7);",
-      "gl_FragColor = vec4(c * (1.0 - gap * 0.5), a); }",
+      "gl_FragColor = vec4(c * (1.0 - gap * 0.5), a * uMem); }",
     ].join("\n"),
     transparent: true, side: THREE.DoubleSide, depthWrite: false,
   });
@@ -523,15 +608,17 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
   for (let i = 0; i < 7; i++) {
     const y = 9.8 + i * 1.0;
     const w = 3.7 - Math.abs(i - 3) * 0.28;
-    decor(torso, [w, 0.78, 0.7], mul(T(0, y, -3.35 - (y - 9.8) * 0.2), R(rad(-12), 0, 0)), { kind: "neon", color: 0xa48cf5, opacity: 0.85 });
+    decor(torso, [w, 0.78, 0.7], mul(T(0, y, -3.35 - (y - 9.8) * 0.2), R(rad(-12), 0, 0)), { kind: "crystal" });
   }
   // rib cage wrapping around the chest
   for (let i = 0; i <= 4; i++) {
     const y = 13.6 + i * 1.2, spread = 3.6 + Math.sin((i / 4) * Math.PI) * 0.9;
     [-1, 1].forEach((s) => {
       const a = V(s * 1.9, y, -4.3), b = V(s * spread, y + 0.6, -3.1), c = V(s * (spread + 0.6), y + 1.1, -1.5);
+      collecting = pixelOnly;
       bar(torso, a, b, 0.42, C.accent, 0.9);
       bar(torso, b, c, 0.36, C.accent, 0.75);
+      collecting = null;
     });
   }
   // dorsal ridge
@@ -541,8 +628,18 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
   [[11.8, 5.1, 0.9], [9.8, 5.5, 0.8]].forEach(([y, z, k]) => spike(hips, V(0, y, z), V(0, 0.8, 1.2), 2.2 * k, 0.75 * k, C.gold));
 
   const corePos = V(0, 18, -5.2);
-  decor(torso, [3, 3, 3], Tv(corePos), { kind: "dark", shape: "ball" });
-  const coreLightMat = basicMat(0xc06eff, 0.22, true);
+  decor(torso, [3, 3, 3], Tv(corePos), { kind: "neon", color: 0x3f8cff, shape: "ball" });
+  decor(torso, [1.7, 1.7, 1.7], Tv(corePos.clone().add(V(0, 0, -0.9))), { kind: "neon", color: 0xd6f2ff, shape: "ball" });
+  decor(torso, [6, 6, 7], mul(Tv(corePos.clone().add(V(0, 0, 0.6))), R(0, 0, rad(22.5))), { kind: "frame", shape: "torus" });
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const b = corePos.clone().add(V(Math.cos(a) * 3.1, Math.sin(a) * 3.1, 0.2));
+    spike(torso, b, V(Math.cos(a), Math.sin(a), -0.35), 1.4, 0.45, C.gold);
+  }
+  const coreLight = new THREE.PointLight(0x4a8cff, 2.2, 26);
+  coreLight.position.copy(corePos.clone().add(V(0, 0, -2)).applyMatrix4(torso.J.clone().invert()));
+  torso.node.add(coreLight);
+  const coreLightMat = basicMat(0x3d7bff, 0.25, true);
   const coreGlow = new THREE.Mesh(GEO.ball, coreLightMat);
   coreGlow.scale.setScalar(4.2);
   // glow lives on the torso node, expressed relative to the torso joint
@@ -553,12 +650,13 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
   const coreRing = rigPart("CoreRing", [0.4, 0.4, 0.4], ringJ, { kind: "none" }, torso, ringJ, "CoreSpin");
   for (let i = 0; i < 18; i++) {
     const a = (i / 18) * Math.PI * 2;
-    decor(coreRing, [0.45, 1.1, 0.45], mul(ringJ, R(0, 0, a), T(2.4, 0, 0)), { kind: "neon", color: i % 3 === 0 ? 0xff78e6 : 0xaf5fff });
+    decor(coreRing, [0.45, 1.1, 0.45], mul(ringJ, R(0, 0, a), T(2.4, 0, 0)), { kind: "neon", color: i % 3 === 0 ? 0xbfe8ff : 0x4aa8ff });
   }
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2 + 0.2;
     decor(coreRing, [0.35, 0.35, 0.35], mul(ringJ, R(0, 0, a), T(3.5, 0, 0)), { kind: "neon", color: 0x6eebff });
   }
+  decor(coreRing, [8.2, 8.2, 3], mul(ringJ, R(rad(68), rad(18), 0)), { kind: "neon", color: 0x9fe4ff, shape: "torus" });
 
   // ---- three necks and heads ----
   const NECKS = [
@@ -578,7 +676,8 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       voxels(seg, 6);
       // throat plate and neck spike
       decor(seg, [w * 0.62, w * 0.2, 2.3], mul(seg.W, T(0, -w * 0.48, 0)), { kind: "neon", color: 0xe6d8ff, opacity: 0.7 });
-      spike(seg, posOf(mul(seg.W, T(0, w * 0.45, 0))), rotVec(seg.W, V(0, 1, 0.7)), 1.3, 0.5, j % 2 ? C.gold : C.accent);
+      spike(seg, posOf(mul(seg.W, T(0, w * 0.45, 0))), rotVec(seg.W, V(0, 1, 0.7)), 1.6, 0.55, C.gold);
+      [-1, 1].forEach((sd) => spike(seg, posOf(mul(seg.W, T(sd * w * 0.48, w * 0.1, 0.3))), rotVec(seg.W, V(sd, 0.4, 0.8)), 1.0, 0.36, C.accent));
       prev = seg; pos = next;
       dir = dir.clone().add(V(0, 0, -0.22)).normalize();
     }
@@ -598,9 +697,14 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       claw(head, hb, hm, 0.55);
       claw(head, hm, ht, 0.35);
     });
+    for (let c = -2; c <= 2; c++) {
+      spike(head, posOf(mul(head.W, T(c * 0.5, 0.95, 0.7 + Math.abs(c) * 0.3))), rotVec(head.W, V(c * 0.4, 1, 1.1)), 1.8 - Math.abs(c) * 0.3, 0.42, C.gold);
+    }
+    decor(head, [1.5, 0.35, 3.0], mul(head.W, T(0, -0.72, -2.3)), { kind: "neon", color: 0xff4fd8 });
     const jawJ = mul(headJ, T(0, -0.6, -0.4));
     const jaw = rigPart("Jaw_" + n.key, [2.1, 0.7, 4.3], mul(jawJ, T(0, -0.35, -2.15)), { pix: "head" }, head, jawJ);
     spike(jaw, posOf(mul(jaw.W, T(0, -0.3, 1.2))), rotVec(jaw.W, V(0, -0.6, 1)), 1.1, 0.35, C.accent);
+    decor(jaw, [1.5, 0.3, 3.3], mul(jaw.W, T(0, 0.3, -0.2)), { kind: "neon", color: 0xff4fd8 });
     for (let t = 0; t <= 4; t++) {
       [-1, 1].forEach((s) => {
         decor(jaw, [0.25, 0.45, 0.25], mul(jaw.W, T(s * 0.8, 0.5, -1.9 + t * 0.6)), { kind: "neon", color: 0xf5f0ff });
@@ -632,10 +736,10 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     const wBase = V(2.6 * s, 21.2, 2.6);
     const wElbow = wBase.clone().add(V(4.6 * s, 2.4, 3.5));
     const wWrist = wElbow.clone().add(V(5.2 * s, 1.6, -0.5));
-    const boneOpt = { kind: "neon", color: 0x6f52e8, opacity: 1 };
+    const boneOpt = { kind: "frame" };
     const w1 = bone("WingArm_" + k, wBase, wElbow, 1.0, torso, boneOpt);
     const w2 = bone("WingHand_" + k, wElbow, wWrist, 0.8, w1, boneOpt);
-    decor(w1, [1.1, 1.1, 1.1], Tv(wElbow), { kind: "neon", color: 0x9a80ff, shape: "ball" });
+    decor(w1, [1.2, 1.2, 1.2], Tv(wElbow), { kind: "frame", shape: "ball" });
     decor(w2, [1.2, 1.2, 1.2], Tv(wWrist), { kind: "neon", color: C.gold, shape: "ball" });
     claw(w2, wWrist, wWrist.clone().add(V(0.4 * s, 1.4, -1.2)), 0.36);
     const tips = [V(6 * s, 3.5, 1.5), V(8.5 * s, -1, 3), V(7 * s, -6, 4), V(3.5 * s, -9.5, 4.5)].map((o) => wWrist.clone().add(o));
@@ -650,6 +754,37 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     const tris = [[0, 1, 2, 0.1, 0.3, 0.35], [0, 2, 7, 0.1, 0.35, 0.6], [2, 6, 11, 0.35, 1, 0.85], [2, 11, 7, 0.35, 0.85, 0.6]];
     for (let i = 0; i < 3; i++) tris.push([2, 3 + i, 8 + i, 0.35, 1, 0.85], [2, 8 + i, 4 + i, 0.35, 0.85, 1]);
     makeSheet(pts, tris, [[3, 8], [8, 4], [4, 9], [9, 5], [5, 10], [10, 6], [6, 11], [11, 7]]);
+
+    // crystal blades fanning across the wing to a jagged edge
+    const wingN = wWrist.clone().sub(wBase).cross(tips[2].clone().sub(wBase)).normalize();
+    function blade(owner, from, to, width, over) {
+      const dir = to.clone().sub(from);
+      const len = dir.length() * (over || 1.1);
+      dir.normalize();
+      const x = dir.clone().cross(wingN).normalize();
+      const W = mul(Tv(from.clone().addScaledVector(dir, len / 2)), new THREE.Matrix4().makeBasis(x, dir, x.clone().cross(dir)));
+      decor(owner, [width, len, width * 0.22], W, { kind: "blade", shape: "octa" });
+    }
+    const mids = [0, 1, 2].map((i) => tips[i].clone().lerp(tips[i + 1], 0.5).lerp(wWrist, 0.24));
+    const midIn = tips[3].clone().lerp(bodyRear, 0.5).lerp(wWrist, 0.18);
+    tips.forEach((tip, i) => blade(spars[i], wWrist, tip, 1.25 - i * 0.08, 1.12));
+    mids.forEach((m, i) => {
+      blade(w2, wWrist, m, 1.5, 1.15);
+      blade(spars[i], wWrist.clone().lerp(tips[i], 0.4), m, 1.0, 1.25);
+      blade(spars[i + 1], wWrist.clone().lerp(tips[i + 1], 0.4), m, 1.0, 1.25);
+    });
+    const chain = [bodyRear, midIn, tips[3]];
+    [0.15, 0.35, 0.55, 0.75, 0.92].forEach((u) => {
+      const from = u < 0.5 ? wBase.clone().lerp(wElbow, u * 2) : wElbow.clone().lerp(wWrist, (u - 0.5) * 2);
+      const tu = u * 2;
+      const to = tu < 1 ? chain[0].clone().lerp(chain[1], tu) : chain[1].clone().lerp(chain[2], tu - 1);
+      blade(u < 0.5 ? w1 : w2, from, to, 1.6, 1.12);
+    });
+    // small shards on the leading edge
+    [0.3, 0.6, 0.85].forEach((u) => {
+      const from = wElbow.clone().lerp(wWrist, u);
+      blade(w2, from, from.clone().add(V(0.8 * s, 1.6, -0.4)), 0.6, 1);
+    });
 
     // digitigrade leg: thigh, shin, metatarsal, foot
     const hip = V(3.6 * s, 9.6, 1.2);
@@ -695,6 +830,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     decor(prev, [1, 2.2, 1], mul(Tv(tipP), R(rad(70), 0, rad(45))), { kind: "neon", color: 0x78ebff, shape: "octa" });
   })();
   buildPixels();
+  buildCrystals();
 
   // sparkles around the chest
   (function () {
@@ -813,7 +949,7 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
       }
       setAuto("Head_" + key, R(sin(t * 1.7 + ph) * 0.15 + roar * 0.3, sin(t * 1.1 + ph) * 0.2, sin(t * 0.8 + ph) * 0.1 + roar * sin(t * 18 + ph) * 0.05));
       const growl = Math.pow(Math.max(0, sin(t * 0.7 + ph)), 6);
-      setAuto("Jaw_" + key, R(-(0.08 + 0.1 * (sin(t * 3 + ph) + 1) / 2 + Math.max(growl * 0.5, roar * 0.75)), 0, 0));
+      setAuto("Jaw_" + key, R(-(0.2 + 0.1 * (sin(t * 3 + ph) + 1) / 2 + Math.max(growl * 0.5, roar * 0.75)), 0, 0));
     });
     const beat = t * (2.2 + roar * 2.2);
     [["L", -1], ["R", 1]].forEach(([k, s]) => {
@@ -953,20 +1089,27 @@ input[type=range] { width: 100%; accent-color: var(--violet); }
     panel.hidden = !panel.hidden; toggle(bPose, !panel.hidden);
   });
   const SKIN_LEVELS = [["ชัด", 0.85, 0.92], ["ทึบ", 1, 1], ["ใส", 0, 0.4], ["บาง", 0.45, 0.65]];
-  let skinIdx = 0, pixelStyle = true;
+  const STYLES = [["crystal", "คริสตัล"], ["pixel", "พิกเซล"], ["smooth", "เรียบ"]];
+  let skinIdx = 0, styleIdx = 0;
   const bSkin = document.getElementById("btnSkin"), bStyle = document.getElementById("btnStyle");
   function refreshLook() {
     const lvl = SKIN_LEVELS[skinIdx];
-    uSkin.value = lvl[1];
+    const style = STYLES[styleIdx][0];
+    uSkin.value = style === "crystal" ? 1 : lvl[1];
+    uTone.value = style === "crystal" ? 0.4 : 1;
     pixelMat.opacity = lvl[2];
-    for (const k in skinCache) skinCache[k].visible = !pixelStyle && lvl[1] > 0;
-    pixelMeshes.forEach((m) => { m.visible = pixelStyle; });
-    for (const k in holoCache) holoCache[k].uniforms.uStrength.value = holoCache[k].userData.base * (pixelStyle ? 0.3 : 1);
+    crystalMat.opacity = lvl[2];
+    for (const k in skinCache) skinCache[k].visible = style !== "pixel" && (style === "crystal" || lvl[1] > 0);
+    pixelMeshes.forEach((m) => { m.visible = style === "pixel"; });
+    crystalMeshes.forEach((m) => { m.visible = style === "crystal"; });
+    pixelOnly.forEach((m) => { m.visible = style !== "crystal"; });
+    membraneMat.uniforms.uMem.value = style === "crystal" ? 0.32 : 1;
+    for (const k in holoCache) holoCache[k].uniforms.uStrength.value = holoCache[k].userData.base * (style === "smooth" ? 1 : style === "crystal" ? 0.2 : 0.3);
     bSkin.textContent = "ผิว: " + lvl[0];
-    bStyle.textContent = "ลาย: " + (pixelStyle ? "พิกเซล" : "เรียบ");
+    bStyle.textContent = "ลาย: " + STYLES[styleIdx][1];
   }
   bSkin.addEventListener("click", () => { skinIdx = (skinIdx + 1) % SKIN_LEVELS.length; refreshLook(); });
-  bStyle.addEventListener("click", () => { pixelStyle = !pixelStyle; refreshLook(); });
+  bStyle.addEventListener("click", () => { styleIdx = (styleIdx + 1) % STYLES.length; refreshLook(); });
   refreshLook();
   document.getElementById("btnRoar").addEventListener("click", () => { roarStart = performance.now() / 1000; });
   syncSliders();

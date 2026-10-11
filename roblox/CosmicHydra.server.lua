@@ -22,9 +22,10 @@ local CONFIG = {
 	BodyColor = Color3.fromRGB(120, 85, 255),
 	BodyMaterial = Enum.Material.ForceField,    -- ForceField = ใสแบบโฮโลแกรม, ลอง Glass ได้
 	BodyTransparency = 0.1,
-	PixelSkin = true,                           -- ผิวพิกเซลสี่เหลี่ยมเล็กๆ ต่อกันเป็นรูปร่าง (แบบในคลิป)
-	PixelSize = 0.8,                            -- ขนาดพิกเซล (เล็ก = ละเอียดแต่ชิ้นเยอะ, ถ้าเกมแลคให้เพิ่มเป็น 1-1.2)
-	SkinEnabled = true,                         -- ผิวเรียบชั้นใน (ใช้เมื่อ PixelSkin = false)
+	SkinStyle = "Crystal",                      -- "Crystal" = เกล็ดคริสตัล, "Pixel" = พิกเซลสี่เหลี่ยม, "Smooth" = ผิวเรียบ
+	CrystalSize = 1.35,                         -- ขนาดเกล็ดคริสตัล (ใหญ่ขึ้น = ชิ้นน้อยลง ถ้าเกมแลคให้เพิ่มเป็น 1.6-2)
+	PixelSize = 0.8,                            -- ขนาดพิกเซลเมื่อ SkinStyle = "Pixel" (ถ้าเกมแลคให้เพิ่มเป็น 1-1.2)
+	SkinEnabled = true,                         -- ผิวเรียบชั้นใน (ใช้กับ "Crystal" และ "Smooth")
 	SkinColor = Color3.fromRGB(85, 55, 200),
 	SkinMaterial = Enum.Material.SmoothPlastic,
 	SkinTransparency = 0.25,                    -- 0 = ทึบ, 1 = มองไม่เห็น
@@ -281,7 +282,7 @@ for i = 0, 6 do
 	local w = 3.7 - math.abs(i - 3) * 0.28
 	decor(torso, "BellyPlate", Vector3.new(w, 0.78, 0.7), CFrame.new(0, y, -3.35 - (y - 9.8) * 0.2) * A(rad(-12), 0, 0), {
 		material = Enum.Material.Neon,
-		color = Color3.fromRGB(164, 140, 245),
+		color = Color3.fromRGB(138, 69, 255),
 		transparency = 0.15,
 	})
 end
@@ -294,8 +295,10 @@ for i = 0, 4 do
 		local a = Vector3.new(s * 1.9, y, -4.3)
 		local b = Vector3.new(s * spread, y + 0.6, -3.1)
 		local c = Vector3.new(s * (spread + 0.6), y + 1.1, -1.5)
-		bar(torso, a, b, 0.42, CONFIG.AccentColor, 0.1)
-		bar(torso, b, c, 0.36, CONFIG.AccentColor, 0.25)
+		if CONFIG.SkinStyle ~= "Crystal" then
+			bar(torso, a, b, 0.42, CONFIG.AccentColor, 0.1)
+			bar(torso, b, c, 0.36, CONFIG.AccentColor, 0.25)
+		end
 	end
 end
 
@@ -307,16 +310,35 @@ end
 spike(hips, Vector3.new(0, 11.8, 5.1), Vector3.new(0, 0.8, 1.2), 2, 0.68)
 spike(hips, Vector3.new(0, 9.8, 5.5), Vector3.new(0, 0.8, 1.2), 1.8, 0.6)
 
--- แกนพลังกลางอก (หลุมดำ + วงแหวนหมุน)
+-- แกนพลังกลางอก (ลูกพลังงานสีน้ำเงิน + เกราะวงแหวน + วงแหวนหมุน)
 local corePos = Vector3.new(0, 18, -5.2)
 local core = decor(torso, "Core", Vector3.new(3, 3, 3), CFrame.new(corePos), {
 	shape = Enum.PartType.Ball,
-	material = Enum.Material.SmoothPlastic,
-	color = Color3.fromRGB(10, 5, 25),
+	material = Enum.Material.Neon,
+	color = Color3.fromRGB(63, 140, 255),
 	transparency = 0,
 })
+decor(torso, "CoreHeart", Vector3.new(1.7, 1.7, 1.7), CFrame.new(corePos + Vector3.new(0, 0, -0.9)), {
+	shape = Enum.PartType.Ball,
+	material = Enum.Material.Neon,
+	color = Color3.fromRGB(214, 242, 255),
+	transparency = 0,
+})
+for i = 0, 15 do
+	local a = i / 16 * math.pi * 2
+	decor(torso, "CoreArmor", Vector3.new(0.9, 1.4, 0.9), CFrame.new(corePos + Vector3.new(0, 0, 0.6)) * A(0, 0, a) * CFrame.new(3, 0, 0), {
+		material = Enum.Material.Metal,
+		color = Color3.fromRGB(58, 53, 72),
+		transparency = 0,
+	})
+end
+for i = 0, 7 do
+	local a = i / 8 * math.pi * 2
+	local b = corePos + Vector3.new(math.cos(a) * 3.1, math.sin(a) * 3.1, 0.2)
+	spike(torso, b, Vector3.new(math.cos(a), math.sin(a), -0.35), 1.4, 0.45)
+end
 local coreLight = Instance.new("PointLight")
-coreLight.Color = Color3.fromRGB(190, 110, 255)
+coreLight.Color = Color3.fromRGB(74, 140, 255)
 coreLight.Range = 22
 coreLight.Brightness = 3
 coreLight.Parent = core
@@ -327,7 +349,7 @@ for i = 0, 17 do
 	local a = i / 18 * math.pi * 2
 	decor(coreRing, "RingBit", Vector3.new(0.45, 1.1, 0.45), coreRing.CFrame * A(0, 0, a) * CFrame.new(2.4, 0, 0), {
 		material = Enum.Material.Neon,
-		color = i % 3 == 0 and Color3.fromRGB(255, 120, 230) or Color3.fromRGB(175, 95, 255),
+		color = i % 3 == 0 and Color3.fromRGB(191, 232, 255) or Color3.fromRGB(74, 168, 255),
 		transparency = 0,
 	})
 end
@@ -337,6 +359,15 @@ for i = 0, 7 do
 		material = Enum.Material.Neon,
 		color = Color3.fromRGB(110, 235, 255),
 		transparency = 0,
+	})
+end
+-- วงแหวนแบบดาวเสาร์เอียงรอบลูกพลังงาน
+for i = 0, 23 do
+	local a = i / 24 * math.pi * 2
+	decor(coreRing, "PlanetRing", Vector3.new(0.3, 0.3, 1.2), coreRing.CFrame * A(rad(68), rad(18), 0) * A(0, a, 0) * CFrame.new(4, 0, 0), {
+		material = Enum.Material.Neon,
+		color = Color3.fromRGB(159, 228, 255),
+		transparency = 0.1,
 	})
 end
 
@@ -379,7 +410,10 @@ for _, n in ipairs(NECKS) do
 			color = Color3.fromRGB(230, 216, 255),
 			transparency = 0.3,
 		})
-		spike(seg, pt(seg.CFrame, 0, w * 0.45, 0), seg.CFrame:VectorToWorldSpace(Vector3.new(0, 1, 0.7)), 1.3, 0.5, j % 2 == 1 and CONFIG.GoldColor or CONFIG.AccentColor)
+		spike(seg, pt(seg.CFrame, 0, w * 0.45, 0), seg.CFrame:VectorToWorldSpace(Vector3.new(0, 1, 0.7)), 1.6, 0.55)
+		for _, sd in ipairs({ -1, 1 }) do
+			spike(seg, pt(seg.CFrame, sd * w * 0.48, w * 0.1, 0.3), seg.CFrame:VectorToWorldSpace(Vector3.new(sd, 0.4, 0.8)), 1, 0.36, Color3.fromRGB(150, 90, 255))
+		end
 		prev = seg
 		pos = nextPos
 		dir = (dir + Vector3.new(0, 0, -0.22)).Unit
@@ -415,11 +449,27 @@ for _, n in ipairs(NECKS) do
 		claw(head, hornMid, hornTip, 0.35)
 	end
 
+	-- มงกุฎหนามทอง
+	for c = -2, 2 do
+		spike(head, pt(hcf, c * 0.5, 0.95, 0.7 + math.abs(c) * 0.3), hcf:VectorToWorldSpace(Vector3.new(c * 0.4, 1, 1.1)), 1.8 - math.abs(c) * 0.3, 0.42)
+	end
+	-- ในปากเรืองแสงชมพู
+	decor(head, "MouthGlow", Vector3.new(1.5, 0.35, 3), hcf * CFrame.new(0, -0.72, -2.3), {
+		material = Enum.Material.Neon,
+		color = Color3.fromRGB(255, 79, 216),
+		transparency = 0,
+	})
+
 	-- กราม (ขยับอ้าปากได้)
 	local jawCF = headCF * CFrame.new(0, -0.6, -0.4)
 	local jaw = tag(newPart("Jaw_" .. key, Vector3.new(2.1, 0.7, 4.3), jawCF * CFrame.new(0, -0.35, -2.15)), "head")
 	motor(head, jaw, jawCF)
 	spike(jaw, pt(jaw.CFrame, 0, -0.3, 1.2), jaw.CFrame:VectorToWorldSpace(Vector3.new(0, -0.6, 1)), 1.1, 0.35, CONFIG.AccentColor)
+	decor(jaw, "MouthGlow", Vector3.new(1.5, 0.3, 3.3), jaw.CFrame * CFrame.new(0, 0.3, -0.2), {
+		material = Enum.Material.Neon,
+		color = Color3.fromRGB(255, 79, 216),
+		transparency = 0,
+	})
 	for t = 0, 4 do
 		for _, s in ipairs({ -1, 1 }) do
 			decor(jaw, "Tooth", Vector3.new(0.25, 0.45, 0.25), jaw.CFrame * CFrame.new(s * 0.8, 0.5, -1.9 + t * 0.6), {
@@ -460,11 +510,11 @@ for _, side in ipairs({ { "L", -1 }, { "R", 1 } }) do
 	local wBase = Vector3.new(2.6 * s, 21.2, 2.6)
 	local wElbow = wBase + Vector3.new(4.6 * s, 2.4, 3.5)
 	local wWrist = wElbow + Vector3.new(5.2 * s, 1.6, -0.5)
-	local boneOpts = { material = Enum.Material.Neon, color = Color3.fromRGB(111, 82, 232), transparency = 0 }
+	local boneOpts = { material = Enum.Material.Metal, color = Color3.fromRGB(58, 53, 72), transparency = 0 }
 	local w1 = bone("WingArm_" .. k, wBase, wElbow, 1.0, torso, boneOpts)
 	local w2 = bone("WingHand_" .. k, wElbow, wWrist, 0.8, w1, boneOpts)
 	decor(w1, "WingElbow", Vector3.new(1.1, 1.1, 1.1), CFrame.new(wElbow), {
-		shape = Enum.PartType.Ball, material = Enum.Material.Neon, color = Color3.fromRGB(154, 128, 255), transparency = 0,
+		shape = Enum.PartType.Ball, material = Enum.Material.Metal, color = Color3.fromRGB(58, 53, 72), transparency = 0,
 	})
 	decor(w2, "WingKnuckle", Vector3.new(1.2, 1.2, 1.2), CFrame.new(wWrist), {
 		shape = Enum.PartType.Ball, material = Enum.Material.Neon, color = CONFIG.GoldColor, transparency = 0,
@@ -500,6 +550,44 @@ for _, side in ipairs({ { "L", -1 }, { "R", 1 } }) do
 	triangle(w2, wWrist, midIn, bodyRear, 0.6)
 	bar(w2, tips[4], midIn, 0.2, edgeColor, 0.1)
 	bar(w2, midIn, bodyRear, 0.2, edgeColor, 0.1)
+
+	-- ใบคริสตัลแผ่เป็นพัดทั่วปีก ขอบปีกเป็นแฉกคริสตัล
+	local wingN = (wWrist - wBase):Cross(tips[3] - wBase).Unit
+	local function blade(owner, from, to, width, over)
+		local dir = to - from
+		local len = dir.Magnitude * (over or 1.1)
+		dir = dir.Unit
+		local center = from + dir * (len / 2)
+		local b = decor(owner, "CrystalBlade", Vector3.new(width, width * 0.22, len), CFrame.lookAt(center, center + dir, wingN), {
+			material = Enum.Material.Glass,
+			color = Color3.fromRGB(138, 76, 255),
+			transparency = 0.25,
+		})
+		b.Reflectance = 0.15
+		return b
+	end
+	local mids = {}
+	for i = 1, 3 do
+		mids[i] = tips[i]:Lerp(tips[i + 1], 0.5):Lerp(wWrist, 0.24)
+	end
+	for i, tip in ipairs(tips) do
+		blade(spars[i], wWrist, tip, 1.25 - (i - 1) * 0.08, 1.12)
+	end
+	for i, m in ipairs(mids) do
+		blade(w2, wWrist, m, 1.5, 1.15)
+		blade(spars[i], wWrist:Lerp(tips[i], 0.4), m, 1.0, 1.25)
+		blade(spars[i + 1], wWrist:Lerp(tips[i + 1], 0.4), m, 1.0, 1.25)
+	end
+	for _, u in ipairs({ 0.15, 0.35, 0.55, 0.75, 0.92 }) do
+		local from = u < 0.5 and wBase:Lerp(wElbow, u * 2) or wElbow:Lerp(wWrist, (u - 0.5) * 2)
+		local tu = u * 2
+		local to = tu < 1 and bodyRear:Lerp(midIn, tu) or midIn:Lerp(tips[4], tu - 1)
+		blade(u < 0.5 and w1 or w2, from, to, 1.6, 1.12)
+	end
+	for _, u in ipairs({ 0.3, 0.6, 0.85 }) do
+		local from = wElbow:Lerp(wWrist, u)
+		blade(w2, from, from + Vector3.new(0.8 * s, 1.6, -0.4), 0.6, 1)
+	end
 
 	-- ขาแบบมังกร: ต้นขา, หน้าแข้ง, ข้อเท้า, เท้า
 	local hip = Vector3.new(3.6 * s, 9.6, 1.2)
@@ -662,7 +750,100 @@ local function pixelShell(part)
 	end
 end
 
-if CONFIG.PixelSkin then
+-- เกล็ดคริสตัล: แผ่นเหลี่ยมซ้อนกันชี้ลงและไปทางหาง คลุมผิวทั้งชิ้น
+local CRY_SPACING = { body = 1, limb = 0.78, head = 0.5 }
+local CRY_COLORS = {
+	{ 0.36, Color3.fromRGB(106, 46, 224) }, { 0.66, Color3.fromRGB(58, 22, 176) },
+	{ 0.8, Color3.fromRGB(38, 51, 200) }, { 0.88, Color3.fromRGB(168, 101, 255) }, { 1.01, Color3.fromRGB(30, 22, 64) },
+}
+
+local function crystalShell(part)
+	local style = part:GetAttribute("PixelStyle")
+	local sp = CONFIG.CrystalSize * (CRY_SPACING[style] or CRY_SPACING.body)
+	local h = part.Size / 2
+	local round = part.Shape == Enum.PartType.Ball or part:GetAttribute("Ellipsoid")
+	local fx, fy, fz = part.Size.Y * part.Size.Z, part.Size.X * part.Size.Z, part.Size.X * part.Size.Y
+	local area
+	if round then
+		local p = 1.6
+		area = 4 * math.pi * (((h.X * h.Y) ^ p + (h.X * h.Z) ^ p + (h.Y * h.Z) ^ p) / 3) ^ (1 / p)
+	else
+		area = 2 * (fx + fy + fz)
+	end
+	local count = math.clamp(math.floor(area / (sp * sp) * 1.05 + 0.5), 4, 250)
+	local flowLocal = round and Vector3.new(0, -0.8, 0.6) or Vector3.new(0, -0.2, 1)
+	for _ = 1, count do
+		local p, n
+		if round then
+			p = rng:NextUnitVector() * h
+			n = Vector3.new(p.X / (h.X * h.X), p.Y / (h.Y * h.Y), p.Z / (h.Z * h.Z)).Unit
+		else
+			local r = rng:NextNumber() * (fx + fy + fz)
+			local sign = rng:NextNumber() < 0.5 and -1 or 1
+			p = Vector3.new(rng:NextNumber(-1, 1) * h.X, rng:NextNumber(-1, 1) * h.Y, rng:NextNumber(-1, 1) * h.Z)
+			if r < fx then
+				p, n = Vector3.new(sign * h.X, p.Y, p.Z), Vector3.new(sign, 0, 0)
+			elseif r < fx + fy then
+				p, n = Vector3.new(p.X, sign * h.Y, p.Z), Vector3.new(0, sign, 0)
+			else
+				p, n = Vector3.new(p.X, p.Y, sign * h.Z), Vector3.new(0, 0, sign)
+			end
+		end
+		local f = flowLocal - n * flowLocal:Dot(n)
+		if f.Magnitude < 0.1 then
+			f = Vector3.xAxis:Cross(n)
+		end
+		local fl = (f.Unit + n * 0.18).Unit
+		local x = fl:Cross(n).Unit
+		local up = x:Cross(fl)
+		local L, w, t = sp * rng:NextNumber(1.1, 1.7), sp * rng:NextNumber(0.9, 1.3), sp * rng:NextNumber(0.3, 0.45)
+		local pos = p + n * (t * 0.15) + fl * (L * 0.3)
+		local roll = rng:NextNumber()
+		local color
+		for _, c in ipairs(CRY_COLORS) do
+			if roll < c[1] then
+				color = c[2]
+				break
+			end
+		end
+		local shade = rng:NextNumber(0.85, 1.15)
+		local shard = Instance.new("Part")
+		shard.Name = "Crystal"
+		shard.Size = Vector3.new(w, t, L)
+		shard.CFrame = part.CFrame * CFrame.fromMatrix(pos, x, up)
+		shard.Material = roll > 0.8 and roll < 0.88 and Enum.Material.Neon or Enum.Material.Glass
+		shard.Color = Color3.new(math.min(1, color.R * shade), math.min(1, color.G * shade), math.min(1, color.B * shade))
+		shard.Reflectance = 0.12
+		shard.Transparency = 0.1
+		shard.Anchored = true
+		shard.CanCollide = false
+		shard.CanTouch = false
+		shard.CanQuery = false
+		shard.CastShadow = false
+		shard.Massless = true
+		shard.Parent = part
+		weld(part, shard)
+	end
+end
+
+local function skinParts()
+	local list = {}
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("Part") and d.Material == CONFIG.BodyMaterial and d.Transparency < 1
+			and math.min(d.Size.X, d.Size.Y, d.Size.Z) >= (d:GetAttribute("PixelStyle") == "head" and 0.6 or 0.9) then
+			table.insert(list, d)
+		end
+	end
+	return list
+end
+
+if CONFIG.SkinStyle == "Crystal" then
+	for _, d in ipairs(skinParts()) do
+		crystalShell(d)
+	end
+end
+
+if CONFIG.SkinStyle == "Pixel" then
 	local bodyParts = {}
 	for _, d in ipairs(model:GetDescendants()) do
 		if d:IsA("Part") and d.Material == CONFIG.BodyMaterial and d.Transparency < 1
@@ -682,8 +863,8 @@ elseif CONFIG.SkinEnabled then
 			skin.Size = d.Size * 0.97
 			skin.CFrame = d.CFrame
 			skin.Material = CONFIG.SkinMaterial
-			skin.Color = CONFIG.SkinColor
-			skin.Transparency = CONFIG.SkinTransparency
+			skin.Color = CONFIG.SkinStyle == "Crystal" and Color3.fromRGB(30, 18, 70) or CONFIG.SkinColor
+			skin.Transparency = CONFIG.SkinStyle == "Crystal" and 0 or CONFIG.SkinTransparency
 			local mesh = d:FindFirstChildOfClass("SpecialMesh")
 			if mesh then
 				mesh:Clone().Parent = skin
@@ -832,7 +1013,7 @@ local function animateBody(t)
 		end
 		pose("Head_" .. key, A(sin(t * 1.7 + ph) * 0.15, sin(t * 1.1 + ph) * 0.2, sin(t * 0.8 + ph) * 0.1))
 		local roar = math.max(0, sin(t * 0.7 + ph)) ^ 6
-		pose("Jaw_" .. key, A(-(0.08 + 0.1 * (sin(t * 3 + ph) + 1) / 2 + roar * 0.5), 0, 0))
+		pose("Jaw_" .. key, A(-(0.2 + 0.1 * (sin(t * 3 + ph) + 1) / 2 + roar * 0.5), 0, 0))
 	end
 
 	-- ปีกกระพือรอบแกนลำตัวทั้งแผง (ปีกท่อนนอกกับก้านปีกไม่ขยับแยก เพื่อไม่ให้พังผืดฉีก)
