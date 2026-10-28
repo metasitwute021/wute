@@ -76,7 +76,8 @@ InpUseHTFIFVG=true
 InpSLMode=1
 InpSLBufferPrice=0.5
 InpSLBufferATR=0.0
-InpMinSL_ATR=0.0
+; SL ขั้นต่ำ 0.5 ATR (กันแท่ง retest เล็ก -> SL แคบ lot บาน, 0 = ตามกฎ H4 เป๊ะ)
+InpMinSL_ATR=0.5
 InpMaxSL_ATR=0.0
 ; TP ไม่ได้ระบุในกฎ H4 -> ใช้ 3R ไปก่อน (ควร optimize)
 InpTP_R=3.0
@@ -93,6 +94,8 @@ InpTrailATR=0.0
 InpRiskPercent=1.0
 InpMaxRiskCapPct=1.5
 InpMaxPositions=2
+; เพดานความเสี่ยงรวมของไม้ที่เปิดอยู่ (0 = ปิด เหมือน KRV / บัญชีสอบตั้ง 1.0)
+InpMaxOpenRiskPct=0.0
 
 ; ---- Guards (ปิด = เหมือนแบ็คเทส KRV) ----
 InpDailyDDPct=0.0
@@ -104,3 +107,16 @@ InpStartHour=0
 InpEndHour=24
 InpFridayClose=false
 InpFridayCloseHour=21
+
+; ---- News filter (วาง ff_news.csv ไว้ใน Common\Files แล้วเปลี่ยนเป็น true) ----
+InpUseFFNews=false
+InpFFNewsFile=ff_news.csv
+InpFFBlockImpact=High
+InpFFTimeOffsetHours=0
+InpEnableNewsFilter=false
+InpNewsCurrencies=USD
+InpNewsBlockEntry=true
+InpNewsMinutesBefore=60
+InpNewsMinutesAfter=60
+InpNewsClosePositions=false
+InpNewsCloseMinutes=30

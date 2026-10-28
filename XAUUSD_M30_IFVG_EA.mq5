@@ -27,8 +27,8 @@
 //|  - Sizing     : fixed 1% risk per trade (clip: +397% 2020-now,   |
 //|                 PF 1.47, ~1,100-1,200 trades, DD ~13%)           |
 //|  - Max orders : 2 at the same time (clip: "สูงสุดสองออเดอร์")    |
-//|  - Guards     : risk cap, daily DD, max DD (prop style), spread, |
-//|                 Friday close                                     |
+//|  - Guards     : risk cap, total open-risk cap, daily DD, max DD  |
+//|                 (prop style), spread, news (CSV), Friday close   |
 //|                                                                  |
 //|  Inputs are laid out in the same order as the KRV tester screen |
 //|  (names were hidden): [KRV: x] = value seen, '?' = our guess of  |
@@ -36,7 +36,7 @@
 //|  !! -> optimise, then Walk-Forward + forward test (KRV).         |
 //+------------------------------------------------------------------+
 #property copyright "Metasit - IFVG EA"
-#property version   "1.20"
+#property version   "1.30"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -117,7 +117,7 @@ input group "=== Stop loss / Take profit ==="
 input ENUM_SL_MODE InpSLMode         = SL_RETEST_BAR; // Stop loss mode (signal bar Low/High)
 input double   InpSLBufferPrice      = 0.5;         // SL buffer in price ($) beyond bar Low/High
 input double   InpSLBufferATR        = 0.0;         // + extra SL buffer x ATR (0 = off)
-input double   InpMinSL_ATR          = 0.0;         // Min SL distance x ATR (widen, 0 = off)
+input double   InpMinSL_ATR          = 0.5;         // Min SL distance x ATR (widen, 0 = off)
 input double   InpMaxSL_ATR          = 0.0;         // Skip trade if SL > x ATR (0 = off)
 input double   InpTP_R               = 3.0;         // Final TP in R (0 = no TP)
 
@@ -133,6 +133,7 @@ input group "=== Risk management ==="
 input double   InpRiskPercent        = 1.0;         // Risk per trade (% balance)
 input double   InpMaxRiskCapPct      = 1.5;         // Skip if min lot risks > this % (0 = off)
 input int      InpMaxPositions       = 2;           // Max open positions (clip: 2)
+input double   InpMaxOpenRiskPct     = 0.0;         // Max total risk of open trades % (0 = off, prop: 1.0)
 
 input group "=== Account guards (prop style) ==="
 input double   InpDailyDDPct         = 0.0;         // Daily loss limit % (0 = off)
@@ -147,10 +148,23 @@ input int      InpEndHour            = 24;          // ...until hour (server, ex
 input bool     InpFridayClose        = false;       // Close all before weekend
 input int      InpFridayCloseHour    = 21;          // Friday close hour (server)
 
+input group "=== News filter (CSV works in Strategy Tester) ==="
+input bool     InpUseFFNews          = false;       // Use news CSV file (works in tester + live)
+input string   InpFFNewsFile         = "ff_news.csv"; // CSV in COMMON\Files: Date,Time,Currency,Impact
+input string   InpFFBlockImpact      = "High";      // Impacts to use (High  or  High,Medium)
+input int      InpFFTimeOffsetHours  = 0;           // Shift CSV times to server time (+/- hours)
+input bool     InpEnableNewsFilter   = false;       // Also use MT5 calendar (live only)
+input string   InpNewsCurrencies     = "USD";       // Currencies to watch (comma sep.)
+input bool     InpNewsBlockEntry     = true;        // No new entry near news (+ cancel pending)
+input int      InpNewsMinutesBefore  = 60;          //     ...minutes before news
+input int      InpNewsMinutesAfter   = 60;          //     ...minutes after news
+input bool     InpNewsClosePositions = false;       // Close open trades before news
+input int      InpNewsCloseMinutes   = 30;          //     ...this many minutes before news
+
 input group "=== Misc ==="
 input string   InpComment            = "IFVG";      // Order comment
 input bool     InpDrawZones          = true;        // Draw IFVG zones on chart
-input bool     InpNotify             = false;       // Push notifications (live only)
+input bool     InpNotify             = true;        // Push notifications (live only)
 
 //==================================================================
 //  Zone engine (one instance per timeframe)
@@ -231,6 +245,8 @@ public:
       int avail = iBars(_Symbol, tf);
       if(avail < 50 || ATRAt(1) <= 0.0) return false;
       int from = MathMin(bars, avail - InpATRPeriod - 5);
+      ArrayResize(z, 0);                     // may be retried if the other TF wasn't ready
+      if(draw) ObjectsDeleteAll(0, tag);
       for(int s = from; s >= 1; s--) ProcessBar(s);
       lastOpen = iTime(_Symbol, tf, 0);
       return true;
@@ -423,6 +439,11 @@ bool         gDailyHit   = false;
 bool         gStopped    = false;
 datetime     gLastGVClean= 0;
 
+// news events loaded from CSV (server time, sorted ascending)
+datetime     gFFTime[];
+int          gFFCount    = 0;
+datetime     gLastNewsClose = 0;   // event time we already closed positions for
+
 #define TF_BE       1   // per-trade flag: break-even done
 #define TF_PARTIAL  2   // per-trade flag: partial close done
 
@@ -447,6 +468,7 @@ int OnInit()
       hBEATR = iATR(_Symbol, InpSignalTF, InpBEATRPeriod);
       if(hBEATR == INVALID_HANDLE) return INIT_FAILED;
    }
+   LoadFFNews();
    gStartBal = (InpStartBalance > 0.0 ? InpStartBalance : AccountInfoDouble(ACCOUNT_BALANCE));
    gWarm = false;
    return INIT_SUCCEEDED;
@@ -475,11 +497,14 @@ void OnTick()
 
    bool canTrade = GuardsOK();
    ManagePositions();
+   ManageNewsClose();
+   bool newsBlock = ((InpUseFFNews || InpEnableNewsFilter) && InpNewsBlockEntry && IsNewsBlocking());
+   if(newsBlock && CountOrders() > 0) DeleteOrders();   // don't let a limit fill into news
 
    // engines must see every bar even when we are not allowed to trade
    if(InpUseHTFIFVG) gHTF.Update();
    int dir = gSig.Update();
-   if(!canTrade) return;
+   if(!canTrade || newsBlock) return;
 
    // limit mode: pending order at the IFVG line as soon as the FVG is broken
    if(InpEntryLevel == ENTRY_LINE_LIMIT)
@@ -572,6 +597,18 @@ void OpenTrade(const int dir, const Zone &zn, const bool limit)
    ENUM_ORDER_TYPE type = (dir > 0 ? ORDER_TYPE_BUY : ORDER_TYPE_SELL);
    double lots = CalcLotSize(type, entry, sl);
    if(lots <= 0.0) return;
+
+   if(InpMaxOpenRiskPct > 0.0)
+   {
+      double bal = AccountInfoDouble(ACCOUNT_BALANCE);
+      double newRisk = RiskMoney(type, lots, entry, sl);
+      double total = (bal > 0.0 ? (OpenRiskMoney() + newRisk) / bal * 100.0 : 0.0);
+      if(total > InpMaxOpenRiskPct + 1e-6)
+      {
+         PrintFormat("Skip: total open risk would be %.2f%% (> %.2f%%)", total, InpMaxOpenRiskPct);
+         return;
+      }
+   }
 
    bool ok;
    if(limit)
@@ -785,11 +822,48 @@ void CloseAll()
       ulong tk = PositionGetTicket(i);
       if(tk > 0 && IsMine()) trade.PositionClose(tk);
    }
+   DeleteOrders();
+}
+
+void DeleteOrders()
+{
    for(int i = OrdersTotal() - 1; i >= 0; i--)
    {
       ulong ot = OrderGetTicket(i);
       if(ot > 0 && IsMyOrder()) trade.OrderDelete(ot);
    }
+}
+
+// Money lost if a trade of 'lots' goes from entry to sl (0 if sl is at/after entry)
+double RiskMoney(const ENUM_ORDER_TYPE type, const double lots, const double entry, const double sl)
+{
+   if(sl <= 0.0) return 0.0;
+   if(type == ORDER_TYPE_BUY ? sl >= entry : sl <= entry) return 0.0;
+   double p = 0.0;
+   if(!OrderCalcProfit(type, _Symbol, lots, entry, sl, p)) return 0.0;
+   return MathAbs(p);
+}
+
+// Risk still on the table: open positions + pending orders (trades at BE count 0)
+double OpenRiskMoney()
+{
+   double sum = 0.0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   {
+      if(PositionGetTicket(i) == 0 || !IsMine()) continue;
+      ENUM_ORDER_TYPE t = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY ? ORDER_TYPE_BUY : ORDER_TYPE_SELL);
+      sum += RiskMoney(t, PositionGetDouble(POSITION_VOLUME),
+                       PositionGetDouble(POSITION_PRICE_OPEN), PositionGetDouble(POSITION_SL));
+   }
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   {
+      if(OrderGetTicket(i) == 0 || !IsMyOrder()) continue;
+      long ot = OrderGetInteger(ORDER_TYPE);
+      bool buy = (ot == ORDER_TYPE_BUY_LIMIT || ot == ORDER_TYPE_BUY_STOP);
+      sum += RiskMoney(buy ? ORDER_TYPE_BUY : ORDER_TYPE_SELL, OrderGetDouble(ORDER_VOLUME_CURRENT),
+                       OrderGetDouble(ORDER_PRICE_OPEN), OrderGetDouble(ORDER_SL));
+   }
+   return sum;
 }
 
 //==================================================================
@@ -873,6 +947,132 @@ double NormalizeVolume(double vol)
    int digits = (int)MathRound(MathLog10(1.0 / step));
    if(digits < 0) digits = 0;
    return NormalizeDouble(vol, digits);
+}
+
+//==================================================================
+//  News filter (ported from XAUUSD_H4_BodyBreak_EA)
+//  - CSV file (Common\Files, e.g. from FF_News_Exporter): works in tester
+//  - MT5 economic calendar: live only (empty in tester)
+//==================================================================
+bool InList(const string list, const string val)
+{
+   string parts[];
+   int n = StringSplit(list, ',', parts);
+   for(int i = 0; i < n; i++)
+   {
+      string p = parts[i];
+      StringTrimLeft(p); StringTrimRight(p);
+      if(StringCompare(p, val, false) == 0) return true;
+   }
+   return false;
+}
+
+// "yyyy.mm.dd" + "HH:MM" -> server time (with offset). 0 = header / bad row.
+datetime ParseNewsTime(string dateStr, string timeStr)
+{
+   StringTrimLeft(dateStr); StringTrimRight(dateStr);
+   StringTrimLeft(timeStr); StringTrimRight(timeStr);
+   if(StringLen(dateStr) < 8) return 0;
+   if(StringLen(timeStr) < 4) timeStr = "00:00";   // all-day / tentative
+   datetime t = StringToTime(dateStr + " " + timeStr);
+   if(t <= 0) return 0;
+   return t + (datetime)(InpFFTimeOffsetHours * 3600);
+}
+
+void LoadFFNews()
+{
+   gFFCount = 0;
+   ArrayResize(gFFTime, 0);
+   if(!InpUseFFNews) return;
+
+   // FILE_COMMON: the tester sandbox and the live terminal both see Common\Files
+   int fh = FileOpen(InpFFNewsFile, FILE_READ | FILE_CSV | FILE_ANSI | FILE_SHARE_READ | FILE_COMMON, ',');
+   if(fh == INVALID_HANDLE)
+   {
+      Notify("NEWS file NOT found: " + InpFFNewsFile + " (put it in Common\\Files) - CSV news OFF");
+      return;
+   }
+
+   while(!FileIsEnding(fh))
+   {
+      string c1 = FileReadString(fh);
+      if(c1 == "" && FileIsLineEnding(fh)) continue;
+      string c2 = FileReadString(fh);
+      string c3 = FileReadString(fh);
+      string c4 = FileReadString(fh);
+      while(!FileIsLineEnding(fh) && !FileIsEnding(fh)) FileReadString(fh); // extra cols (Title)
+
+      datetime t = ParseNewsTime(c1, c2);
+      if(t <= 0) continue;
+      StringTrimLeft(c3); StringTrimRight(c3);
+      StringTrimLeft(c4); StringTrimRight(c4);
+      if(!InList(InpNewsCurrencies, c3) || !InList(InpFFBlockImpact, c4)) continue;
+
+      ArrayResize(gFFTime, gFFCount + 1);
+      gFFTime[gFFCount++] = t;
+   }
+   FileClose(fh);
+   ArraySort(gFFTime);
+
+   if(gFFCount > 0)
+      Notify(StringFormat("NEWS loaded: %d events (%s) from %s | %s -> %s",
+                          gFFCount, InpFFBlockImpact, InpFFNewsFile,
+                          TimeToString(gFFTime[0], TIME_DATE),
+                          TimeToString(gFFTime[gFFCount - 1], TIME_DATE)));
+   else
+      Notify("NEWS file loaded but 0 matching events - check currency/impact columns");
+}
+
+// First loaded event time in [from, to], or 0 if none (binary search).
+datetime FFNewsAt(const datetime from, const datetime to)
+{
+   int lo = 0, hi = gFFCount;
+   while(lo < hi)
+   {
+      int mid = (lo + hi) / 2;
+      if(gFFTime[mid] < from) lo = mid + 1; else hi = mid;
+   }
+   if(lo < gFFCount && gFFTime[lo] <= to) return gFFTime[lo];
+   return 0;
+}
+
+bool IsNewsBlocking()
+{
+   datetime now  = TimeCurrent();
+   datetime from = now - (datetime)(InpNewsMinutesAfter  * 60);
+   datetime to   = now + (datetime)(InpNewsMinutesBefore * 60);
+
+   if(FFNewsAt(from, to) > 0) return true;
+   if(!InpEnableNewsFilter || MQLInfoInteger(MQL_TESTER)) return false;
+
+   MqlCalendarValue values[];
+   int total = CalendarValueHistory(values, from, to, NULL, NULL);
+   for(int i = 0; i < total; i++)
+   {
+      MqlCalendarEvent ev;
+      if(!CalendarEventById(values[i].event_id, ev)) continue;
+      if(ev.importance != CALENDAR_IMPORTANCE_HIGH)  continue;
+
+      MqlCalendarCountry country;
+      if(CalendarCountryById(ev.country_id, country) && !InList(InpNewsCurrencies, country.currency))
+         continue;
+      return true;
+   }
+   return false;
+}
+
+// Close open trades shortly before a CSV news event (checked every tick).
+void ManageNewsClose()
+{
+   if(!InpNewsClosePositions || gFFCount == 0) return;
+   datetime now = TimeCurrent();
+   datetime ev  = FFNewsAt(now, now + (datetime)(InpNewsCloseMinutes * 60));
+   if(ev == 0 || ev == gLastNewsClose) return;
+   gLastNewsClose = ev;
+   if(CountPositions() + CountOrders() == 0) return;
+
+   Notify(StringFormat("NEWS at %s - closing open trades", TimeToString(ev, TIME_DATE | TIME_MINUTES)));
+   CloseAll();
 }
 
 //==================================================================
