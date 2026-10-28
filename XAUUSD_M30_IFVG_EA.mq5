@@ -36,7 +36,7 @@
 //|  !! -> optimise, then Walk-Forward + forward test (KRV).         |
 //+------------------------------------------------------------------+
 #property copyright "Metasit - IFVG EA"
-#property version   "1.32"
+#property version   "1.33"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -448,12 +448,21 @@ datetime     gLastNewsClose = 0;   // event time we already closed positions for
 
 #define TF_BE       1   // per-trade flag: break-even done
 #define TF_PARTIAL  2   // per-trade flag: partial close done
+#define TF_NOSL_MSG 4   // per-trade flag: "no SL" warning already printed
 
 //==================================================================
 //  Init / Deinit
 //==================================================================
 int OnInit()
 {
+   // netting merges / offsets positions: an opposite signal just shrinks the open trade
+   // (that deal shows no SL), max-2-orders and per-trade partial close break -> hedging only
+   if(AccountInfoInteger(ACCOUNT_MARGIN_MODE) != ACCOUNT_MARGIN_MODE_RETAIL_HEDGING)
+   {
+      Alert("IFVG EA needs a HEDGING account - this account is NETTING. "
+            "Open a demo with 'Use hedge in trading' ticked.");
+      return INIT_FAILED;
+   }
    trade.SetExpertMagicNumber(InpMagic);
    trade.SetDeviationInPoints(50);
    trade.SetTypeFillingBySymbol(_Symbol);
@@ -624,8 +633,13 @@ void OpenTrade(const int dir, const Zone &zn, const bool limit)
       ok = (dir > 0 ? trade.BuyLimit(lots, entry, _Symbol, sl, tp, ORDER_TIME_GTC, 0, InpComment)
                     : trade.SellLimit(lots, entry, _Symbol, sl, tp, ORDER_TIME_GTC, 0, InpComment));
    else
-      ok = (dir > 0 ? trade.Buy(lots, _Symbol, 0.0, sl, tp, InpComment)
-                    : trade.Sell(lots, _Symbol, 0.0, sl, tp, InpComment));
+   {
+      bool slInOrder = ((SymbolInfoInteger(_Symbol, SYMBOL_ORDER_MODE) & SYMBOL_ORDER_SL) != 0);
+      double osl = (slInOrder ? sl : 0.0), otp = (slInOrder ? tp : 0.0);
+      ok = (dir > 0 ? trade.Buy(lots, _Symbol, 0.0, osl, otp, InpComment)
+                    : trade.Sell(lots, _Symbol, 0.0, osl, otp, InpComment));
+      // SL/TP not allowed in the order -> attached by EnsureStop() from the saved 1R
+   }
    if(ok)
    {
       // position identifier = order ticket (market or pending) -> remember 1R + start lot
@@ -683,6 +697,40 @@ void ManagePositions()
          SaveTradeState(id, R, v0, fl);
       }
       int flOld = fl;
+
+      //--- never run without a stop: attach the planned SL/TP if the position has none
+      if(sl <= 0.0)
+      {
+         if(R <= 0.0 || (fl & TF_BE) != 0)
+         {
+            if((fl & TF_NOSL_MSG) == 0)
+            {
+               Notify(StringFormat("WARNING: position %I64d has no SL and no saved 1R - set one manually", id));
+               SaveTradeState(id, R, v0, fl | TF_NOSL_MSG);
+            }
+            continue;
+         }
+         double nsl = NormalizeDouble(buy ? open - R : open + R, _Digits);
+         double ntp = tp;
+         if(ntp <= 0.0 && InpTP_R > 0.0)
+            ntp = NormalizeDouble(buy ? open + InpTP_R * R : open - InpTP_R * R, _Digits);
+         if(!StopOK(buy, nsl, px))
+         {
+            Notify(StringFormat("Price already beyond planned SL %.2f - closing position %I64d", nsl, id));
+            trade.PositionClose(tk);
+            continue;
+         }
+         if(trade.PositionModify(tk, nsl, ntp))
+         {
+            Notify(StringFormat("SL attached %.2f TP %.2f to position %I64d", nsl, ntp, id));
+            sl = nsl; tp = ntp;
+         }
+         else
+         {
+            PrintFormat("SL attach failed: %d %s", trade.ResultRetcode(), trade.ResultRetcodeDescription());
+            continue;
+         }
+      }
 
       //--- Break-even: profit >= ATR x mult -> SL to entry + 0.1R (once)
       if((fl & TF_BE) == 0 && InpBETriggerATR > 0.0 && R > 0.0)
