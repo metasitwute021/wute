@@ -1,0 +1,100 @@
+; ========================================================================
+;  KRV_IFVG_M30 preset - ค่าที่อ่านได้จากหน้าจอ Strategy Tester ในคลิป KRV
+;  (คลิปไม่ให้เห็นชื่อพารามิเตอร์ -> เรียงตามลำดับแถวในภาพ)
+;  [SEEN]  = เห็นค่าในภาพ + ความหมายค่อนข้างแน่ (มีชื่อ enum / ตรงกับคำพูดในคลิป)
+;  [GUESS] = เห็นค่าในภาพ แต่ "ความหมายของแถว" เป็นการเดา
+;  [NOT SHOWN] = ไม่มีในภาพ -> ใช้ค่าจากคำพูดในคลิป หรือค่าเริ่มต้นของเรา
+;  ผลในคลิป (XAUUSD M30, ทุน 100,000, 2020-2026):
+;     กำไร +397,536 | PF 1.47 | 1,191 เทรด | win 64.7% | Equity DD 13.36%
+;     win เฉลี่ย 1,615 vs loss เฉลี่ย 2,018 -> ไม้ชนะได้ ~0.8R (เพราะแบ่งขาย)
+; ========================================================================
+
+; ---- General ----
+; [SEEN] 30 Minutes (KRV default = 15 Minutes)
+InpSignalTF=30
+; [SEEN] 20250801
+InpMagic=20250801
+
+; ---- Zone lifetime / break (แถว 120 / 60 / 0 / 5 / 50 / Broken Boundary / true) ----
+; [GUESS] 120
+InpZoneMaxAgeBars=120
+; [GUESS] 60
+InpFVGMaxAgeBars=60
+; [GUESS] 0 (= off)
+InpMaxGapATR=0.0
+; [GUESS] 5
+InpMaxActiveZones=5
+; [GUESS] 50
+InpMaxSpreadPoints=50
+; [SEEN]  Broken Boundary
+InpBreakMode=0
+; [GUESS] true (KRV default = false)
+InpInvalidateOnClose=true
+
+; ---- Strong Move / gap filter (Balanced / 0.25 / 0.5 / 0.6 / 0.05) ----
+; [SEEN]  Balanced
+InpProfile=1
+; [GUESS] 0.25
+InpMinGapATR=0.25
+; [GUESS] 0.5
+InpStrongBodyATR=0.5
+; [GUESS] 0.6
+InpStrongBodyRatio=0.6
+; [GUESS] 0.05
+InpTouchTolATR=0.05
+
+; ---- Entry (IFVG Line / 14 / 5) ----
+; [SEEN]  IFVG Line  (ลอง 2 = Limit order ที่เส้น IFVG ด้วย)
+InpEntryLevel=1
+; [GUESS] 14 (KRV default = 10)
+InpATRPeriod=14
+; [GUESS] 5
+InpMaxRetestBars=5
+; [NOT SHOWN] แตะเส้นแล้วไม่ปิดทะลุโซน
+InpConfirm=1
+; [NOT SHOWN]
+InpNeedDirCandle=false
+; [NOT SHOWN]
+InpInvBodyATR=0.0
+; [NOT SHOWN]
+InpWarmupBars=300
+
+; ---- Trend + HTF IFVG (true / 1 Hour / 60 / 40) ----
+; [SEEN]  true (KRV default = false)
+InpUseTrend=true
+; [SEEN]  1 Hour
+InpTrendTF=16385
+; [SEEN]  60 (ตรงกับคลิป "EMA 60")
+InpEMAPeriod=60
+; [GUESS] 40
+InpHTFZoneMaxAge=40
+; [NOT SHOWN] คลิปบอกว่าใช้ IFVG H1 ช่วยดู
+InpUseHTFIFVG=true
+
+; ---- SL / TP / partial  [NOT SHOWN - KRV ไม่บอก] ----
+InpSLMode=0
+InpSLBufferATR=0.2
+InpMinSL_ATR=0.5
+InpMaxSL_ATR=3.0
+InpTP_R=3.0
+InpPartialR=1.0
+InpPartialPct=50.0
+InpMoveBE=true
+InpBEOffsetPts=20
+InpTrailATR=0.0
+
+; ---- Risk (ตามคลิป: 1% / สูงสุด 2 ออเดอร์) ----
+InpRiskPercent=1.0
+InpMaxRiskCapPct=1.5
+InpMaxPositions=2
+
+; ---- Guards (ปิด = เหมือนแบ็คเทส KRV) ----
+InpDailyDDPct=0.0
+InpMaxDDPct=0.0
+InpProfitTargetPct=0.0
+InpStartBalance=0.0
+InpCloseOnGuard=true
+InpStartHour=0
+InpEndHour=24
+InpFridayClose=false
+InpFridayCloseHour=21

@@ -26,11 +26,13 @@
 //|  - Guards     : risk cap, daily DD, max DD (prop style), spread, |
 //|                 Friday close                                     |
 //|                                                                  |
-//|  !! Gap size / strong-move / SL values are NOT given in the clip |
-//|  !! -> optimise them, then Walk-Forward + forward test (KRV).    |
+//|  Inputs are laid out in the same order as the KRV tester screen |
+//|  (names were hidden): [KRV: x] = value seen, '?' = our guess of  |
+//|  what that row means. SL / TP / partial rows were not shown.     |
+//|  !! -> optimise, then Walk-Forward + forward test (KRV).         |
 //+------------------------------------------------------------------+
 #property copyright "Metasit - IFVG EA"
-#property version   "1.00"
+#property version   "1.10"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -44,6 +46,24 @@ enum ENUM_SL_MODE
    SL_RETEST_BAR  = 1,   // Beyond the retest (signal) bar high/low
    SL_WIDEST      = 2    // Whichever of the two is further away
 };
+enum ENUM_BREAK_MODE
+{
+   BREAK_BOUNDARY = 0,   // Broken Boundary
+   BREAK_LINE     = 1,   // Broken IFVG Line
+   BREAK_WICK     = 2    // Wick Through
+};
+enum ENUM_FILTER_PROFILE
+{
+   PROFILE_AGGRESSIVE   = 0,  // Aggressive
+   PROFILE_BALANCED     = 1,  // Balanced
+   PROFILE_CONSERVATIVE = 2   // Conservative
+};
+enum ENUM_ENTRY_LEVEL
+{
+   ENTRY_ZONE_EDGE  = 0,  // Zone Edge
+   ENTRY_IFVG_LINE  = 1,  // IFVG Line
+   ENTRY_LINE_LIMIT = 2   // IFVG Line Limit Order
+};
 enum ENUM_CONFIRM_MODE
 {
    CONF_CLOSE_OUTSIDE = 0,  // Touch zone, close back outside it (bounce)
@@ -54,37 +74,40 @@ enum ENUM_CONFIRM_MODE
 //  Inputs
 //==================================================================
 input group "=== General ==="
-input long     InpMagic              = 20261028;    // Magic number
-input string   InpComment            = "IFVG";      // Order comment
-input bool     InpDrawZones          = true;        // Draw IFVG zones on chart
-input bool     InpNotify             = false;       // Push notifications (live only)
+input ENUM_TIMEFRAMES InpSignalTF    = PERIOD_M30;  // Signal timeframe                    [KRV: 30 Minutes]
+input long     InpMagic              = 20250801;    // Magic number                        [KRV: 20250801]
 
-input group "=== FVG detection (signal TF) ==="
-input ENUM_TIMEFRAMES InpSignalTF    = PERIOD_M30;  // Signal timeframe
-input int      InpATRPeriod          = 14;          // ATR period (scales all sizes)
-input double   InpMinGapATR          = 0.25;        // Min gap (High bar1 <-> Low bar3) x ATR
-input double   InpMaxGapATR          = 2.5;         // Max gap x ATR (0 = off)
-input double   InpStrongBodyATR      = 0.8;         // Bar 2 (Strong Move) body >= x ATR
-input double   InpStrongBodyRatio    = 0.55;        // Bar 2 body / range >= this
-input int      InpFVGMaxAgeBars      = 48;          // FVG must be broken within N bars
+input group "=== Zone lifetime / break ==="
+input int      InpZoneMaxAgeBars     = 120;         // IFVG kept alive N bars              [KRV: 120 ?]
+input int      InpFVGMaxAgeBars      = 60;          // FVG must be broken within N bars    [KRV: 60 ?]
+input double   InpMaxGapATR          = 0.0;         // Max gap x ATR (0 = off)             [KRV: 0 ?]
+input int      InpMaxActiveZones     = 5;           // Max IFVGs waiting retest (0 = all)  [KRV: 5 ?]
+input int      InpMaxSpreadPoints    = 50;          // Skip entry if spread > this (0=off) [KRV: 50 ?]
+input ENUM_BREAK_MODE InpBreakMode   = BREAK_BOUNDARY; // FVG counts as broken when...     [KRV: Broken Boundary]
+input bool     InpInvalidateOnClose  = true;        // Kill IFVG when a bar closes through [KRV: true ?]
 
-input group "=== Inversion & retest ==="
-input double   InpInvBodyATR         = 0.0;         // Breaking bar body >= x ATR (0 = off)
-input int      InpMaxRetestBars      = 24;          // Retest must come within N bars of inversion
-input int      InpZoneMaxAgeBars     = 96;          // IFVG kept alive N bars (for HTF bias)
-input ENUM_CONFIRM_MODE InpConfirm   = CONF_CLOSE_OUTSIDE; // Retest confirmation
+input group "=== Strong Move / gap filter ==="
+input ENUM_FILTER_PROFILE InpProfile = PROFILE_BALANCED; // Threshold profile (x0.75/x1/x1.25) [KRV: Balanced]
+input double   InpMinGapATR          = 0.25;        // Min gap (High bar1 <-> Low bar3) x ATR [KRV: 0.25 ?]
+input double   InpStrongBodyATR      = 0.5;         // Bar 2 (Strong Move) body >= x ATR   [KRV: 0.5 ?]
+input double   InpStrongBodyRatio    = 0.6;         // Bar 2 body / range >= this          [KRV: 0.6 ?]
+input double   InpTouchTolATR        = 0.05;        // Count as touch within x ATR         [KRV: 0.05 ?]
+
+input group "=== Entry ==="
+input ENUM_ENTRY_LEVEL InpEntryLevel = ENTRY_IFVG_LINE; // Retest level (IFVG Line = mid) [KRV: IFVG Line]
+input int      InpATRPeriod          = 14;          // ATR period (scales all sizes)       [KRV: 14 ?]
+input int      InpMaxRetestBars      = 5;           // Retest must come within N bars      [KRV: 5 ?]
+input ENUM_CONFIRM_MODE InpConfirm   = CONF_CLOSE_INSIDE; // Retest confirmation
 input bool     InpNeedDirCandle      = false;       // Retest bar must close in trade direction
-input double   InpTouchTolATR        = 0.0;         // Count as touch within x ATR of zone
+input double   InpInvBodyATR         = 0.0;         // Breaking bar body >= x ATR (0 = off)
 input int      InpWarmupBars         = 300;         // History bars to pre-build zones
 
-input group "=== Trend filter (EMA) ==="
-input bool     InpUseTrend           = true;        // Trade only with the EMA trend
-input ENUM_TIMEFRAMES InpTrendTF     = PERIOD_H1;   // Trend timeframe
-input int      InpEMAPeriod          = 60;          // EMA period (clip: EMA 60)
-
-input group "=== Higher-TF IFVG helper ==="
+input group "=== Trend (EMA) + higher-TF IFVG ==="
+input bool     InpUseTrend           = true;        // Trade only with the EMA trend       [KRV: true]
+input ENUM_TIMEFRAMES InpTrendTF     = PERIOD_H1;   // Trend + helper timeframe            [KRV: 1 Hour]
+input int      InpEMAPeriod          = 60;          // EMA period                          [KRV: 60]
+input int      InpHTFZoneMaxAge      = 40;          // HTF IFVG kept alive N bars          [KRV: 40 ?]
 input bool     InpUseHTFIFVG         = true;        // Latest live HTF IFVG must agree
-input ENUM_TIMEFRAMES InpHTF         = PERIOD_H1;   // Helper timeframe (clip: H1)
 
 input group "=== Stop loss / Take profit ==="
 input ENUM_SL_MODE InpSLMode         = SL_ZONE_EDGE; // Stop loss mode
@@ -113,11 +136,15 @@ input double   InpStartBalance       = 0.0;         // Start balance (0 = balanc
 input bool     InpCloseOnGuard       = true;        // Close positions when a guard trips
 
 input group "=== Filters ==="
-input int      InpMaxSpreadPoints    = 60;          // Skip entry if spread > this (0 = off)
 input int      InpStartHour          = 0;           // Trade from hour (server)
 input int      InpEndHour            = 24;          // ...until hour (server, exclusive)
 input bool     InpFridayClose        = false;       // Close all before weekend
 input int      InpFridayCloseHour    = 21;          // Friday close hour (server)
+
+input group "=== Misc ==="
+input string   InpComment            = "IFVG";      // Order comment
+input bool     InpDrawZones          = true;        // Draw IFVG zones on chart
+input bool     InpNotify             = false;       // Push notifications (live only)
 
 //==================================================================
 //  Zone engine (one instance per timeframe)
@@ -140,6 +167,13 @@ struct Zone
    int      retestAge;  // bars since inversion while ZS_ACTIVE
 };
 
+double ProfileMult()
+{
+   if(InpProfile == PROFILE_AGGRESSIVE)   return 0.75;
+   if(InpProfile == PROFILE_CONSERVATIVE) return 1.25;
+   return 1.0;
+}
+
 class CIFVGEngine
 {
 public:
@@ -149,10 +183,14 @@ public:
    datetime          lastOpen;
    bool              draw;
    string            tag;
+   int               zoneMaxAge;
+   Zone              sigZone;    // zone that gave the retest signal on the last bar
+   Zone              newInv[];   // zones inverted on the last bar (limit-order mode)
 
-   bool Init(const ENUM_TIMEFRAMES t, const bool d, const string tg)
+   bool Init(const ENUM_TIMEFRAMES t, const bool d, const string tg, const int maxAge)
    {
-      tf = t; draw = d; tag = tg; lastOpen = 0;
+      tf = t; draw = d; tag = tg; lastOpen = 0; zoneMaxAge = maxAge;
+      ArrayResize(newInv, 0);
       ArrayResize(z, 0);
       hATR = iATR(_Symbol, tf, InpATRPeriod);
       return (hATR != INVALID_HANDLE);
@@ -187,29 +225,29 @@ public:
       int avail = iBars(_Symbol, tf);
       if(avail < 50 || ATRAt(1) <= 0.0) return false;
       int from = MathMin(bars, avail - InpATRPeriod - 5);
-      int idx;
-      for(int s = from; s >= 1; s--) ProcessBar(s, idx);
+      for(int s = from; s >= 1; s--) ProcessBar(s);
       lastOpen = iTime(_Symbol, tf, 0);
       return true;
    }
 
    // Call every tick. On a new bar processes the just-closed bar.
-   // Returns signal direction (+1/-1/0) and zone index in sigIdx.
-   int Update(int &sigIdx)
+   // Returns retest signal direction (+1/-1/0); the zone is in sigZone.
+   int Update()
    {
-      sigIdx = -1;
+      ArrayResize(newInv, 0);
       datetime t = iTime(_Symbol, tf, 0);
       if(t == 0 || t == lastOpen) return 0;
       lastOpen = t;
-      return ProcessBar(1, sigIdx);
+      return ProcessBar(1);
    }
 
    // Process closed bar at shift s (order matters: retest -> inversion -> new FVG,
    // so a bar can never break and retest the same zone)
-   int ProcessBar(const int s, int &sigIdx)
+   int ProcessBar(const int s)
    {
-      sigIdx = -1;
+      int sigIdx = -1;
       int sigDir = 0;
+      ArrayResize(newInv, 0);
       double o = iOpen(_Symbol, tf, s), h = iHigh(_Symbol, tf, s);
       double l = iLow(_Symbol, tf, s),  c = iClose(_Symbol, tf, s);
       datetime bt = iTime(_Symbol, tf, s);
@@ -225,8 +263,8 @@ public:
          if(z[i].state == ZS_ACTIVE || z[i].state == ZS_USED)
          {
             z[i].age++;
-            bool broken = (z[i].dir > 0 ? c < z[i].bottom : c > z[i].top);
-            if(broken || z[i].age > InpZoneMaxAgeBars)
+            bool broken = InpInvalidateOnClose && (z[i].dir > 0 ? c < z[i].bottom : c > z[i].top);
+            if(broken || z[i].age > zoneMaxAge)
             {
                z[i].state = ZS_DEAD;
                CloseBox(i, bt);
@@ -235,7 +273,9 @@ public:
             if(z[i].state != ZS_ACTIVE) continue;
 
             z[i].retestAge++;
-            bool touched = (z[i].dir > 0 ? l <= z[i].top + tol : h >= z[i].bottom - tol);
+            double mid   = (z[i].top + z[i].bottom) / 2.0;
+            double lvl   = (InpEntryLevel == ENTRY_ZONE_EDGE ? (z[i].dir > 0 ? z[i].top : z[i].bottom) : mid);
+            bool touched = (z[i].dir > 0 ? l <= lvl + tol : h >= lvl - tol);
             bool confirm = (InpConfirm == CONF_CLOSE_OUTSIDE
                             ? (z[i].dir > 0 ? c > z[i].top : c < z[i].bottom)
                             : true);   // not broken already checked above
@@ -256,7 +296,11 @@ public:
          //--- plain FVG: wait for a close through it (inversion)
          z[i].age++;
          if(z[i].age > InpFVGMaxAgeBars) { z[i].state = ZS_DEAD; continue; }
-         bool inv = (z[i].fvgDir < 0 ? c > z[i].top : c < z[i].bottom);
+         double fmid = (z[i].top + z[i].bottom) / 2.0;
+         bool inv = false;
+         if(InpBreakMode == BREAK_BOUNDARY)  inv = (z[i].fvgDir < 0 ? c > z[i].top : c < z[i].bottom);
+         else if(InpBreakMode == BREAK_LINE) inv = (z[i].fvgDir < 0 ? c > fmid : c < fmid);
+         else                                inv = (z[i].fvgDir < 0 ? h > z[i].top : l < z[i].bottom);
          if(inv && InpInvBodyATR > 0.0 && MathAbs(c - o) < InpInvBodyATR * atr) inv = false;
          if(inv)
          {
@@ -266,12 +310,34 @@ public:
             z[i].age       = 0;
             z[i].retestAge = 0;
             DrawBox(i, bt);
+            int n = ArraySize(newInv);
+            ArrayResize(newInv, n + 1);
+            newInv[n] = z[i];
          }
       }
 
+      if(sigIdx >= 0) sigZone = z[sigIdx];   // copy before Compact() shifts indices
+      LimitActive();
       DetectFVG(s);
       Compact();
       return sigDir;
+   }
+
+   // Keep only the newest InpMaxActiveZones IFVGs tradeable
+   void LimitActive()
+   {
+      if(InpMaxActiveZones <= 0) return;
+      int cnt = 0;
+      for(int i = 0; i < ArraySize(z); i++) if(z[i].state == ZS_ACTIVE) cnt++;
+      while(cnt > InpMaxActiveZones)
+      {
+         int old = -1;
+         for(int i = 0; i < ArraySize(z); i++)
+            if(z[i].state == ZS_ACTIVE && (old < 0 || z[i].invTime < z[old].invTime)) old = i;
+         if(old < 0) break;
+         z[old].state = ZS_USED;
+         cnt--;
+      }
    }
 
    // New FVG: bars s (newest = "bar 3"), s+1 (Strong Move), s+2 (oldest = "bar 1")
@@ -285,7 +351,8 @@ public:
       double r2 = iHigh(_Symbol, tf, s + 1) - iLow(_Symbol, tf, s + 1);
       double body = MathAbs(c2 - o2);
       if(r2 <= 0.0) return;
-      if(body < InpStrongBodyATR * atr || body / r2 < InpStrongBodyRatio) return;
+      double pm = ProfileMult();
+      if(body < InpStrongBodyATR * pm * atr || body / r2 < MathMin(InpStrongBodyRatio * pm, 0.95)) return;
 
       int dir = 0; double top = 0, bot = 0;
       if(c2 > o2 && l3 > h1)      { dir = +1; bot = h1; top = l3; }   // bullish FVG
@@ -293,7 +360,7 @@ public:
       if(dir == 0) return;
 
       double gap = top - bot;
-      if(gap < InpMinGapATR * atr) return;
+      if(gap < InpMinGapATR * pm * atr) return;
       if(InpMaxGapATR > 0.0 && gap > InpMaxGapATR * atr) return;
 
       int n = ArraySize(z);
@@ -358,8 +425,8 @@ int OnInit()
    trade.SetDeviationInPoints(50);
    trade.SetTypeFillingBySymbol(_Symbol);
 
-   if(!gSig.Init(InpSignalTF, InpDrawZones, "IFVG_SIG_")) return INIT_FAILED;
-   if(InpUseHTFIFVG && !gHTF.Init(InpHTF, false, "IFVG_HTF_")) return INIT_FAILED;
+   if(!gSig.Init(InpSignalTF, InpDrawZones, "IFVG_SIG_", InpZoneMaxAgeBars)) return INIT_FAILED;
+   if(InpUseHTFIFVG && !gHTF.Init(InpTrendTF, false, "IFVG_HTF_", InpHTFZoneMaxAge)) return INIT_FAILED;
    if(InpUseTrend)
    {
       hEMA = iMA(_Symbol, InpTrendTF, InpEMAPeriod, 0, MODE_EMA, PRICE_CLOSE);
@@ -394,20 +461,29 @@ void OnTick()
    ManagePositions();
 
    // engines must see every bar even when we are not allowed to trade
-   int dummy, sigIdx;
-   if(InpUseHTFIFVG) gHTF.Update(dummy);
-   int dir = gSig.Update(sigIdx);
-   if(dir == 0 || sigIdx < 0 || !canTrade) return;
+   if(InpUseHTFIFVG) gHTF.Update();
+   int dir = gSig.Update();
+   if(!canTrade) return;
 
-   //--- filters
-   if(CountPositions() >= InpMaxPositions && InpMaxPositions > 0) return;
-   if(!InSession()) return;
+   // limit mode: pending order at the IFVG line as soon as the FVG is broken
+   if(InpEntryLevel == ENTRY_LINE_LIMIT)
+   {
+      for(int k = 0; k < ArraySize(gSig.newInv); k++)
+         if(EntryAllowed(gSig.newInv[k].dir)) OpenTrade(gSig.newInv[k].dir, gSig.newInv[k], true);
+      return;
+   }
+   if(dir != 0 && EntryAllowed(dir)) OpenTrade(dir, gSig.sigZone, false);
+}
+
+bool EntryAllowed(const int dir)
+{
+   if(InpMaxPositions > 0 && CountPositions() + CountOrders() >= InpMaxPositions) return false;
+   if(!InSession()) return false;
    if(InpMaxSpreadPoints > 0 && SymbolInfoInteger(_Symbol, SYMBOL_SPREAD) > InpMaxSpreadPoints)
-   { Print("Skip: spread too wide"); return; }
-   if(InpUseTrend && TrendDir() != dir) return;
-   if(InpUseHTFIFVG && gHTF.Bias() != dir) return;
-
-   OpenTrade(dir, gSig.z[sigIdx]);
+   { Print("Skip: spread too wide"); return false; }
+   if(InpUseTrend && TrendDir() != dir) return false;
+   if(InpUseHTFIFVG && gHTF.Bias() != dir) return false;
+   return true;
 }
 
 //==================================================================
@@ -434,16 +510,19 @@ bool InSession()
 //==================================================================
 //  Trade entry
 //==================================================================
-void OpenTrade(const int dir, const Zone &zn)
+void OpenTrade(const int dir, const Zone &zn, const bool limit)
 {
    double atr   = gSig.ATRAt(1);
    double buf   = InpSLBufferATR * atr;
-   double entry = (dir > 0 ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
+   double mkt   = (dir > 0 ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
                            : SymbolInfoDouble(_Symbol, SYMBOL_BID));
+   double entry = (limit ? NormalizeDouble((zn.top + zn.bottom) / 2.0, _Digits) : mkt);
+   if(limit && (dir > 0 ? mkt <= entry : mkt >= entry))
+   { Print("Skip: price already at/through the IFVG line"); return; }
    double barL  = iLow(_Symbol, InpSignalTF, 1), barH = iHigh(_Symbol, InpSignalTF, 1);
 
    double slZone = (dir > 0 ? zn.bottom - buf : zn.top + buf);
-   double slBar  = (dir > 0 ? barL - buf : barH + buf);
+   double slBar  = (limit ? slZone : (dir > 0 ? barL - buf : barH + buf));
    double sl = slZone;
    if(InpSLMode == SL_RETEST_BAR) sl = slBar;
    if(InpSLMode == SL_WIDEST)     sl = (dir > 0 ? MathMin(slZone, slBar) : MathMax(slZone, slBar));
@@ -460,6 +539,7 @@ void OpenTrade(const int dir, const Zone &zn)
 
    double stopLvl = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) * _Point;
    if(dist < stopLvl) { Print("Skip: SL inside broker stop level"); return; }
+   if(limit && MathAbs(mkt - entry) < stopLvl) { Print("Skip: limit too close to price"); return; }
 
    double tp = 0.0;
    if(InpTP_R > 0.0) tp = (dir > 0 ? entry + InpTP_R * dist : entry - InpTP_R * dist);
@@ -470,12 +550,18 @@ void OpenTrade(const int dir, const Zone &zn)
    double lots = CalcLotSize(type, entry, sl);
    if(lots <= 0.0) return;
 
-   bool ok = (dir > 0 ? trade.Buy(lots, _Symbol, 0.0, sl, tp, InpComment)
-                      : trade.Sell(lots, _Symbol, 0.0, sl, tp, InpComment));
+   bool ok;
+   if(limit)
+      ok = (dir > 0 ? trade.BuyLimit(lots, entry, _Symbol, sl, tp, ORDER_TIME_GTC, 0, InpComment)
+                    : trade.SellLimit(lots, entry, _Symbol, sl, tp, ORDER_TIME_GTC, 0, InpComment));
+   else
+      ok = (dir > 0 ? trade.Buy(lots, _Symbol, 0.0, sl, tp, InpComment)
+                    : trade.Sell(lots, _Symbol, 0.0, sl, tp, InpComment));
    if(ok)
    {
-      Notify(StringFormat("%s %.2f @ %.2f SL %.2f TP %.2f | zone %.2f-%.2f",
-                          dir > 0 ? "BUY" : "SELL", lots, entry, sl, tp, zn.bottom, zn.top));
+      Notify(StringFormat("%s%s %.2f @ %.2f SL %.2f TP %.2f | zone %.2f-%.2f",
+                          dir > 0 ? "BUY" : "SELL", limit ? " LIMIT" : "",
+                          lots, entry, sl, tp, zn.bottom, zn.top));
       DrawArrow(dir, entry);
    }
    else
@@ -489,6 +575,16 @@ void ManagePositions()
 {
    MqlDateTime t; TimeToStruct(TimeCurrent(), t);
    bool friday = (InpFridayClose && t.day_of_week == 5 && t.hour >= InpFridayCloseHour);
+
+   // pending IFVG-line orders live only for InpMaxRetestBars bars
+   int expSec = PeriodSeconds(InpSignalTF) * MathMax(InpMaxRetestBars, 1);
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   {
+      ulong ot = OrderGetTicket(i);
+      if(ot == 0 || !IsMyOrder()) continue;
+      if(friday || TimeCurrent() - (datetime)OrderGetInteger(ORDER_TIME_SETUP) >= expSec)
+         trade.OrderDelete(ot);
+   }
 
    for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
@@ -561,6 +657,20 @@ void MarkPartialDone(const ulong tk)
    gPartialDone[n] = tk;
 }
 
+bool IsMyOrder()
+{
+   return (OrderGetString(ORDER_SYMBOL) == _Symbol &&
+           OrderGetInteger(ORDER_MAGIC) == InpMagic);
+}
+
+int CountOrders()
+{
+   int n = 0;
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+      if(OrderGetTicket(i) > 0 && IsMyOrder()) n++;
+   return n;
+}
+
 int CountPositions()
 {
    int n = 0;
@@ -575,6 +685,11 @@ void CloseAll()
    {
       ulong tk = PositionGetTicket(i);
       if(tk > 0 && IsMine()) trade.PositionClose(tk);
+   }
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   {
+      ulong ot = OrderGetTicket(i);
+      if(ot > 0 && IsMyOrder()) trade.OrderDelete(ot);
    }
 }
 
