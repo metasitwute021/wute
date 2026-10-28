@@ -71,16 +71,22 @@ InpHTFZoneMaxAge=40
 ; [NOT SHOWN] คลิปบอกว่าใช้ IFVG H1 ช่วยดู
 InpUseHTFIFVG=true
 
-; ---- SL / TP / partial  [NOT SHOWN - KRV ไม่บอก] ----
-InpSLMode=0
-InpSLBufferATR=0.2
-InpMinSL_ATR=0.5
-InpMaxSL_ATR=3.0
+; ---- SL / BE / partial  [จากระบบ H4 ของเรา ย่อมาใช้ M30] ----
+; SL = Low/High ของแท่งสัญญาณ (แท่ง retest M30 ที่เพิ่งปิด) -/+ $0.5 = 1R
+InpSLMode=1
+InpSLBufferPrice=0.5
+InpSLBufferATR=0.0
+InpMinSL_ATR=0.0
+InpMaxSL_ATR=0.0
+; TP ไม่ได้ระบุในกฎ H4 -> ใช้ 3R ไปก่อน (ควร optimize)
 InpTP_R=3.0
+; BE: กำไร >= ATR(16) x 1.5 -> SL ไปที่ จุดเข้า + 0.1R (ครั้งเดียว)
+InpBETriggerATR=1.5
+InpBEATRPeriod=16
+InpBELockR=0.1
+; แบ่งขาย: ถึง 1R ปิด 40% ของ lot เริ่มต้น (ครั้งเดียว ไม่ขยับ SL)
 InpPartialR=1.0
-InpPartialPct=50.0
-InpMoveBE=true
-InpBEOffsetPts=20
+InpPartialPct=40.0
 InpTrailATR=0.0
 
 ; ---- Risk (ตามคลิป: 1% / สูงสุด 2 ออเดอร์) ----

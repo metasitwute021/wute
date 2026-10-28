@@ -16,10 +16,14 @@
 //|  - Trend      : EMA 60 on H1 - above = uptrend (buy only),       |
 //|                 below = downtrend (sell only)                    |
 //|  - HTF helper : IFVG on H1 - latest live H1 IFVG must agree      |
-//|  - Stop loss  : KRV keeps it secret -> selectable modes here     |
-//|  - Exit       : partial close ("แบ่งขาย") + move SL to BE,       |
-//|                 runner to final TP (clip: win rate 64% because   |
-//|                 of the partial close)                            |
+//|  - Stop loss  : signal (retest) bar Low - $0.5 / High + $0.5     |
+//|                 = 1R (lot sizing + partial level). Pushed out to |
+//|                 the broker stop level if too close               |
+//|  - Break-even : profit >= ATR(16) x 1.5 -> SL to entry + 0.1R    |
+//|                 (once per trade, checked every tick)             |
+//|  - Partial    : at 1R close 40% of the INITIAL lot, once, SL not |
+//|                 moved ("แบ่งขาย" - clip win rate 64%)            |
+//|                 (rules ported from our H4 system, ATR on M30)    |
 //|  - Sizing     : fixed 1% risk per trade (clip: +397% 2020-now,   |
 //|                 PF 1.47, ~1,100-1,200 trades, DD ~13%)           |
 //|  - Max orders : 2 at the same time (clip: "สูงสุดสองออเดอร์")    |
@@ -32,7 +36,7 @@
 //|  !! -> optimise, then Walk-Forward + forward test (KRV).         |
 //+------------------------------------------------------------------+
 #property copyright "Metasit - IFVG EA"
-#property version   "1.10"
+#property version   "1.20"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -110,18 +114,20 @@ input int      InpHTFZoneMaxAge      = 40;          // HTF IFVG kept alive N bar
 input bool     InpUseHTFIFVG         = true;        // Latest live HTF IFVG must agree
 
 input group "=== Stop loss / Take profit ==="
-input ENUM_SL_MODE InpSLMode         = SL_ZONE_EDGE; // Stop loss mode
-input double   InpSLBufferATR        = 0.20;        // SL buffer x ATR
-input double   InpMinSL_ATR          = 0.50;        // Min SL distance x ATR (widen to this)
-input double   InpMaxSL_ATR          = 3.0;         // Skip trade if SL > x ATR (0 = off)
-input double   InpTP_R               = 3.0;         // Final TP in R (0 = no TP, runner trails)
+input ENUM_SL_MODE InpSLMode         = SL_RETEST_BAR; // Stop loss mode (signal bar Low/High)
+input double   InpSLBufferPrice      = 0.5;         // SL buffer in price ($) beyond bar Low/High
+input double   InpSLBufferATR        = 0.0;         // + extra SL buffer x ATR (0 = off)
+input double   InpMinSL_ATR          = 0.0;         // Min SL distance x ATR (widen, 0 = off)
+input double   InpMaxSL_ATR          = 0.0;         // Skip trade if SL > x ATR (0 = off)
+input double   InpTP_R               = 3.0;         // Final TP in R (0 = no TP)
 
-input group "=== Partial close / Break-even / Trailing ==="
+input group "=== Break-even / Partial close / Trailing ==="
+input double   InpBETriggerATR       = 1.5;         // BE when profit >= x ATR (0 = off)
+input int      InpBEATRPeriod        = 16;          // ATR period for BE trigger (signal TF)
+input double   InpBELockR            = 0.1;         // BE stop = entry + x R (locks a little)
 input double   InpPartialR           = 1.0;         // Partial close at x R (0 = off)
-input double   InpPartialPct         = 50.0;        // % volume to close at partial
-input bool     InpMoveBE             = true;        // Move SL to BE at partial level
-input double   InpBEOffsetPts        = 20;          // BE offset (points, locks small profit)
-input double   InpTrailATR           = 0.0;         // Trail runner by x ATR after BE (0 = off)
+input double   InpPartialPct         = 40.0;        // % of the INITIAL lot to close (once)
+input double   InpTrailATR           = 0.0;         // Trail after BE by x ATR (0 = off)
 
 input group "=== Risk management ==="
 input double   InpRiskPercent        = 1.0;         // Risk per trade (% balance)
@@ -408,13 +414,17 @@ CTrade       trade;
 CIFVGEngine  gSig;
 CIFVGEngine  gHTF;
 int          hEMA        = INVALID_HANDLE;
+int          hBEATR      = INVALID_HANDLE;
 bool         gWarm       = false;
 int          gDayKey     = -1;
 double       gDayStartBal= 0.0;
 double       gStartBal   = 0.0;
 bool         gDailyHit   = false;
 bool         gStopped    = false;
-ulong        gPartialDone[];   // tickets already partially closed
+datetime     gLastGVClean= 0;
+
+#define TF_BE       1   // per-trade flag: break-even done
+#define TF_PARTIAL  2   // per-trade flag: partial close done
 
 //==================================================================
 //  Init / Deinit
@@ -432,6 +442,11 @@ int OnInit()
       hEMA = iMA(_Symbol, InpTrendTF, InpEMAPeriod, 0, MODE_EMA, PRICE_CLOSE);
       if(hEMA == INVALID_HANDLE) return INIT_FAILED;
    }
+   if(InpBETriggerATR > 0.0)
+   {
+      hBEATR = iATR(_Symbol, InpSignalTF, InpBEATRPeriod);
+      if(hBEATR == INVALID_HANDLE) return INIT_FAILED;
+   }
    gStartBal = (InpStartBalance > 0.0 ? InpStartBalance : AccountInfoDouble(ACCOUNT_BALANCE));
    gWarm = false;
    return INIT_SUCCEEDED;
@@ -442,6 +457,7 @@ void OnDeinit(const int reason)
    gSig.Deinit();
    if(InpUseHTFIFVG) gHTF.Deinit();
    if(hEMA != INVALID_HANDLE) IndicatorRelease(hEMA);
+   if(hBEATR != INVALID_HANDLE) IndicatorRelease(hBEATR);
 }
 
 //==================================================================
@@ -513,7 +529,7 @@ bool InSession()
 void OpenTrade(const int dir, const Zone &zn, const bool limit)
 {
    double atr   = gSig.ATRAt(1);
-   double buf   = InpSLBufferATR * atr;
+   double buf   = InpSLBufferPrice + InpSLBufferATR * atr;
    double mkt   = (dir > 0 ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
                            : SymbolInfoDouble(_Symbol, SYMBOL_BID));
    double entry = (limit ? NormalizeDouble((zn.top + zn.bottom) / 2.0, _Digits) : mkt);
@@ -537,9 +553,16 @@ void OpenTrade(const int dir, const Zone &zn, const bool limit)
    if(InpMaxSL_ATR > 0.0 && dist > InpMaxSL_ATR * atr)
    { PrintFormat("Skip: SL %.2f > %.1f ATR", dist, InpMaxSL_ATR); return; }
 
+   // SL closer than the broker stop level -> push it out to the minimum allowed
    double stopLvl = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) * _Point;
-   if(dist < stopLvl) { Print("Skip: SL inside broker stop level"); return; }
    if(limit && MathAbs(mkt - entry) < stopLvl) { Print("Skip: limit too close to price"); return; }
+   double ref = (limit ? entry : (dir > 0 ? SymbolInfoDouble(_Symbol, SYMBOL_BID)
+                                          : SymbolInfoDouble(_Symbol, SYMBOL_ASK)));
+   if(stopLvl > 0.0 && (dir > 0 ? ref - sl : sl - ref) < stopLvl)
+   {
+      sl   = (dir > 0 ? ref - stopLvl - _Point : ref + stopLvl + _Point);
+      dist = (dir > 0 ? entry - sl : sl - entry);
+   }
 
    double tp = 0.0;
    if(InpTP_R > 0.0) tp = (dir > 0 ? entry + InpTP_R * dist : entry - InpTP_R * dist);
@@ -559,6 +582,8 @@ void OpenTrade(const int dir, const Zone &zn, const bool limit)
                     : trade.Sell(lots, _Symbol, 0.0, sl, tp, InpComment));
    if(ok)
    {
+      // position identifier = order ticket (market or pending) -> remember 1R + start lot
+      SaveTradeState((long)trade.ResultOrder(), dist, lots, 0);
       Notify(StringFormat("%s%s %.2f @ %.2f SL %.2f TP %.2f | zone %.2f-%.2f",
                           dir > 0 ? "BUY" : "SELL", limit ? " LIMIT" : "",
                           lots, entry, sl, tp, zn.bottom, zn.top));
@@ -593,68 +618,142 @@ void ManagePositions()
       if(friday) { trade.PositionClose(tk); continue; }
 
       bool   buy  = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
+      long   id   = PositionGetInteger(POSITION_IDENTIFIER);
       double open = PositionGetDouble(POSITION_PRICE_OPEN);
       double sl   = PositionGetDouble(POSITION_SL);
       double tp   = PositionGetDouble(POSITION_TP);
       double vol  = PositionGetDouble(POSITION_VOLUME);
       double px   = (buy ? SymbolInfoDouble(_Symbol, SYMBOL_BID) : SymbolInfoDouble(_Symbol, SYMBOL_ASK));
-      if(sl <= 0.0) continue;
+      double profit = (buy ? px - open : open - px);
 
-      // SL already at/after entry, or ticket in the list -> partial/BE done
-      bool beDone = (buy ? sl >= open : sl <= open) || IsPartialDone(tk);
-      if(!beDone && InpPartialR > 0.0)
+      double R, v0; int fl;
+      if(!LoadTradeState(id, R, v0, fl))
       {
-         double R = MathAbs(open - sl);
-         bool hit = (buy ? px >= open + InpPartialR * R : px <= open - InpPartialR * R);
-         if(hit)
+         // state lost (e.g. opened by an older version) -> rebuild from the current SL
+         bool slLosing = (sl > 0.0 && (buy ? sl < open : sl > open));
+         R = (slLosing ? MathAbs(open - sl) : 0.0);
+         v0 = vol;
+         fl = (slLosing ? 0 : TF_BE | TF_PARTIAL);
+         SaveTradeState(id, R, v0, fl);
+      }
+      int flOld = fl;
+
+      //--- Break-even: profit >= ATR x mult -> SL to entry + 0.1R (once)
+      if((fl & TF_BE) == 0 && InpBETriggerATR > 0.0 && R > 0.0)
+      {
+         double a = BEATR();
+         if(a > 0.0 && profit >= InpBETriggerATR * a)
          {
-            if(InpPartialPct > 0.0)
-            {
-               double minV = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
-               double part = NormalizeVolume(vol * InpPartialPct / 100.0);
-               if(part >= minV && vol - part >= minV - 1e-9)
-                  trade.PositionClosePartial(tk, part);
-            }
-            if(InpMoveBE)
-            {
-               double be = (buy ? open + InpBEOffsetPts * _Point : open - InpBEOffsetPts * _Point);
-               trade.PositionModify(tk, NormalizeDouble(be, _Digits), tp);
-            }
-            MarkPartialDone(tk);
+            double be = NormalizeDouble(buy ? open + InpBELockR * R : open - InpBELockR * R, _Digits);
+            bool better = (sl <= 0.0 || (buy ? be > sl : be < sl));
+            if(!better) fl |= TF_BE;
+            else if(StopOK(buy, be, px) && trade.PositionModify(tk, be, tp))
+            { fl |= TF_BE; sl = be; }
          }
-         continue;
       }
 
-      if(beDone && InpTrailATR > 0.0)
+      //--- Partial close: at x R close % of the INITIAL lot (once, SL untouched)
+      if((fl & TF_PARTIAL) == 0 && InpPartialR > 0.0 && InpPartialPct > 0.0 && R > 0.0
+         && profit >= InpPartialR * R)
+      {
+         double minV = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+         double raw  = v0 * InpPartialPct / 100.0;
+         double part = MathMin(NormalizeVolume(raw), vol);
+         if(raw < minV - 1e-9 || vol - part < minV - 1e-9)
+         {
+            PrintFormat("Partial skipped: lot %.2f too small to split", vol);
+            fl |= TF_PARTIAL;
+         }
+         else if(trade.PositionClosePartial(tk, part))
+            fl |= TF_PARTIAL;
+      }
+
+      if(fl != flOld) SaveTradeState(id, R, v0, fl);
+
+      //--- optional trailing after BE
+      if((fl & TF_BE) != 0 && InpTrailATR > 0.0)
       {
          double atr = gSig.ATRAt(1);
          if(atr <= 0.0) continue;
          double nsl = NormalizeDouble(buy ? px - InpTrailATR * atr : px + InpTrailATR * atr, _Digits);
-         if(buy ? nsl > sl + _Point : nsl < sl - _Point)
+         if((buy ? nsl > sl + _Point : nsl < sl - _Point) && StopOK(buy, nsl, px))
             trade.PositionModify(tk, nsl, tp);
       }
    }
+
+   if(TimeCurrent() - gLastGVClean >= 3600) { CleanTradeState(); gLastGVClean = TimeCurrent(); }
+}
+
+double BEATR()
+{
+   if(hBEATR == INVALID_HANDLE) return 0.0;
+   double b[1];
+   if(CopyBuffer(hBEATR, 0, 1, 1, b) != 1) return 0.0;
+   return b[0];
+}
+
+// New SL respects the broker stop level relative to the current price
+bool StopOK(const bool buy, const double nsl, const double px)
+{
+   double stopLvl = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) * _Point;
+   return (buy ? px - nsl >= stopLvl : nsl - px >= stopLvl);
+}
+
+//==================================================================
+//  Per-trade state in GlobalVariables (survives MT5 restart):
+//  1R distance, initial lot, done-flags - keyed by position id
+//==================================================================
+string StatePrefix() { return "IFVG_" + IntegerToString(InpMagic) + "_"; }
+
+void SaveTradeState(const long id, const double R, const double v0, const int fl)
+{
+   if(id <= 0) return;
+   string p = StatePrefix() + IntegerToString(id) + "_";
+   GlobalVariableSet(p + "R", R);
+   GlobalVariableSet(p + "V", v0);
+   GlobalVariableSet(p + "F", fl);
+}
+
+bool LoadTradeState(const long id, double &R, double &v0, int &fl)
+{
+   string p = StatePrefix() + IntegerToString(id) + "_";
+   if(!GlobalVariableCheck(p + "R")) return false;
+   R  = GlobalVariableGet(p + "R");
+   v0 = GlobalVariableGet(p + "V");
+   fl = (int)GlobalVariableGet(p + "F");
+   return true;
+}
+
+// Remove state of trades that are no longer open / pending
+void CleanTradeState()
+{
+   string pre = StatePrefix();
+   for(int i = GlobalVariablesTotal() - 1; i >= 0; i--)
+   {
+      string nm = GlobalVariableName(i);
+      if(StringFind(nm, pre) != 0 || StringSubstr(nm, StringLen(nm) - 2) != "_R") continue;
+      string idStr = StringSubstr(nm, StringLen(pre), StringLen(nm) - StringLen(pre) - 2);
+      long id = StringToInteger(idStr);
+      if(IsLiveId(id)) continue;
+      GlobalVariableDel(pre + idStr + "_R");
+      GlobalVariableDel(pre + idStr + "_V");
+      GlobalVariableDel(pre + idStr + "_F");
+   }
+}
+
+bool IsLiveId(const long id)
+{
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+      if(PositionGetTicket(i) > 0 && PositionGetInteger(POSITION_IDENTIFIER) == id) return true;
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+      if((long)OrderGetTicket(i) == id) return true;
+   return false;
 }
 
 bool IsMine()
 {
    return (PositionGetString(POSITION_SYMBOL) == _Symbol &&
            PositionGetInteger(POSITION_MAGIC) == InpMagic);
-}
-
-bool IsPartialDone(const ulong tk)
-{
-   for(int i = ArraySize(gPartialDone) - 1; i >= 0; i--)
-      if(gPartialDone[i] == tk) return true;
-   return false;
-}
-
-void MarkPartialDone(const ulong tk)
-{
-   int n = ArraySize(gPartialDone);
-   if(n >= 200) { ArrayRemove(gPartialDone, 0, 100); n = ArraySize(gPartialDone); }
-   ArrayResize(gPartialDone, n + 1);
-   gPartialDone[n] = tk;
 }
 
 bool IsMyOrder()
