@@ -36,7 +36,7 @@
 //|  !! -> optimise, then Walk-Forward + forward test (KRV).         |
 //+------------------------------------------------------------------+
 #property copyright "Metasit - IFVG EA"
-#property version   "1.31"
+#property version   "1.32"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -471,6 +471,11 @@ int OnInit()
       if(hBEATR == INVALID_HANDLE) return INIT_FAILED;
    }
    LoadFFNews();
+   // prop accounts can carry a stop-out in money (= max-loss rule) that the tester copies
+   bool soMoney = (AccountInfoInteger(ACCOUNT_MARGIN_SO_MODE) == ACCOUNT_STOPOUT_MODE_MONEY);
+   PrintFormat("Account stop-out: call %.2f / stop-out %.2f %s",
+               AccountInfoDouble(ACCOUNT_MARGIN_SO_CALL), AccountInfoDouble(ACCOUNT_MARGIN_SO_SO),
+               soMoney ? "(MONEY - equity level)" : "(% margin level)");
    gStartBal = (InpStartBalance > 0.0 ? InpStartBalance : AccountInfoDouble(ACCOUNT_BALANCE));
    gWarm = false;
    return INIT_SUCCEEDED;
