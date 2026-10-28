@@ -36,7 +36,7 @@
 //|  !! -> optimise, then Walk-Forward + forward test (KRV).         |
 //+------------------------------------------------------------------+
 #property copyright "Metasit - IFVG EA"
-#property version   "1.30"
+#property version   "1.31"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -134,6 +134,8 @@ input double   InpRiskPercent        = 1.0;         // Risk per trade (% balance
 input double   InpMaxRiskCapPct      = 1.5;         // Skip if min lot risks > this % (0 = off)
 input int      InpMaxPositions       = 2;           // Max open positions (clip: 2)
 input double   InpMaxOpenRiskPct     = 0.0;         // Max total risk of open trades % (0 = off, prop: 1.0)
+input double   InpMinMarginLevel     = 300.0;       // Cut lot so margin level stays >= % (0 = off)
+input double   InpMaxLots            = 0.0;         // Hard max lot per trade (0 = off)
 
 input group "=== Account guards (prop style) ==="
 input double   InpDailyDDPct         = 0.0;         // Daily loss limit % (0 = off)
@@ -597,6 +599,8 @@ void OpenTrade(const int dir, const Zone &zn, const bool limit)
    ENUM_ORDER_TYPE type = (dir > 0 ? ORDER_TYPE_BUY : ORDER_TYPE_SELL);
    double lots = CalcLotSize(type, entry, sl);
    if(lots <= 0.0) return;
+   lots = FitMargin(type, lots, entry);   // tight SL -> big lot -> stop out (test died 2020-12-30)
+   if(lots <= 0.0) return;
 
    if(InpMaxOpenRiskPct > 0.0)
    {
@@ -931,6 +935,34 @@ double CalcLotSize(const ENUM_ORDER_TYPE type, const double entry, const double 
       return 0.0;
    }
    return lots;
+}
+
+// Shrink lot so the margin level after the trade stays >= InpMinMarginLevel (0 lot = skip)
+double FitMargin(const ENUM_ORDER_TYPE type, double lots, const double price)
+{
+   if(InpMaxLots > 0.0 && lots > InpMaxLots) lots = NormalizeVolume(InpMaxLots);
+   if(InpMinMarginLevel <= 0.0) return lots;
+
+   double perLot = 0.0;
+   if(!OrderCalcMargin(type, _Symbol, 1.0, price, perLot) || perLot <= 0.0) return lots;
+   double equity = AccountInfoDouble(ACCOUNT_EQUITY);
+   double used   = AccountInfoDouble(ACCOUNT_MARGIN);
+   double room   = equity / (InpMinMarginLevel / 100.0) - used;   // margin we may still add
+   double maxLot = room / perLot;
+   if(lots <= maxLot) return lots;
+
+   double minV = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+   double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+   if(step <= 0.0) step = 0.01;
+   double cut = MathFloor(maxLot / step + 1e-9) * step;
+   if(cut < minV)
+   {
+      PrintFormat("Skip: not enough margin (level would drop below %.0f%%)", InpMinMarginLevel);
+      return 0.0;
+   }
+   PrintFormat("Lot cut %.2f -> %.2f to keep margin level >= %.0f%% (risk now below target)",
+               lots, cut, InpMinMarginLevel);
+   return NormalizeVolume(cut);
 }
 
 double NormalizeVolume(double vol)

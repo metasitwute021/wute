@@ -96,6 +96,9 @@ InpMaxRiskCapPct=1.5
 InpMaxPositions=2
 ; เพดานความเสี่ยงรวมของไม้ที่เปิดอยู่ (0 = ปิด เหมือน KRV / บัญชีสอบตั้ง 1.0)
 InpMaxOpenRiskPct=0.0
+; กัน Stop Out: ตัด lot ให้ margin level หลังเปิดไม้ >= 300% (เทสแรกโดน Stop Out 2020-12-30)
+InpMinMarginLevel=300.0
+InpMaxLots=0.0
 
 ; ---- Guards (ปิด = เหมือนแบ็คเทส KRV) ----
 InpDailyDDPct=0.0
